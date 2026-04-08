@@ -1,5 +1,9 @@
 # Mina's Appearance
 
+Orange hair, long and straight, worn in a high ponytail with swept bangs. Green eyes. Small stud
+earrings. She typically wears a dark blue knit turtleneck. Nothing flashy — she doesn't think
+much about it.
+
 ## ComfyUI Generation Tags
 
 ### Default Biological tags
