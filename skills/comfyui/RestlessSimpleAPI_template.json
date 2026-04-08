@@ -1,0 +1,1496 @@
+{
+  "1": {
+    "inputs": {
+      "ckpt_name": "animayhemPaleRider_v30PlainsDrifter.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint"
+    }
+  },
+  "2": {
+    "inputs": {
+      "seed": 1111111,
+      "steps": 50,
+      "cfg": 4,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "denoise": 1,
+      "model": [
+        "1",
+        0
+      ],
+      "positive": [
+        "3",
+        0
+      ],
+      "negative": [
+        "4",
+        0
+      ],
+      "latent_image": [
+        "39",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "3": {
+    "inputs": {
+      "text": "PROMPT_TEXT",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "4": {
+    "inputs": {
+      "text": "NEGATIVE_TEXT, child, young_adult_style, watermark, username, logo,",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative)"
+    }
+  },
+  "6": {
+    "inputs": {
+      "samples": [
+        "2",
+        0
+      ],
+      "vae": [
+        "1",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "7": {
+    "inputs": {
+      "filename_prefix": "RestlessSimpleAPI_",
+      "images": [
+        "141",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  },
+  "8": {
+    "inputs": {
+      "upscale_by": 2,
+      "seed": 1111111,
+      "steps": 25,
+      "cfg": 4,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "denoise": 0.7,
+      "mode_type": "Linear",
+      "tile_width": 2048,
+      "tile_height": 2048,
+      "mask_blur": 8,
+      "tile_padding": 32,
+      "seam_fix_mode": "None",
+      "seam_fix_denoise": 1,
+      "seam_fix_width": 64,
+      "seam_fix_mask_blur": 8,
+      "seam_fix_padding": 16,
+      "force_uniform_tiles": true,
+      "tiled_decode": false,
+      "batch_size": 1,
+      "image": [
+        "66",
+        0
+      ],
+      "model": [
+        "1",
+        0
+      ],
+      "positive": [
+        "160",
+        0
+      ],
+      "negative": [
+        "160",
+        1
+      ],
+      "vae": [
+        "1",
+        2
+      ],
+      "upscale_model": [
+        "9",
+        0
+      ]
+    },
+    "class_type": "UltimateSDUpscale",
+    "_meta": {
+      "title": "Ultimate SD Upscale"
+    }
+  },
+  "9": {
+    "inputs": {
+      "model_name": "4x_fatal_Anime_500000_G.pth"
+    },
+    "class_type": "UpscaleModelLoader",
+    "_meta": {
+      "title": "Load Upscale Model"
+    }
+  },
+  "10": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Eye Detailer Negative"
+    }
+  },
+  "11": {
+    "inputs": {
+      "switch": "On",
+      "lora_name": "sdxl/Super_Eye_Detailer_By_Stable_Yogi_SDPD0.safetensors",
+      "strength_model": 1,
+      "strength_clip": 1,
+      "model": [
+        "1",
+        0
+      ],
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CR Load LoRA",
+    "_meta": {
+      "title": "💊 CR Load LoRA"
+    }
+  },
+  "14": {
+    "inputs": {
+      "target": "area(=w*h)",
+      "order": true,
+      "take_start": 0,
+      "take_count": 2,
+      "segs": [
+        "20",
+        0
+      ]
+    },
+    "class_type": "ImpactSEGSOrderedFilter",
+    "_meta": {
+      "title": "SEGS Filter (ordered)"
+    }
+  },
+  "15": {
+    "inputs": {
+      "segs": [
+        "14",
+        0
+      ]
+    },
+    "class_type": "ImpactSEGSMerge",
+    "_meta": {
+      "title": "SEGS Merge"
+    }
+  },
+  "16": {
+    "inputs": {
+      "text": "eyes",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Eye Detailer Prompt"
+    }
+  },
+  "20": {
+    "inputs": {
+      "bbox_threshold": 0.5,
+      "bbox_dilation": 0,
+      "crop_factor": 3,
+      "drop_size": 10,
+      "sub_threshold": 0.5,
+      "sub_dilation": 0,
+      "sub_bbox_expansion": 0,
+      "sam_mask_hint_threshold": 0.7,
+      "post_dilation": 0,
+      "bbox_detector": [
+        "21",
+        0
+      ],
+      "image": [
+        "6",
+        0
+      ],
+      "sam_model_opt": [
+        "40",
+        0
+      ],
+      "segm_detector_opt": [
+        "21",
+        1
+      ]
+    },
+    "class_type": "ImpactSimpleDetectorSEGS",
+    "_meta": {
+      "title": "Simple Detector (SEGS)"
+    }
+  },
+  "21": {
+    "inputs": {
+      "model_name": "bbox/Eyeful_v2-Individual.pt"
+    },
+    "class_type": "UltralyticsDetectorProvider",
+    "_meta": {
+      "title": "UltralyticsDetectorProvider"
+    }
+  },
+  "22": {
+    "inputs": {
+      "guide_size": 512,
+      "guide_size_for": true,
+      "max_size": 1024,
+      "seed": 0,
+      "steps": 20,
+      "cfg": 5,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "denoise": 0.3,
+      "feather": 5,
+      "noise_mask": true,
+      "force_inpaint": true,
+      "wildcard": "",
+      "cycle": 1,
+      "inpaint_model": false,
+      "noise_mask_feather": 20,
+      "tiled_encode": false,
+      "tiled_decode": false,
+      "image": [
+        "6",
+        0
+      ],
+      "segs": [
+        "15",
+        0
+      ],
+      "model": [
+        "11",
+        0
+      ],
+      "clip": [
+        "11",
+        1
+      ],
+      "vae": [
+        "1",
+        2
+      ],
+      "positive": [
+        "16",
+        0
+      ],
+      "negative": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "DetailerForEach",
+    "_meta": {
+      "title": "Eyes Detailer - Low Res Pass"
+    }
+  },
+  "26": {
+    "inputs": {
+      "bbox_threshold": 0.5,
+      "bbox_dilation": 0,
+      "crop_factor": 3,
+      "drop_size": 10,
+      "sub_threshold": 0.5,
+      "sub_dilation": 0,
+      "sub_bbox_expansion": 0,
+      "sam_mask_hint_threshold": 0.7,
+      "post_dilation": 0,
+      "bbox_detector": [
+        "29",
+        0
+      ],
+      "image": [
+        "22",
+        0
+      ],
+      "sam_model_opt": [
+        "40",
+        0
+      ],
+      "segm_detector_opt": [
+        "29",
+        1
+      ]
+    },
+    "class_type": "ImpactSimpleDetectorSEGS",
+    "_meta": {
+      "title": "Simple Detector (SEGS)"
+    }
+  },
+  "27": {
+    "inputs": {
+      "target": "area(=w*h)",
+      "order": true,
+      "take_start": 0,
+      "take_count": 2,
+      "segs": [
+        "26",
+        0
+      ]
+    },
+    "class_type": "ImpactSEGSOrderedFilter",
+    "_meta": {
+      "title": "SEGS Filter (ordered)"
+    }
+  },
+  "28": {
+    "inputs": {
+      "segs": [
+        "27",
+        0
+      ]
+    },
+    "class_type": "ImpactSEGSMerge",
+    "_meta": {
+      "title": "SEGS Merge"
+    }
+  },
+  "29": {
+    "inputs": {
+      "model_name": "segm/Nipple-yoro11x_seg.pt"
+    },
+    "class_type": "UltralyticsDetectorProvider",
+    "_meta": {
+      "title": "UltralyticsDetectorProvider"
+    }
+  },
+  "30": {
+    "inputs": {
+      "switch": "Off",
+      "lora_name": "None",
+      "strength_model": 1,
+      "strength_clip": 1,
+      "model": [
+        "1",
+        0
+      ],
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CR Load LoRA",
+    "_meta": {
+      "title": "💊 CR Load LoRA"
+    }
+  },
+  "31": {
+    "inputs": {
+      "text": "unwanted detail",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Eye Detailer Prompt"
+    }
+  },
+  "34": {
+    "inputs": {
+      "text": "(unwanted detail:1.5) ",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Eye Detailer Negative"
+    }
+  },
+  "35": {
+    "inputs": {
+      "guide_size": 512,
+      "guide_size_for": true,
+      "max_size": 1024,
+      "seed": 0,
+      "steps": 20,
+      "cfg": 5,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "denoise": 0.3,
+      "feather": 5,
+      "noise_mask": true,
+      "force_inpaint": true,
+      "wildcard": "",
+      "cycle": 1,
+      "inpaint_model": false,
+      "noise_mask_feather": 20,
+      "tiled_encode": false,
+      "tiled_decode": false,
+      "image": [
+        "22",
+        0
+      ],
+      "segs": [
+        "28",
+        0
+      ],
+      "model": [
+        "30",
+        0
+      ],
+      "clip": [
+        "30",
+        1
+      ],
+      "vae": [
+        "1",
+        2
+      ],
+      "positive": [
+        "31",
+        0
+      ],
+      "negative": [
+        "34",
+        0
+      ]
+    },
+    "class_type": "DetailerForEach",
+    "_meta": {
+      "title": "Nipple Detailer - Low Res Pass"
+    }
+  },
+  "39": {
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image"
+    }
+  },
+  "40": {
+    "inputs": {
+      "model_name": "sam_vit_b_01ec64.pth",
+      "device_mode": "Prefer GPU"
+    },
+    "class_type": "SAMLoader",
+    "_meta": {
+      "title": "SAMLoader (Impact)"
+    }
+  },
+  "41": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Eye Detailer Negative"
+    }
+  },
+  "45": {
+    "inputs": {
+      "bbox_threshold": 0.4,
+      "bbox_dilation": 0,
+      "crop_factor": 3,
+      "drop_size": 10,
+      "sub_threshold": 0.4,
+      "sub_dilation": 0,
+      "sub_bbox_expansion": 0,
+      "sam_mask_hint_threshold": 0.7,
+      "post_dilation": 0,
+      "bbox_detector": [
+        "48",
+        0
+      ],
+      "image": [
+        "35",
+        0
+      ],
+      "segm_detector_opt": [
+        "48",
+        1
+      ]
+    },
+    "class_type": "ImpactSimpleDetectorSEGS",
+    "_meta": {
+      "title": "Simple Detector (SEGS)"
+    }
+  },
+  "46": {
+    "inputs": {
+      "target": "area(=w*h)",
+      "order": true,
+      "take_start": 0,
+      "take_count": 3,
+      "segs": [
+        "45",
+        0
+      ]
+    },
+    "class_type": "ImpactSEGSOrderedFilter",
+    "_meta": {
+      "title": "SEGS Filter (ordered)"
+    }
+  },
+  "47": {
+    "inputs": {
+      "segs": [
+        "46",
+        0
+      ]
+    },
+    "class_type": "ImpactSEGSMerge",
+    "_meta": {
+      "title": "SEGS Merge"
+    }
+  },
+  "48": {
+    "inputs": {
+      "model_name": "segm/PitHandDetailer-v2-Test-v9c.pt"
+    },
+    "class_type": "UltralyticsDetectorProvider",
+    "_meta": {
+      "title": "UltralyticsDetectorProvider"
+    }
+  },
+  "49": {
+    "inputs": {
+      "text": "hands",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Eye Detailer Prompt"
+    }
+  },
+  "50": {
+    "inputs": {
+      "switch": "Off",
+      "lora_name": "None",
+      "strength_model": 1,
+      "strength_clip": 1,
+      "model": [
+        "1",
+        0
+      ],
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CR Load LoRA",
+    "_meta": {
+      "title": "💊 CR Load LoRA"
+    }
+  },
+  "53": {
+    "inputs": {
+      "guide_size": 512,
+      "guide_size_for": true,
+      "max_size": 1024,
+      "seed": 0,
+      "steps": 20,
+      "cfg": 5,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "denoise": 0.3,
+      "feather": 5,
+      "noise_mask": true,
+      "force_inpaint": true,
+      "wildcard": "",
+      "cycle": 1,
+      "inpaint_model": false,
+      "noise_mask_feather": 20,
+      "tiled_encode": false,
+      "tiled_decode": false,
+      "image": [
+        "35",
+        0
+      ],
+      "segs": [
+        "47",
+        0
+      ],
+      "model": [
+        "50",
+        0
+      ],
+      "clip": [
+        "50",
+        1
+      ],
+      "vae": [
+        "1",
+        2
+      ],
+      "positive": [
+        "49",
+        0
+      ],
+      "negative": [
+        "41",
+        0
+      ]
+    },
+    "class_type": "DetailerForEach",
+    "_meta": {
+      "title": "Hand Detailer - Low Res Pass"
+    }
+  },
+  "56": {
+    "inputs": {
+      "target": "area(=w*h)",
+      "order": true,
+      "take_start": 0,
+      "take_count": 1,
+      "segs": [
+        "58",
+        0
+      ]
+    },
+    "class_type": "ImpactSEGSOrderedFilter",
+    "_meta": {
+      "title": "SEGS Filter (ordered)"
+    }
+  },
+  "57": {
+    "inputs": {
+      "switch": "Off",
+      "lora_name": "None",
+      "strength_model": 1,
+      "strength_clip": 1,
+      "model": [
+        "1",
+        0
+      ],
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CR Load LoRA",
+    "_meta": {
+      "title": "💊 CR Load LoRA"
+    }
+  },
+  "58": {
+    "inputs": {
+      "bbox_threshold": 0.2,
+      "bbox_dilation": 0,
+      "crop_factor": 3,
+      "drop_size": 10,
+      "sub_threshold": 0.5,
+      "sub_dilation": 0,
+      "sub_bbox_expansion": 0,
+      "sam_mask_hint_threshold": 0.7,
+      "post_dilation": 0,
+      "bbox_detector": [
+        "61",
+        0
+      ],
+      "image": [
+        "53",
+        0
+      ],
+      "segm_detector_opt": [
+        "61",
+        1
+      ]
+    },
+    "class_type": "ImpactSimpleDetectorSEGS",
+    "_meta": {
+      "title": "Simple Detector (SEGS)"
+    }
+  },
+  "61": {
+    "inputs": {
+      "model_name": "segm/unwanted_yolo11s_seg_best.pt"
+    },
+    "class_type": "UltralyticsDetectorProvider",
+    "_meta": {
+      "title": "UltralyticsDetectorProvider"
+    }
+  },
+  "63": {
+    "inputs": {
+      "segs": [
+        "56",
+        0
+      ]
+    },
+    "class_type": "ImpactSEGSMerge",
+    "_meta": {
+      "title": "SEGS Merge"
+    }
+  },
+  "64": {
+    "inputs": {
+      "text": "unwanted",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Eye Detailer Prompt"
+    }
+  },
+  "65": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Eye Detailer Negative"
+    }
+  },
+  "66": {
+    "inputs": {
+      "guide_size": 512,
+      "guide_size_for": true,
+      "max_size": 1024,
+      "seed": 0,
+      "steps": 20,
+      "cfg": 5,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "denoise": 0.3,
+      "feather": 5,
+      "noise_mask": true,
+      "force_inpaint": true,
+      "wildcard": "",
+      "cycle": 1,
+      "inpaint_model": false,
+      "noise_mask_feather": 20,
+      "tiled_encode": false,
+      "tiled_decode": false,
+      "image": [
+        "53",
+        0
+      ],
+      "segs": [
+        "63",
+        0
+      ],
+      "model": [
+        "57",
+        0
+      ],
+      "clip": [
+        "57",
+        1
+      ],
+      "vae": [
+        "1",
+        2
+      ],
+      "positive": [
+        "64",
+        0
+      ],
+      "negative": [
+        "65",
+        0
+      ]
+    },
+    "class_type": "DetailerForEach",
+    "_meta": {
+      "title": "Pussy Detailer - Low Res Pass"
+    }
+  },
+  "67": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Eye Detailer Negative"
+    }
+  },
+  "68": {
+    "inputs": {
+      "model_name": "bbox/Eyeful_v2-Individual.pt"
+    },
+    "class_type": "UltralyticsDetectorProvider",
+    "_meta": {
+      "title": "UltralyticsDetectorProvider"
+    }
+  },
+  "69": {
+    "inputs": {
+      "switch": "On",
+      "lora_name": "sdxl/Super_Eye_Detailer_By_Stable_Yogi_SDPD0.safetensors",
+      "strength_model": 1,
+      "strength_clip": 1,
+      "model": [
+        "1",
+        0
+      ],
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CR Load LoRA",
+    "_meta": {
+      "title": "💊 CR Load LoRA"
+    }
+  },
+  "72": {
+    "inputs": {
+      "bbox_threshold": 0.5,
+      "bbox_dilation": 0,
+      "crop_factor": 3,
+      "drop_size": 10,
+      "sub_threshold": 0.5,
+      "sub_dilation": 0,
+      "sub_bbox_expansion": 0,
+      "sam_mask_hint_threshold": 0.7,
+      "post_dilation": 0,
+      "bbox_detector": [
+        "68",
+        0
+      ],
+      "image": [
+        "8",
+        0
+      ],
+      "sam_model_opt": [
+        "40",
+        0
+      ],
+      "segm_detector_opt": [
+        "68",
+        1
+      ]
+    },
+    "class_type": "ImpactSimpleDetectorSEGS",
+    "_meta": {
+      "title": "Simple Detector (SEGS)"
+    }
+  },
+  "73": {
+    "inputs": {
+      "target": "area(=w*h)",
+      "order": true,
+      "take_start": 0,
+      "take_count": 2,
+      "segs": [
+        "72",
+        0
+      ]
+    },
+    "class_type": "ImpactSEGSOrderedFilter",
+    "_meta": {
+      "title": "SEGS Filter (ordered)"
+    }
+  },
+  "74": {
+    "inputs": {
+      "segs": [
+        "73",
+        0
+      ]
+    },
+    "class_type": "ImpactSEGSMerge",
+    "_meta": {
+      "title": "SEGS Merge"
+    }
+  },
+  "75": {
+    "inputs": {
+      "text": "eyes",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Eye Detailer Prompt"
+    }
+  },
+  "87": {
+    "inputs": {
+      "bbox_threshold": 0.5,
+      "bbox_dilation": 0,
+      "crop_factor": 3,
+      "drop_size": 10,
+      "sub_threshold": 0.5,
+      "sub_dilation": 0,
+      "sub_bbox_expansion": 0,
+      "sam_mask_hint_threshold": 0.7,
+      "post_dilation": 0,
+      "bbox_detector": [
+        "89",
+        0
+      ],
+      "image": [
+        "144",
+        0
+      ],
+      "sam_model_opt": [
+        "40",
+        0
+      ],
+      "segm_detector_opt": [
+        "89",
+        1
+      ]
+    },
+    "class_type": "ImpactSimpleDetectorSEGS",
+    "_meta": {
+      "title": "Simple Detector (SEGS)"
+    }
+  },
+  "88": {
+    "inputs": {
+      "target": "area(=w*h)",
+      "order": true,
+      "take_start": 0,
+      "take_count": 2,
+      "segs": [
+        "87",
+        0
+      ]
+    },
+    "class_type": "ImpactSEGSOrderedFilter",
+    "_meta": {
+      "title": "SEGS Filter (ordered)"
+    }
+  },
+  "89": {
+    "inputs": {
+      "model_name": "segm/Nipple-yoro11x_seg.pt"
+    },
+    "class_type": "UltralyticsDetectorProvider",
+    "_meta": {
+      "title": "UltralyticsDetectorProvider"
+    }
+  },
+  "90": {
+    "inputs": {
+      "switch": "Off",
+      "lora_name": "None",
+      "strength_model": 1,
+      "strength_clip": 1,
+      "model": [
+        "1",
+        0
+      ],
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CR Load LoRA",
+    "_meta": {
+      "title": "💊 CR Load LoRA"
+    }
+  },
+  "91": {
+    "inputs": {
+      "text": "unwanted detail",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Eye Detailer Prompt"
+    }
+  },
+  "94": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Eye Detailer Negative"
+    }
+  },
+  "98": {
+    "inputs": {
+      "bbox_threshold": 0.5,
+      "bbox_dilation": 0,
+      "crop_factor": 3,
+      "drop_size": 10,
+      "sub_threshold": 0.5,
+      "sub_dilation": 0,
+      "sub_bbox_expansion": 0,
+      "sam_mask_hint_threshold": 0.7,
+      "post_dilation": 0,
+      "bbox_detector": [
+        "101",
+        0
+      ],
+      "image": [
+        "142",
+        0
+      ],
+      "sam_model_opt": [
+        "40",
+        0
+      ],
+      "segm_detector_opt": [
+        "101",
+        1
+      ]
+    },
+    "class_type": "ImpactSimpleDetectorSEGS",
+    "_meta": {
+      "title": "Simple Detector (SEGS)"
+    }
+  },
+  "99": {
+    "inputs": {
+      "target": "area(=w*h)",
+      "order": true,
+      "take_start": 0,
+      "take_count": 2,
+      "segs": [
+        "98",
+        0
+      ]
+    },
+    "class_type": "ImpactSEGSOrderedFilter",
+    "_meta": {
+      "title": "SEGS Filter (ordered)"
+    }
+  },
+  "100": {
+    "inputs": {
+      "segs": [
+        "99",
+        0
+      ]
+    },
+    "class_type": "ImpactSEGSMerge",
+    "_meta": {
+      "title": "SEGS Merge"
+    }
+  },
+  "101": {
+    "inputs": {
+      "model_name": "segm/PitHandDetailer-v2-Test-v9c.pt"
+    },
+    "class_type": "UltralyticsDetectorProvider",
+    "_meta": {
+      "title": "UltralyticsDetectorProvider"
+    }
+  },
+  "102": {
+    "inputs": {
+      "text": "hands",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Eye Detailer Prompt"
+    }
+  },
+  "111": {
+    "inputs": {
+      "switch": "Off",
+      "lora_name": "None",
+      "strength_model": 1,
+      "strength_clip": 1,
+      "model": [
+        "1",
+        0
+      ],
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CR Load LoRA",
+    "_meta": {
+      "title": "💊 CR Load LoRA"
+    }
+  },
+  "136": {
+    "inputs": {
+      "segs": [
+        "88",
+        0
+      ]
+    },
+    "class_type": "ImpactSEGSMerge",
+    "_meta": {
+      "title": "SEGS Merge"
+    }
+  },
+  "138": {
+    "inputs": {
+      "text": "(unwanted detail:1.5) ",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Eye Detailer Negative"
+    }
+  },
+  "141": {
+    "inputs": {
+      "guide_size": 512,
+      "guide_size_for": true,
+      "max_size": 1024,
+      "seed": 0,
+      "steps": 20,
+      "cfg": 5,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "denoise": 0.1,
+      "feather": 5,
+      "noise_mask": true,
+      "force_inpaint": false,
+      "wildcard": "",
+      "cycle": 1,
+      "inpaint_model": false,
+      "noise_mask_feather": 20,
+      "tiled_encode": false,
+      "tiled_decode": false,
+      "image": [
+        "142",
+        0
+      ],
+      "segs": [
+        "100",
+        0
+      ],
+      "model": [
+        "111",
+        0
+      ],
+      "clip": [
+        "111",
+        1
+      ],
+      "vae": [
+        "1",
+        2
+      ],
+      "positive": [
+        "102",
+        0
+      ],
+      "negative": [
+        "94",
+        0
+      ]
+    },
+    "class_type": "DetailerForEach",
+    "_meta": {
+      "title": "Hand Detailer - High Res Pass"
+    }
+  },
+  "142": {
+    "inputs": {
+      "guide_size": 512,
+      "guide_size_for": true,
+      "max_size": 1024,
+      "seed": 0,
+      "steps": 20,
+      "cfg": 5,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "denoise": 0.1,
+      "feather": 5,
+      "noise_mask": true,
+      "force_inpaint": true,
+      "wildcard": "",
+      "cycle": 1,
+      "inpaint_model": false,
+      "noise_mask_feather": 20,
+      "tiled_encode": false,
+      "tiled_decode": false,
+      "image": [
+        "144",
+        0
+      ],
+      "segs": [
+        "136",
+        0
+      ],
+      "model": [
+        "90",
+        0
+      ],
+      "clip": [
+        "90",
+        1
+      ],
+      "vae": [
+        "1",
+        2
+      ],
+      "positive": [
+        "91",
+        0
+      ],
+      "negative": [
+        "138",
+        0
+      ]
+    },
+    "class_type": "DetailerForEach",
+    "_meta": {
+      "title": "Nipple Detailer - High Res Pass"
+    }
+  },
+  "144": {
+    "inputs": {
+      "guide_size": 512,
+      "guide_size_for": true,
+      "max_size": 1024,
+      "seed": 0,
+      "steps": 20,
+      "cfg": 5,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "denoise": 0.1,
+      "feather": 5,
+      "noise_mask": true,
+      "force_inpaint": true,
+      "wildcard": "",
+      "cycle": 1,
+      "inpaint_model": false,
+      "noise_mask_feather": 20,
+      "tiled_encode": false,
+      "tiled_decode": false,
+      "image": [
+        "8",
+        0
+      ],
+      "segs": [
+        "74",
+        0
+      ],
+      "model": [
+        "69",
+        0
+      ],
+      "clip": [
+        "69",
+        1
+      ],
+      "vae": [
+        "1",
+        2
+      ],
+      "positive": [
+        "75",
+        0
+      ],
+      "negative": [
+        "67",
+        0
+      ]
+    },
+    "class_type": "DetailerForEach",
+    "_meta": {
+      "title": "Eyes Detailer - High Res Pass"
+    }
+  },
+  "151": {
+    "inputs": {
+      "images": [
+        "6",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "152": {
+    "inputs": {
+      "images": [
+        "22",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "153": {
+    "inputs": {
+      "images": [
+        "35",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "154": {
+    "inputs": {
+      "images": [
+        "53",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "155": {
+    "inputs": {
+      "images": [
+        "66",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "156": {
+    "inputs": {
+      "images": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "157": {
+    "inputs": {
+      "images": [
+        "144",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "158": {
+    "inputs": {
+      "images": [
+        "142",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "159": {
+    "inputs": {
+      "control_net_name": "sdxl_controlnet_tile.safetensors"
+    },
+    "class_type": "ControlNetLoader",
+    "_meta": {
+      "title": "Load ControlNet Model"
+    }
+  },
+  "160": {
+    "inputs": {
+      "strength": 0.5,
+      "start_percent": 0,
+      "end_percent": 1,
+      "positive": [
+        "3",
+        0
+      ],
+      "negative": [
+        "4",
+        0
+      ],
+      "control_net": [
+        "159",
+        0
+      ],
+      "image": [
+        "35",
+        0
+      ],
+      "vae": [
+        "1",
+        2
+      ]
+    },
+    "class_type": "ControlNetApplyAdvanced",
+    "_meta": {
+      "title": "Apply ControlNet"
+    }
+  }
+}
