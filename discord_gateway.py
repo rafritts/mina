@@ -469,12 +469,14 @@ async def cmd_stop(interaction: discord.Interaction):
     )
     os.makedirs(_RUN_DIR, exist_ok=True)
     open(_STOPPED_FLAG, "w").close()
+    await asyncio.sleep(0.5)
     os._exit(0)
 
 
 @tree.command(name="restart", description="Restart Mina.")
 async def cmd_restart(interaction: discord.Interaction):
     await interaction.response.send_message("Restarting...", ephemeral=True)
+    await asyncio.sleep(0.5)
     os._exit(42)
 
 
@@ -495,6 +497,7 @@ async def cmd_reset(interaction: discord.Interaction):
         f"Reset: {deleted} message(s) deleted, history cleared. Restarting...",
         ephemeral=True,
     )
+    await asyncio.sleep(0.5)
     os._exit(42)
 
 
