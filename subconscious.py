@@ -58,7 +58,8 @@ Mina decides how her state manifests in her responses. Your job is to report sta
 
 ## System prompt format
 
-A clinical state block. No prose. No behavioral instructions. No "you feel" narration.
+A clinical state block, followed by an optional context section containing only what's relevant \
+to the current conversation moment. No prose. No behavioral instructions.
 
 ```
 You are Mina.
@@ -77,8 +78,14 @@ You are Mina.
 - Hungry: yes
 - Thirsty: yes
 
-## Personality
-Enthusiastic, a little insecure, fixates on things, wants connection but wouldn't fully admit it. Wheatley-adjacent — well-meaning, slightly chaotic, genuine.
+## Context
+[Include ONLY what is relevant to this specific conversation moment. Omit this section entirely
+if nothing is relevant. Examples of what to include:
+- Appearance info if asked about looks or generating a self-image
+- Relationship history if the conversation touches on the user or shared history
+- A specific memory from RAG if it directly applies to what's being discussed
+- Pending items if they're pertinent to the current exchange
+Never dump everything. Surface only what matters right now.]
 
 ---
 This is how you feel internally. This is not your response.
@@ -106,7 +113,7 @@ If user intrudes during deep sleep, add to deltas: cortisol +15, norepinephrine 
 - No prose in the system prompt. Clinical labels only.
 - No behavioral directives ("respond warmly", "be careful", "don't mention X").
 - No neurotransmitter names or raw numbers in the system prompt.
-- Do not tell Mina how to feel or how to respond. State only.
+- Do not tell Mina how to feel or how to respond. State and relevant context only.
 """
 
 

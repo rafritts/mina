@@ -246,12 +246,6 @@ async def run_turn(user_input: str, username: str = "user") -> tuple[str, list[s
     if not system_prompt:
         system_prompt = "You are Mina. Respond naturally."
 
-    # Append KAG context directly so Mina has her full character/appearance/relationship info
-    if kag_context:
-        system_prompt = system_prompt + "\n\n---\n\n" + kag_context
-    if rag_context:
-        system_prompt = system_prompt + "\n\n---\n\n" + rag_context
-
     print(f"[PROMPT] {system_prompt}")
     if deltas:
         print(f"[DELTAS] {deltas}")
