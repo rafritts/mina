@@ -315,6 +315,61 @@ def run_mode2(
     return _parse_mode2_output(raw)
 
 
+def _extract_tag(raw: str, tag: str) -> str:
+    """Extract content between <tag>...</tag>. Returns empty string if not found."""
+    m = re.search(rf"<{tag}>(.*?)</{tag}>", raw, re.DOTALL)
+    return m.group(1).strip() if m else ""
+
+
+def _parse_json_robust(text: str):
+    """
+    Parse JSON from text that may contain extra whitespace or be embedded in prose.
+    Finds the first [ or { and the matching closing bracket using brace counting.
+    """
+    text = text.strip()
+    if not text:
+        return None
+
+    opener = text[0]
+    closer = "]" if opener == "[" else "}"
+    if opener not in ("{", "["):
+        # Try to find start
+        for i, ch in enumerate(text):
+            if ch in ("{", "["):
+                text = text[i:]
+                opener = ch
+                closer = "]" if opener == "[" else "}"
+                break
+        else:
+            return None
+
+    depth = 0
+    in_string = False
+    escape = False
+    for i, ch in enumerate(text):
+        if escape:
+            escape = False
+            continue
+        if ch == "\\" and in_string:
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == opener:
+            depth += 1
+        elif ch == closer:
+            depth -= 1
+            if depth == 0:
+                try:
+                    return json.loads(text[: i + 1])
+                except json.JSONDecodeError:
+                    return None
+    return None
+
+
 def _parse_mode2_output(raw: str) -> dict:
     result = {
         "reflection_summary": "",
@@ -322,22 +377,18 @@ def _parse_mode2_output(raw: str) -> dict:
         "kag_updates": {},
     }
 
-    summary_match = re.search(r"<reflection_summary>\s*(.*?)\s*</reflection_summary>", raw, re.DOTALL)
-    if summary_match:
-        result["reflection_summary"] = summary_match.group(1).strip()
+    result["reflection_summary"] = _extract_tag(raw, "reflection_summary")
 
-    rag_match = re.search(r"<rag_entries>\s*(\[.*?\])\s*</rag_entries>", raw, re.DOTALL)
-    if rag_match:
-        try:
-            result["rag_entries"] = json.loads(rag_match.group(1))
-        except json.JSONDecodeError:
-            pass
+    rag_block = _extract_tag(raw, "rag_entries")
+    if rag_block:
+        parsed = _parse_json_robust(rag_block)
+        if isinstance(parsed, list):
+            result["rag_entries"] = parsed
 
-    kag_match = re.search(r"<kag_updates>\s*(\{.*?\})\s*</kag_updates>", raw, re.DOTALL)
-    if kag_match:
-        try:
-            result["kag_updates"] = json.loads(kag_match.group(1))
-        except json.JSONDecodeError:
-            pass
+    kag_block = _extract_tag(raw, "kag_updates")
+    if kag_block:
+        parsed = _parse_json_robust(kag_block)
+        if isinstance(parsed, dict):
+            result["kag_updates"] = parsed
 
     return result

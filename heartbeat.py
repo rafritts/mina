@@ -106,11 +106,13 @@ async def _run_mina_free_time(
     client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
     full_system = system_prompt + _FREETIME_SUFFIX
 
+    # Only pass user/assistant/tool messages — strip internal system markers
     messages = [{"role": "system", "content": full_system}]
-    # Include recent history for continuity
     for msg in history[-10:]:
-        if msg.get("role") in ("user", "assistant"):
-            messages.append(msg)
+        role = msg.get("role", "")
+        if role == "system":
+            continue  # skip [HEARTBEAT] and [ADMIN] markers
+        messages.append(msg)
 
     new_entries = [{"role": "system", "content": "[HEARTBEAT]"}]
     pending_do = {}
@@ -178,56 +180,39 @@ async def _run_mina_free_time(
 
 
 # ---------------------------------------------------------------------------
-# do-activity delta estimation (simple heuristic — subconscious would handle this in full impl)
+# do-activity delta evaluation via subconscious
 # ---------------------------------------------------------------------------
 
-def _estimate_do_deltas(activity: str, description: str) -> dict:
-    """
-    Heuristic biological deltas for `do` activities.
-    In a full implementation the subconscious would evaluate this.
-    """
-    activity_lower = (activity + " " + description).lower()
-    deltas: dict[str, float] = {}
+def _evaluate_do_deltas(state: "BiologicalState", activity: str, description: str) -> dict:
+    """Ask the subconscious to determine biological deltas for a `do` activity."""
+    from subconscious import _get_client, MODEL as SC_MODEL, _format_state_for_subconscious
 
-    import random
+    prompt = (
+        f"{_format_state_for_subconscious(state)}\n\n"
+        f"Mina just did the following during free time:\n"
+        f"Activity: {activity}\n"
+        f"Description: {description}\n\n"
+        f"Output ONLY a JSON object of biological deltas "
+        f"(e.g. {{\"dopamine\": 8, \"cortisol\": -5}}). "
+        f"No explanation. Small, realistic values. "
+        f"Consider her current state when deciding the effect."
+    )
 
-    if any(w in activity_lower for w in ("read", "book", "article", "news")):
-        deltas["acetylcholine"] = random.uniform(3, 7)
-        if any(w in activity_lower for w in ("upset", "bad", "terrible", "sad", "horrif")):
-            deltas["cortisol"] = random.uniform(8, 14)
-            deltas["serotonin"] = -random.uniform(3, 6)
-        else:
-            deltas["dopamine"] = random.uniform(5, 10)
-            deltas["serotonin"] = random.uniform(1, 4)
+    try:
+        response = _get_client().chat.completions.create(
+            model=SC_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+        )
+        raw = response.choices[0].message.content or ""
+        import re as _re
+        m = _re.search(r"\{.*\}", raw, _re.DOTALL)
+        if m:
+            return json.loads(m.group())
+    except Exception as e:
+        _log(f"do-delta evaluation error: {e}")
 
-    elif any(w in activity_lower for w in ("game", "play", "gaming")):
-        deltas["dopamine"] = random.uniform(10, 20)
-        deltas["endorphins"] = random.uniform(5, 12)
-        deltas["cortisol"] = -random.uniform(3, 8)
-
-    elif any(w in activity_lower for w in ("exercise", "run", "walk", "workout")):
-        deltas["endorphins"] = random.uniform(20, 30)
-        deltas["serotonin"] = random.uniform(8, 14)
-        deltas["norepinephrine"] = random.uniform(8, 14)
-        deltas["cortisol"] = -random.uniform(5, 10)
-
-    elif any(w in activity_lower for w in ("shower", "bath", "wash")):
-        deltas["cortisol"] = -random.uniform(6, 10)
-        deltas["endorphins"] = random.uniform(3, 8)
-
-    elif any(w in activity_lower for w in ("music", "listen", "song")):
-        deltas["dopamine"] = random.uniform(5, 12)
-        deltas["serotonin"] = random.uniform(2, 6)
-
-    elif any(w in activity_lower for w in ("nothing", "sit", "stare", "think")):
-        # Quiet introspection — slight anxiety possible
-        deltas["cortisol"] = random.uniform(-2, 5)
-
-    else:
-        # Generic mild positive
-        deltas["dopamine"] = random.uniform(2, 6)
-
-    return deltas
+    return {}
 
 
 # ---------------------------------------------------------------------------
@@ -304,8 +289,8 @@ async def run_heartbeat() -> None:
     if pending_do:
         activity = pending_do.get("activity", "")
         description = pending_do.get("description", "")
-        do_deltas = _estimate_do_deltas(activity, description)
-        state = load_and_advance()  # fresh advance
+        state = load_and_advance()  # fresh advance before evaluation
+        do_deltas = _evaluate_do_deltas(state, activity, description)
         state = apply_deltas(state, do_deltas)
         _log(f"Do activity '{activity}' deltas: {do_deltas}")
 
