@@ -149,6 +149,26 @@ flow        = clamp((cognitive_clarity * 0.4) + (hedonic_tone * 0.35) + (arousal
 
 ---
 
+## Cross-First-Order Interaction Matrix
+
+Real biological feedback loops applied as slow hourly drift during time advancement. These run *after* base decay, before clamping.
+
+| Driver | Target | Effect | Rate |
+|---|---|---|---|
+| `cortisol` (sustained high, >60) | `serotonin` | Chronic stress depletes serotonin baseline | -0.5/hr while cortisol >60 |
+| `cortisol` (sustained high, >60) | `dopamine` | HPA axis suppresses reward pathway | -0.3/hr while cortisol >60 |
+| `sleep_pressure` (>50) | `serotonin` | Sleep deprivation erodes serotonin | -0.2/hr while sleep_pressure >50 |
+| `sleep_pressure` (>70) | `dopamine` | Severe deprivation kills motivation | -0.4/hr while sleep_pressure >70 |
+| `oxytocin` (>50) | `cortisol` | Social bonding suppresses HPA axis | -0.8/hr while oxytocin >50 |
+| `glucose` (<30) | `serotonin` | Brain needs fuel for serotonin synthesis | -1.0/hr while glucose <30 |
+| `glucose` (<30) | `dopamine` | Starvation mode suppresses reward | -0.5/hr while glucose <30 |
+| `serotonin` (>65) | `cortisol` | Serotonin dampens HPA reactivity | -0.4/hr while serotonin >65 |
+| `endorphins` (>50) | `cortisol` | Runner's high actively suppresses stress | -1.5/hr while endorphins >50 (short window) |
+
+These are slow forces — not instant toggles. The effect of sustained high cortisol on serotonin takes many simulated hours to manifest. This is intentional: you don't get depressed in an afternoon.
+
+---
+
 ## Event-Driven Deltas
 
 The subconscious writes delta payloads after reading conversation history. Format:

@@ -444,12 +444,12 @@ Biological state (first, second, and third-order values) is logged to stdout eac
 
 ---
 
-## Open Questions
+## Open Questions — Resolved
 
-- Exact time-based decay curves per first-order factor (expected to iterate empirically)
-- Full interaction matrix — which first-order factors influence others over time
-- Trust model design (deferred to later spec)
-- Heartbeat behavior when Mina is asleep mid-cycle
+- **Decay curves**: Deferred. Defined in spec-1 as a starting point; expected to iterate empirically once running.
+- **Cross-first-order interaction matrix**: Implemented in spec-1. Real biological feedback loops modeled as slow hourly drift — not formulas that can be gamed, just physics.
+- **Trust model**: Deferred to a later spec. Not MVP.
+- **Heartbeat during sleep**: The subconscious always decides. Its system prompt includes guidance to allow waking from deep sleep but at the cost of grogginess and irritability. There is no separate logic for this — it is expressed through what the subconscious writes into Mina's system prompt.
 
 ---
 

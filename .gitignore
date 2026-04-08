@@ -8,3 +8,19 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Runtime state (do not commit)
+state.json
+conversation.json
+.last_user_active
+ADMIN_INSTRUCTIONS.md
+
+# Memory RAG index (large, regeneratable)
+memory/rag/
+
+# Generated images
+workspace/images/
+
+# Secrets
+.env
+*.key
