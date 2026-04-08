@@ -159,6 +159,13 @@ def _get_collection():
     return _collection
 
 
+def _reset_collection() -> None:
+    """Clear cached collection so it gets re-initialized on next call."""
+    global _chroma_client, _collection
+    _chroma_client = None
+    _collection = None
+
+
 def rag_add(text: str, metadata: Optional[dict] = None) -> None:
     """Embed and store an episodic memory."""
     collection = _get_collection()
@@ -170,7 +177,16 @@ def rag_add(text: str, metadata: Optional[dict] = None) -> None:
     if metadata:
         meta.update(metadata)
 
-    collection.add(documents=[text], ids=[doc_id], metadatas=[meta])
+    try:
+        collection.add(documents=[text], ids=[doc_id], metadatas=[meta])
+    except Exception as e:
+        if "does not exist" in str(e):
+            _reset_collection()
+            collection = _get_collection()
+            if collection:
+                collection.add(documents=[text], ids=[doc_id], metadatas=[meta])
+        else:
+            raise
 
 
 def rag_query(query: str, n_results: int = 5) -> list[str]:
@@ -179,15 +195,19 @@ def rag_query(query: str, n_results: int = 5) -> list[str]:
     if collection is None:
         return []
 
-    count = collection.count()
-    if count == 0:
+    try:
+        count = collection.count()
+        if count == 0:
+            return []
+        results = collection.query(
+            query_texts=[query],
+            n_results=min(n_results, count),
+        )
+        return results.get("documents", [[]])[0]
+    except Exception as e:
+        if "does not exist" in str(e):
+            _reset_collection()
         return []
-
-    results = collection.query(
-        query_texts=[query],
-        n_results=min(n_results, count),
-    )
-    return results.get("documents", [[]])[0]
 
 
 def build_rag_context(query: str, n_results: int = 5) -> str:
