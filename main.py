@@ -242,6 +242,10 @@ async def run_turn(user_input: str, username: str = "user") -> tuple[str, list[s
     if not system_prompt:
         system_prompt = "You are Mina. Respond naturally."
 
+    print(f"[PROMPT] {system_prompt}")
+    if deltas:
+        print(f"[DELTAS] {deltas}")
+
     state = apply_deltas(state, deltas)
     save_state(state)
 
