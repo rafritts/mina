@@ -7,6 +7,7 @@ Run via supervisor.py (or directly for development):
 import asyncio
 import base64
 import json
+import logging
 import mimetypes
 import os
 import re
@@ -19,6 +20,14 @@ import discord
 from discord import app_commands
 
 from main import run_turn, heartbeat_loop, load_history, save_history, touch_last_active
+
+# Suppress noisy-but-harmless WebSocket transport errors on reconnect
+class _SuppressResetError(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "Cannot write to closing transport" not in (record.getMessage())
+
+logging.getLogger("discord.client").addFilter(_SuppressResetError())
+logging.getLogger("discord.gateway").addFilter(_SuppressResetError())
 from state import load_and_advance, save_state, load_state, apply_deltas, log_state, derived
 from memory import build_kag_context, build_rag_context
 
