@@ -10,6 +10,7 @@ Run by systemd:
   ExecStart=uv run python supervisor.py
 """
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -113,6 +114,21 @@ def main():
 
     cmd = [uv, "run", "python", "discord_gateway.py"]
     crashes = 0
+    current_proc = None
+
+    def _handle_sigterm(signum, frame):
+        """Kill the child and exit cleanly when systemd stops the service."""
+        if current_proc and current_proc.poll() is None:
+            _log("[SUPERVISOR] SIGTERM received — killing child.", tee_out)
+            current_proc.terminate()
+            try:
+                current_proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                current_proc.kill()
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, _handle_sigterm)
+    signal.signal(signal.SIGINT, _handle_sigterm)
 
     _log(f"[SUPERVISOR] Starting: {' '.join(cmd)}", tee_out)
 
@@ -120,8 +136,8 @@ def main():
         _remove_ready()
 
         # Child stdout/stderr go to the same log file
-        proc = subprocess.Popen(cmd, cwd=_PROJECT_ROOT, stdout=log_f, stderr=log_f)
-        rc = proc.wait()
+        current_proc = subprocess.Popen(cmd, cwd=_PROJECT_ROOT, stdout=log_f, stderr=log_f)
+        rc = current_proc.wait()
 
         _log(f"[SUPERVISOR] Child exited with code {rc}", tee_out)
 

@@ -65,7 +65,7 @@ EnvironmentFile=-$REPO_DIR/.env
 ExecStart=$UV_BIN run python supervisor.py
 Restart=on-failure
 RestartSec=5
-KillMode=process
+KillMode=control-group
 Environment="HOME=$HOME"
 Environment="PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
 
