@@ -124,6 +124,17 @@ unstop)
     echo "Stop flag removed. Run 'mina start' to bring her back."
     ;;
 
+pause)
+    mkdir -p "$RUN_DIR"
+    touch "$RUN_DIR/.paused"
+    echo "Biological updates paused."
+    ;;
+
+resume)
+    rm -f "$RUN_DIR/.paused"
+    echo "Biological updates resumed."
+    ;;
+
 clean)
     confirm=false
     [[ "${1:-}" == "--yes" ]] && confirm=true
@@ -157,6 +168,8 @@ Service:
 Maintenance:
   update           git pull + uv sync + restart
   unstop           Remove .stopped flag (re-enables restart)
+  pause            Pause biological updating (no time decay, no heartbeat)
+  resume           Resume biological updating
   clean [--yes]    Clear conversation.json, state.json, memory/rag/
 EOF
     ;;

@@ -5,12 +5,16 @@ Run via supervisor.py (or directly for development):
     python discord_gateway.py
 """
 import asyncio
+import base64
 import json
+import mimetypes
 import os
 import re
 import sys
+import tempfile
 import time
 
+import aiohttp
 import discord
 from discord import app_commands
 
@@ -22,12 +26,82 @@ _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 _CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
 _RUN_DIR = os.path.join(_PROJECT_ROOT, "run")
 _STOPPED_FLAG = os.path.join(_RUN_DIR, ".stopped")
+_PAUSED_FLAG = os.path.join(_RUN_DIR, ".paused")
 _READY_FILE = os.path.join(_RUN_DIR, "ready")
+_RESTART_PENDING_FILE = os.path.join(_RUN_DIR, "restart_pending.json")
 
 DISCORD_TOKEN = os.getenv("MINA_BOT_TOKEN", "")
 SEED_MESSAGES = 50
 DEBOUNCE_DELAY = 0.1   # seconds — batch rapid messages
 CHUNK_SIZE = 1950       # max chars per Discord message
+_DEFAULT_AVATAR = os.path.join(_PROJECT_ROOT, "avatar.png")
+_DISCORD_API = "https://discord.com/api/v10"
+
+
+# ---------------------------------------------------------------------------
+# Avatar confirm UI
+# ---------------------------------------------------------------------------
+
+class _AvatarConfirmView(discord.ui.View):
+    def __init__(self, image_path: str, cleanup: bool, cmd_interaction: discord.Interaction):
+        super().__init__(timeout=60)
+        self.image_path = image_path
+        self.cleanup = cleanup
+        self.cmd_interaction = cmd_interaction
+
+    @discord.ui.button(label="Upload", style=discord.ButtonStyle.success)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        try:
+            result = await _change_avatar(os.path.abspath(self.image_path))
+            await self.cmd_interaction.delete_original_response()
+            await self.cmd_interaction.followup.send(result, ephemeral=True)
+        except Exception as e:
+            await self.cmd_interaction.followup.send(f"Failed: {e}", ephemeral=True)
+        finally:
+            if self.cleanup:
+                try:
+                    os.unlink(self.image_path)
+                except FileNotFoundError:
+                    pass
+        self.stop()
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        await interaction.delete_original_response()
+        if self.cleanup:
+            try:
+                os.unlink(self.image_path)
+            except FileNotFoundError:
+                pass
+        self.stop()
+
+
+async def _change_avatar(image_path: str) -> str:
+    """Change the bot avatar via Discord REST API (PATCH /users/@me)."""
+    token = os.getenv("MINA_BOT_TOKEN", "")
+    if not token:
+        raise RuntimeError("MINA_BOT_TOKEN is not set.")
+
+    mime_type, _ = mimetypes.guess_type(image_path)
+    if mime_type not in {"image/png", "image/jpeg", "image/gif"}:
+        raise ValueError("Unsupported format. Use png, jpg, or gif.")
+
+    with open(image_path, "rb") as f:
+        image_b64 = base64.b64encode(f.read()).decode("ascii")
+
+    async with aiohttp.ClientSession() as session:
+        async with session.patch(
+            f"{_DISCORD_API}/users/@me",
+            headers={"Authorization": f"Bot {token}", "Content-Type": "application/json"},
+            json={"avatar": f"data:{mime_type};base64,{image_b64}"},
+        ) as resp:
+            if not (200 <= resp.status < 300):
+                body = await resp.text()
+                raise RuntimeError(f"Discord API error ({resp.status}): {body}")
+
+    return f"Avatar updated."
 
 
 def _load_config() -> dict:
@@ -258,6 +332,25 @@ async def on_ready():
     with open(_READY_FILE, "w") as f:
         f.write(str(time.time()))
 
+    # If a /restart was pending, update the ephemeral message now that we're back
+    if os.path.exists(_RESTART_PENDING_FILE):
+        try:
+            with open(_RESTART_PENDING_FILE) as f:
+                pending = json.load(f)
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as http:
+                await http.patch(
+                    f"{_DISCORD_API}/webhooks/{pending['application_id']}/{pending['token']}/messages/@original",
+                    json={"content": "✅ Back online."},
+                )
+        except Exception as e:
+            print(f"[GATEWAY] Failed to update restart message: {e}")
+        finally:
+            try:
+                os.remove(_RESTART_PENDING_FILE)
+            except FileNotFoundError:
+                pass
+
     # If messages were seeded, run a turn so Mina can respond to what she missed
     if seeded_total > 0:
         cfg = _load_config()
@@ -462,6 +555,52 @@ async def cmd_cancel_all(interaction: discord.Interaction):
     )
 
 
+@tree.command(name="set-avatar", description="Set Mina's avatar. Attach an image, or leave blank to use avatar.png.")
+@app_commands.describe(image="Image to upload (png, jpg, gif). Leave blank to use avatar.png in the repo.")
+async def cmd_set_avatar(interaction: discord.Interaction, image: discord.Attachment = None):
+    cleanup = False
+    if image is not None:
+        suffix = os.path.splitext(image.filename)[1] or ".png"
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+        async with aiohttp.ClientSession() as http:
+            async with http.get(image.url) as resp:
+                tmp.write(await resp.read())
+        tmp.close()
+        actual_path = tmp.name
+        cleanup = True
+    else:
+        if not os.path.exists(_DEFAULT_AVATAR):
+            await interaction.response.send_message(
+                f"No `avatar.png` found in the repo root. Attach an image instead.", ephemeral=True
+            )
+            return
+        actual_path = _DEFAULT_AVATAR
+
+    view = _AvatarConfirmView(actual_path, cleanup, interaction)
+    await interaction.response.send_message(
+        "Upload this as Mina's avatar?",
+        file=discord.File(actual_path, filename=os.path.basename(actual_path)),
+        view=view,
+        ephemeral=True,
+    )
+
+
+@tree.command(name="pause", description="Pause biological updating (no time decay, no heartbeat).")
+async def cmd_pause(interaction: discord.Interaction):
+    os.makedirs(_RUN_DIR, exist_ok=True)
+    open(_PAUSED_FLAG, "w").close()
+    await interaction.response.send_message("Biological updates paused.", ephemeral=True)
+
+
+@tree.command(name="resume", description="Resume biological updating.")
+async def cmd_resume(interaction: discord.Interaction):
+    try:
+        os.remove(_PAUSED_FLAG)
+    except FileNotFoundError:
+        pass
+    await interaction.response.send_message("Biological updates resumed.", ephemeral=True)
+
+
 @tree.command(name="stop", description="Stop Mina (supervisor will not restart until 'mina unstop').")
 async def cmd_stop(interaction: discord.Interaction):
     await interaction.response.send_message(
@@ -475,8 +614,10 @@ async def cmd_stop(interaction: discord.Interaction):
 
 @tree.command(name="restart", description="Restart Mina.")
 async def cmd_restart(interaction: discord.Interaction):
-    await interaction.response.send_message("Restarting...", ephemeral=True)
-    await asyncio.sleep(0.5)
+    await interaction.response.send_message("Restarting... this message will update when she's back.", ephemeral=True)
+    os.makedirs(_RUN_DIR, exist_ok=True)
+    with open(_RESTART_PENDING_FILE, "w") as f:
+        json.dump({"token": interaction.token, "application_id": interaction.application_id}, f)
     os._exit(42)
 
 
@@ -486,31 +627,41 @@ async def cmd_reset(interaction: discord.Interaction):
 
     # Clean bot messages from this channel
     deleted = 0
-    if hasattr(interaction.channel, "purge"):
-        def is_mine(m):
-            return m.author == client.user
-        deleted_msgs = await interaction.channel.purge(limit=100, check=is_mine)
-        deleted = len(deleted_msgs)
+    channel = interaction.channel or await client.fetch_channel(interaction.channel_id)
+    async for message in channel.history(limit=300):
+        if message.author == client.user:
+            try:
+                await message.delete()
+                deleted += 1
+            except discord.HTTPException:
+                pass
 
     save_history([])
     await interaction.followup.send(
         f"Reset: {deleted} message(s) deleted, history cleared. Restarting...",
         ephemeral=True,
     )
-    await asyncio.sleep(0.5)
+    os.makedirs(_RUN_DIR, exist_ok=True)
+    with open(_RESTART_PENDING_FILE, "w") as f:
+        json.dump({"token": interaction.token, "application_id": interaction.application_id}, f)
     os._exit(42)
 
 
-@tree.command(name="clean", description="Delete Mina's recent messages in this channel.")
-@app_commands.describe(n="Number of messages to delete (default 10)")
-async def cmd_clean(interaction: discord.Interaction, n: int = 10):
+@tree.command(name="clean", description="Delete Mina's messages in this channel.")
+@app_commands.describe(n="Number of messages to delete (default: all)")
+async def cmd_clean(interaction: discord.Interaction, n: int = 0):
     await interaction.response.defer(ephemeral=True)
     deleted = 0
-    if hasattr(interaction.channel, "purge"):
-        def is_mine(m):
-            return m.author == client.user
-        msgs = await interaction.channel.purge(limit=n * 3, check=is_mine)
-        deleted = min(len(msgs), n)
+    channel = interaction.channel or await client.fetch_channel(interaction.channel_id)
+    async for message in channel.history(limit=None):
+        if message.author == client.user:
+            try:
+                await message.delete()
+                deleted += 1
+            except discord.HTTPException:
+                pass
+            if n > 0 and deleted >= n:
+                break
     await interaction.followup.send(f"Deleted {deleted} message(s).", ephemeral=True)
 
 

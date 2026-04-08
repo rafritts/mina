@@ -12,7 +12,7 @@ import time
 from openai import OpenAI
 
 from memory import build_kag_context, build_rag_context
-from state import apply_deltas, load_and_advance, log_state, save_state
+from state import apply_deltas, load_and_advance, load_state, log_state, save_state
 from subconscious import run_mode1
 from tools_mina import TOOLS, call_tool, handle_generate_image
 
@@ -25,6 +25,7 @@ _HISTORY_FILE = os.path.join(_PROJECT_ROOT, "conversation.json")
 _LAST_ACTIVE_FILE = os.path.join(_PROJECT_ROOT, ".last_user_active")
 _ADMIN_FILE = os.path.join(_PROJECT_ROOT, "ADMIN_INSTRUCTIONS.md")
 _CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
+_PAUSED_FLAG = os.path.join(_PROJECT_ROOT, "run", ".paused")
 
 HISTORY_MAX = 200
 
@@ -223,7 +224,10 @@ async def run_turn(user_input: str, username: str = "user") -> tuple[str, list[s
     """
     touch_last_active()
 
-    state = load_and_advance()
+    paused = os.path.exists(_PAUSED_FLAG)
+    state = load_state() if paused else load_and_advance()
+    if paused:
+        print("[STATE] Biological updates paused — time not advanced.")
     log_state(state)
 
     kag_context = build_kag_context()
@@ -275,6 +279,9 @@ async def heartbeat_loop() -> None:
         cfg = _load_config()
         interval = int(cfg.get("heartbeat_interval_seconds", 1800))
         await asyncio.sleep(interval)
+        if os.path.exists(_PAUSED_FLAG):
+            print("[HEARTBEAT] Paused — skipping.")
+            continue
         print(f"\n[HEARTBEAT] Firing (interval={interval}s)...")
         try:
             await run_heartbeat()
