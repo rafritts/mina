@@ -61,7 +61,7 @@ Wants=network-online.target
 
 [Service]
 WorkingDirectory=$REPO_DIR
-EnvironmentFile=$REPO_DIR/.env
+EnvironmentFile=-$REPO_DIR/.env
 ExecStart=$UV_BIN run python supervisor.py
 Restart=on-failure
 RestartSec=5
