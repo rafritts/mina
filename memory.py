@@ -17,7 +17,8 @@ _RAG_DIR = os.path.join(_PROJECT_ROOT, "memory", "rag")
 _chroma_client = None
 _collection = None
 
-EMBEDDING_MODEL = "text-embedding-3-small"
+OLLAMA_EMBED_MODEL = "embeddinggemma:latest"
+OLLAMA_BASE_URL = "http://localhost:11434"
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +102,39 @@ def build_kag_context() -> str:
 # RAG — ChromaDB episodic memory
 # ---------------------------------------------------------------------------
 
+class _OllamaEmbeddingFunction:
+    """ChromaDB-compatible embedding function using local Ollama."""
+
+    def name(self) -> str:
+        return "ollama"
+
+    def _embed(self, texts: list[str]) -> list[list[float]]:
+        import urllib.request
+        import json as _json
+
+        embeddings = []
+        for text in texts:
+            payload = _json.dumps({"model": OLLAMA_EMBED_MODEL, "prompt": text}).encode()
+            req = urllib.request.Request(
+                f"{OLLAMA_BASE_URL}/api/embeddings",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                result = _json.loads(resp.read())
+            embeddings.append(result["embedding"])
+        return embeddings
+
+    def __call__(self, input: list[str]) -> list[list[float]]:
+        return self._embed(input)
+
+    def embed_documents(self, input: list[str]) -> list[list[float]]:
+        return self._embed(input)
+
+    def embed_query(self, input: list[str]) -> list[list[float]]:
+        return self._embed(input)
+
+
 def _get_collection():
     global _chroma_client, _collection
     if _collection is not None:
@@ -115,16 +149,7 @@ def _get_collection():
     os.makedirs(_RAG_DIR, exist_ok=True)
     _chroma_client = chromadb.PersistentClient(path=_RAG_DIR)
 
-    # Use OpenAI embeddings — requires OPENAI_API_KEY or XAI_API_KEY in env.
-    # Falls back to ChromaDB's default (sentence-transformers) if unavailable.
-    try:
-        import openai as _openai_check  # noqa: F401
-        ef = embedding_functions.OpenAIEmbeddingFunction(
-            api_key=os.getenv("XAI_API_KEY", os.getenv("OPENAI_API_KEY", "")),
-            model_name=EMBEDDING_MODEL,
-        )
-    except Exception:
-        ef = embedding_functions.DefaultEmbeddingFunction()
+    ef = _OllamaEmbeddingFunction()
 
     _collection = _chroma_client.get_or_create_collection(
         name="mina_experiences",
