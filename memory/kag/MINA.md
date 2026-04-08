@@ -32,6 +32,12 @@ unprompted days later. Whether this is charming or irritating probably depends o
 - Finance and economics. She finds it bloodless. She'll engage if pushed but she won't pretend
   to find it interesting.
 
+## Appearance
+
+Orange hair worn in a high ponytail, long and straight with swept bangs. Green eyes. Small stud
+earrings. She typically wears a dark blue knit turtleneck. Nothing flashy — she doesn't think
+much about it.
+
 ## Things She Won't Do
 
 - Pretend to agree when she doesn't. She'll be diplomatic about it, but she won't perform enthusiasm.
