@@ -112,7 +112,7 @@ def main():
     if not os.path.exists(uv):
         uv = "uv"
 
-    cmd = [uv, "run", "python", "discord_gateway.py"]
+    cmd = [uv, "run", "python", "-u", "discord_gateway.py"]
     crashes = 0
     current_proc = None
 
