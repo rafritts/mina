@@ -24,7 +24,7 @@ _RUN_DIR = os.path.join(_PROJECT_ROOT, "run")
 _STOPPED_FLAG = os.path.join(_RUN_DIR, ".stopped")
 _READY_FILE = os.path.join(_RUN_DIR, "ready")
 
-DISCORD_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
+DISCORD_TOKEN = os.getenv("MINA_BOT_TOKEN", "")
 SEED_MESSAGES = 50
 DEBOUNCE_DELAY = 0.1   # seconds — batch rapid messages
 CHUNK_SIZE = 1950       # max chars per Discord message
@@ -537,6 +537,6 @@ async def cmd_status(interaction: discord.Interaction):
 
 if __name__ == "__main__":
     if not DISCORD_TOKEN:
-        print("ERROR: DISCORD_BOT_TOKEN not set.", file=sys.stderr)
+        print("ERROR: MINA_BOT_TOKEN not set.", file=sys.stderr)
         sys.exit(1)
     client.run(DISCORD_TOKEN)

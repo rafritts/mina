@@ -87,7 +87,7 @@ if [[ "$SETUP_ONLY" != "--setup-only" ]]; then
         echo ""
         echo "WARNING: $REPO_DIR/.env not found."
         echo "Create it with at minimum:"
-        echo "  DISCORD_BOT_TOKEN=your-token-here"
+        echo "  MINA_BOT_TOKEN=your-token-here"
         echo "  XAI_API_KEY=your-key-here"
         echo ""
         echo "Then run: mina start"
