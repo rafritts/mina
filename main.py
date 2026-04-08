@@ -1,10 +1,8 @@
 """
-Mina's chat loop + heartbeat scheduler.
+Mina's core turn logic + CLI entry point.
 
-Run:  python main.py
-
-The heartbeat fires automatically in the background based on config.json's
-heartbeat_interval_seconds. The chat loop and heartbeat share conversation.json.
+`run_turn()` is the shared coroutine used by both the CLI and discord_gateway.py.
+The CLI loop at the bottom is for development/testing only — Discord is the primary interface.
 """
 import asyncio
 import json
@@ -28,9 +26,16 @@ _LAST_ACTIVE_FILE = os.path.join(_PROJECT_ROOT, ".last_user_active")
 _ADMIN_FILE = os.path.join(_PROJECT_ROOT, "ADMIN_INSTRUCTIONS.md")
 _CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
 
-# Keep at most this many messages in conversation.json.
-# Older messages are trimmed from the front (preserving recency).
 HISTORY_MAX = 200
+
+_client: OpenAI | None = None
+
+
+def _get_client() -> OpenAI:
+    global _client
+    if _client is None:
+        _client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+    return _client
 
 
 def _load_config() -> dict:
@@ -42,10 +47,10 @@ def _load_config() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Conversation history
+# History
 # ---------------------------------------------------------------------------
 
-def _load_history() -> list[dict]:
+def load_history() -> list[dict]:
     try:
         with open(_HISTORY_FILE) as f:
             return json.load(f)
@@ -53,20 +58,19 @@ def _load_history() -> list[dict]:
         return []
 
 
-def _save_history(history: list[dict]) -> None:
-    # Compact: keep only the last HISTORY_MAX messages
+def save_history(history: list[dict]) -> None:
     if len(history) > HISTORY_MAX:
         history = history[-HISTORY_MAX:]
     with open(_HISTORY_FILE, "w") as f:
         json.dump(history, f, indent=2)
 
 
-def _touch_last_active() -> None:
+def touch_last_active() -> None:
     with open(_LAST_ACTIVE_FILE, "w") as f:
         f.write(str(time.time()))
 
 
-def _consume_admin_instructions() -> str:
+def consume_admin_instructions() -> str:
     try:
         with open(_ADMIN_FILE) as f:
             content = f.read().strip()
@@ -76,44 +80,34 @@ def _consume_admin_instructions() -> str:
         return ""
 
 
-def _api_messages(history: list[dict], system_prompt: str) -> list[dict]:
-    """
-    Build the messages array for the LLM API call.
-
-    - Starts with a single system message (the subconscious-generated prompt).
-    - Includes conversation history, but filters out internal system messages
-      ([HEARTBEAT], [ADMIN]) which the API doesn't need and may reject.
-    - Keeps user, assistant, and tool messages intact.
-    """
+def api_messages(history: list[dict], system_prompt: str) -> list[dict]:
+    """Build the messages array for the API — single system message, no internal markers."""
     messages = [{"role": "system", "content": system_prompt}]
     for msg in history:
-        role = msg.get("role", "")
-        content = msg.get("content", "")
-        # Drop internal system markers
-        if role == "system":
+        if msg.get("role") == "system":
             continue
         messages.append(msg)
     return messages
 
 
 # ---------------------------------------------------------------------------
-# Mina's turn (one round-trip, tool calls resolved)
+# Mina's turn
 # ---------------------------------------------------------------------------
 
 async def _mina_turn(
-    client: OpenAI,
     system_prompt: str,
     history: list[dict],
     state,
-) -> tuple[list[dict], object]:
+) -> tuple[list[dict], object, list[str]]:
     """
     One full Mina turn. Resolves all tool calls.
-    Returns (new_history_entries, updated_state).
+    Returns (new_history_entries, updated_state, image_paths).
     """
-    messages = _api_messages(history, system_prompt)
+    messages = api_messages(history, system_prompt)
     new_entries: list[dict] = []
+    image_paths: list[str] = []
 
-    response = client.chat.completions.create(
+    response = _get_client().chat.completions.create(
         model=MODEL,
         messages=messages,
         tools=TOOLS,
@@ -126,7 +120,7 @@ async def _mina_turn(
 
     if finish != "tool_calls" or not msg.tool_calls:
         new_entries.append({"role": "assistant", "content": msg.content or ""})
-        return new_entries, state
+        return new_entries, state, image_paths
 
     assistant_entry = {
         "role": "assistant",
@@ -153,15 +147,15 @@ async def _mina_turn(
 
         if name == "generate_image":
             result = await handle_generate_image(args)
+            if result and result.endswith(".png") and os.path.exists(result):
+                image_paths.append(result)
             print(f"  [image] {result or 'blocked/failed'}")
         else:
             result, state, extra = call_tool(name, args, state)
             save_state(state)
             print(f"  [result] {result}")
-
-            # `do` activity: evaluate with subconscious for biological deltas
             if name == "do" and extra:
-                _apply_do_deltas_via_subconscious(state, extra)
+                _apply_do_deltas(state, extra)
 
         new_entries.append({
             "role": "tool",
@@ -169,9 +163,8 @@ async def _mina_turn(
             "content": str(result),
         })
 
-    # Follow-up after tools
-    follow_messages = _api_messages(history, system_prompt) + new_entries
-    follow_response = client.chat.completions.create(
+    follow_messages = api_messages(history, system_prompt) + new_entries
+    follow_response = _get_client().chat.completions.create(
         model=MODEL,
         messages=follow_messages,
         temperature=0.85,
@@ -179,37 +172,29 @@ async def _mina_turn(
     follow_msg = follow_response.choices[0].message
     new_entries.append({"role": "assistant", "content": follow_msg.content or ""})
 
-    return new_entries, state
+    return new_entries, state, image_paths
 
 
-def _apply_do_deltas_via_subconscious(state, pending: dict) -> None:
-    """
-    Ask the subconscious to determine biological deltas for a `do` activity.
-    Applies them to state in-place and saves.
-    """
-    from subconscious import _get_client, MODEL as SC_MODEL, _format_state_for_subconscious
+def _apply_do_deltas(state, pending: dict) -> None:
+    """Ask subconscious for biological deltas from a `do` activity."""
+    from subconscious import _get_client as sc_client, MODEL as SC_MODEL, _format_state_for_subconscious
+    import re
 
     activity = pending.get("activity", "")
     description = pending.get("description", "")
-
     prompt = (
         f"{_format_state_for_subconscious(state)}\n\n"
-        f"Mina just did the following during free time:\n"
-        f"Activity: {activity}\n"
-        f"Description: {description}\n\n"
-        f"Output ONLY a JSON object of biological deltas (e.g. {{\"dopamine\": 8, \"cortisol\": -5}}). "
+        f"Mina just did:\nActivity: {activity}\nDescription: {description}\n\n"
+        f"Output ONLY a JSON object of biological deltas (e.g. {{\"dopamine\": 8}}). "
         f"No explanation. Small, realistic values."
     )
-
     try:
-        response = _get_client().chat.completions.create(
+        response = sc_client().chat.completions.create(
             model=SC_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
         )
         raw = response.choices[0].message.content or ""
-        # Extract JSON from response
-        import re
         m = re.search(r"\{.*\}", raw, re.DOTALL)
         if m:
             deltas = json.loads(m.group())
@@ -221,13 +206,67 @@ def _apply_do_deltas_via_subconscious(state, pending: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Heartbeat scheduler (background task)
+# Shared run_turn — called by both CLI and discord_gateway
 # ---------------------------------------------------------------------------
 
-async def _heartbeat_loop() -> None:
-    """Run heartbeat on the configured interval. Fires in background while chat loop runs."""
-    from heartbeat import run_heartbeat
+async def run_turn(user_input: str, username: str = "user") -> tuple[str, list[str]]:
+    """
+    Execute one full Mina turn.
 
+    Args:
+        user_input: The message text.
+        username: Display name of the speaker (prefixed in history).
+
+    Returns:
+        (reply_text, image_paths) — reply is the final assistant text;
+        image_paths is a list of generated .png file paths (may be empty).
+    """
+    touch_last_active()
+
+    state = load_and_advance()
+    log_state(state)
+
+    kag_context = build_kag_context()
+    rag_context = build_rag_context(user_input)
+
+    history = load_history()
+
+    admin = consume_admin_instructions()
+    if admin:
+        history.append({"role": "system", "content": f"[ADMIN]\n{admin}"})
+        print("  [admin] Instructions consumed.")
+
+    history.append({"role": "user", "content": f"{username}: {user_input}"})
+
+    deltas, system_prompt = run_mode1(state, history, kag_context, rag_context)
+    if not system_prompt:
+        system_prompt = "You are Mina. Respond naturally."
+
+    state = apply_deltas(state, deltas)
+    save_state(state)
+
+    new_entries, state, image_paths = await _mina_turn(system_prompt, history, state)
+    save_state(state)
+
+    reply = ""
+    for entry in reversed(new_entries):
+        if entry.get("role") == "assistant" and entry.get("content"):
+            reply = entry["content"]
+            break
+
+    history.extend(new_entries)
+    save_history(history)
+
+    touch_last_active()
+    return reply, image_paths
+
+
+# ---------------------------------------------------------------------------
+# Heartbeat background loop (shared — started by both CLI and gateway)
+# ---------------------------------------------------------------------------
+
+async def heartbeat_loop() -> None:
+    from heartbeat import run_heartbeat
     while True:
         cfg = _load_config()
         interval = int(cfg.get("heartbeat_interval_seconds", 1800))
@@ -240,19 +279,14 @@ async def _heartbeat_loop() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Main chat loop
+# CLI entry point (development only)
 # ---------------------------------------------------------------------------
 
-async def main() -> None:
-    client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
-
-    # Start heartbeat in background
-    asyncio.create_task(_heartbeat_loop())
-
+async def _cli_main() -> None:
     cfg = _load_config()
-    compression = cfg.get("time_compression_factor", 1.0)
-    interval = cfg.get("heartbeat_interval_seconds", 1800)
-    print(f"Mina starting. time_compression={compression}x, heartbeat_interval={interval}s\n")
+    print(f"Mina CLI — time_compression={cfg.get('time_compression_factor', 1.0)}x\n")
+
+    asyncio.create_task(heartbeat_loop())
 
     while True:
         try:
@@ -264,54 +298,13 @@ async def main() -> None:
         if not user_input:
             continue
         if user_input.lower() in {"exit", "quit"}:
-            print("Bye.")
             sys.exit(0)
 
-        _touch_last_active()
-
-        # Load + advance state
-        state = load_and_advance()
-        log_state(state)
-
-        # Build memory context
-        kag_context = build_kag_context()
-        rag_context = build_rag_context(user_input)
-
-        # Load history, inject admin if present
-        history = _load_history()
-        admin = _consume_admin_instructions()
-        if admin:
-            history.append({"role": "system", "content": f"[ADMIN]\n{admin}"})
-            print("  [admin] Instructions consumed.")
-
-        history.append({"role": "user", "content": user_input})
-
-        # Subconscious Mode 1
-        deltas, system_prompt = run_mode1(state, history, kag_context, rag_context)
-        if not system_prompt:
-            system_prompt = "You are Mina. Respond naturally."
-
-        state = apply_deltas(state, deltas)
-        save_state(state)
-
-        # Mina's turn
-        new_entries, state = await _mina_turn(client, system_prompt, history, state)
-        save_state(state)
-
-        # Print Mina's reply
-        mina_reply = ""
-        for entry in reversed(new_entries):
-            if entry.get("role") == "assistant" and entry.get("content"):
-                mina_reply = entry["content"]
-                break
-        print(f"\nMina: {mina_reply}\n")
-
-        # Persist history
-        history.extend(new_entries)
-        _save_history(history)
-
-        _touch_last_active()
+        reply, image_paths = await run_turn(user_input, username="user")
+        print(f"\nMina: {reply}\n")
+        for path in image_paths:
+            print(f"  [image] {path}")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(_cli_main())

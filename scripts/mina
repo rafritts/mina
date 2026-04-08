@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+# mina — management CLI for the Mina Discord bot
+# Installed at ~/.local/bin/mina → scripts/mina
+
+set -euo pipefail
+
+REPO_DIR="$(cat ~/.config/mina/dir 2>/dev/null || echo "")"
+if [[ -z "$REPO_DIR" ]]; then
+    echo "Error: mina not installed. Run scripts/install.sh first." >&2
+    exit 1
+fi
+
+SERVICE="mina"
+RUN_DIR="$REPO_DIR/run"
+STOPPED_FLAG="$RUN_DIR/.stopped"
+
+_svc() { systemctl --user "$@" "$SERVICE"; }
+
+_require_running() {
+    if ! _svc is-active --quiet 2>/dev/null; then
+        echo "Mina is not running." >&2
+        exit 1
+    fi
+}
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+
+install)
+    bash "$REPO_DIR/scripts/install.sh"
+    ;;
+
+uninstall)
+    read -rp "Uninstall mina? This removes the service and CLI symlink. [y/N] " confirm
+    [[ "$confirm" =~ ^[Yy]$ ]] || exit 0
+    _svc stop 2>/dev/null || true
+    _svc disable 2>/dev/null || true
+    rm -f ~/.config/systemd/user/mina.service
+    systemctl --user daemon-reload
+    rm -f ~/.local/bin/mina
+    rm -rf ~/.config/mina
+    echo "Uninstalled."
+    ;;
+
+setup)
+    # Regenerate the systemd unit file (e.g. after repo moves)
+    bash "$REPO_DIR/scripts/install.sh" --setup-only
+    ;;
+
+start)
+    rm -f "$STOPPED_FLAG"
+    _svc start
+    echo -n "Starting"
+    for i in $(seq 1 30); do
+        sleep 1
+        echo -n "."
+        if [[ -f "$RUN_DIR/ready" ]]; then
+            echo " ready."
+            exit 0
+        fi
+    done
+    echo " timed out waiting for ready signal."
+    ;;
+
+stop)
+    _svc stop
+    ;;
+
+restart)
+    rm -f "$STOPPED_FLAG"
+    _svc restart
+    ;;
+
+status)
+    _svc status
+    ;;
+
+enable)
+    _svc enable
+    echo "Autostart enabled."
+    ;;
+
+disable)
+    _svc disable
+    echo "Autostart disabled."
+    ;;
+
+logs)
+    n=100
+    follow=false
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -f) follow=true; shift ;;
+            -n) n="$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    if $follow; then
+        journalctl --user -u "$SERVICE" -n "$n" -f
+    else
+        journalctl --user -u "$SERVICE" -n "$n"
+    fi
+    ;;
+
+update)
+    echo "Pulling latest..."
+    git -C "$REPO_DIR" pull
+    echo "Syncing dependencies..."
+    (cd "$REPO_DIR" && uv sync)
+    echo "Restarting..."
+    rm -f "$STOPPED_FLAG"
+    _svc restart
+    ;;
+
+unstop)
+    rm -f "$STOPPED_FLAG"
+    echo "Stop flag removed. Run 'mina start' to bring her back."
+    ;;
+
+clean)
+    confirm=false
+    [[ "${1:-}" == "--yes" ]] && confirm=true
+    if ! $confirm; then
+        read -rp "Clear conversation.json, state.json, and memory/rag/? [y/N] " ans
+        [[ "$ans" =~ ^[Yy]$ ]] || exit 0
+    fi
+    rm -f "$REPO_DIR/conversation.json" "$REPO_DIR/state.json"
+    rm -rf "$REPO_DIR/memory/rag"
+    echo "Runtime data cleared."
+    ;;
+
+help|--help|-h)
+    cat <<EOF
+mina — Mina Discord bot management
+
+Setup:
+  install          Full setup: generate service, enable autostart, start
+  uninstall        Remove service and CLI symlink
+  setup            Regenerate systemd unit file
+
+Service:
+  start            Start the service
+  stop             Stop the service
+  restart          Restart the service
+  status           Show service status
+  enable           Enable autostart on boot
+  disable          Disable autostart on boot
+  logs [-f] [-n N] Show logs (default 100 lines; -f to follow)
+
+Maintenance:
+  update           git pull + uv sync + restart
+  unstop           Remove .stopped flag (re-enables restart)
+  clean [--yes]    Clear conversation.json, state.json, memory/rag/
+EOF
+    ;;
+
+*)
+    echo "Unknown command: $cmd. Run 'mina help' for usage." >&2
+    exit 1
+    ;;
+esac

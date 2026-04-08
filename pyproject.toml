@@ -7,5 +7,6 @@ requires-python = ">=3.13"
 dependencies = [
     "aiohttp>=3.13.5",
     "chromadb>=1.5.7",
+    "discord-py>=2.3",
     "openai>=2.30.0",
 ]
