@@ -97,10 +97,15 @@ logs)
             *) shift ;;
         esac
     done
+    LOG_FILE="$REPO_DIR/logs/mina.log"
+    if [[ ! -f "$LOG_FILE" ]]; then
+        echo "No log file yet. Has mina been started?" >&2
+        exit 1
+    fi
     if $follow; then
-        journalctl --user -u "$SERVICE" -n "$n" -f
+        tail -n "$n" -f "$LOG_FILE"
     else
-        journalctl --user -u "$SERVICE" -n "$n"
+        tail -n "$n" "$LOG_FILE"
     fi
     ;;
 

@@ -9,6 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
+# Logs
+logs/
+
 # Runtime state (do not commit)
 state.json
 conversation.json
