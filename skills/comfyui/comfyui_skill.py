@@ -1,8 +1,7 @@
 """
 ComfyUI image generation skill.
 
-Pure async generator — queues a job, polls until complete, saves the result
-to disk, and returns the path. No Discord logic. Adapted from raika.
+Queues a job, polls until complete, saves the result to memory/images/, returns the path.
 
 Usage (CLI):
     python comfyui_skill.py --prompt "1girl, solo, ..." --dimensions "832x1216" \
@@ -10,17 +9,14 @@ Usage (CLI):
 """
 import argparse
 import asyncio
-import io
 import json
 import logging
 import os
 import random
 import shutil
-import tempfile
 import uuid
 
 import aiohttp
-from PIL import Image
 
 log = logging.getLogger(__name__)
 
@@ -28,58 +24,11 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.normpath(os.path.join(_SCRIPT_DIR, "../.."))
 _TEMPLATE_UPSCALE = os.path.join(_SCRIPT_DIR, "RestlessSimpleAPI_template.json")
 _TEMPLATE_NO_UPSCALE = os.path.join(_SCRIPT_DIR, "RestlessSimpleAPI_NoUpscale_template.json")
-_IMAGES_DIR = os.path.join(_PROJECT_ROOT, "workspace", "images")
+_IMAGES_DIR = os.path.join(_PROJECT_ROOT, "memory", "images")
 
 COMFYUI_HOST = os.getenv("COMFYUI_HOST", "localhost")
 COMFYUI_PORT = 8188
 COMFYUI_URL = f"http://{COMFYUI_HOST}:{COMFYUI_PORT}"
-
-# Lazy-loaded — only imported if restricted detection is needed
-_CONTENT_DETECTOR = None
-
-
-def _allow_restricted() -> bool:
-    """Read from config.json. Defaults to False."""
-    config_path = os.path.join(_PROJECT_ROOT, "config.json")
-    try:
-        with open(config_path) as f:
-            return json.load(f).get("allow_image_generations", False)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return False
-
-
-def _is_blocked_restricted(image_bytes: bytes) -> bool:
-    if _allow_restricted():
-        return False
-
-    global _CONTENT_DETECTOR
-    try:
-        from content_image_detector import ContentDetector
-        if _CONTENT_DETECTOR is None:
-            _CONTENT_DETECTOR = ContentDetector()
-    except ImportError:
-        log.warning("content_image_detector not installed — skipping restricted check")
-        return False
-
-    with Image.open(io.BytesIO(image_bytes)) as img:
-        rgb = img.convert("RGB")
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-            tmp_path = tmp.name
-            rgb.save(tmp, format="JPEG")
-
-    try:
-        prediction = _CONTENT_DETECTOR.detect(tmp_path)
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-
-    if isinstance(prediction, dict):
-        nested = next((v for v in prediction.values() if isinstance(v, dict)), None)
-        scores = nested if nested else prediction
-        restricted_keys = ("restricted", "adult media", "adult_media", "explicit", "intimate")
-        score = max(float(scores.get(k, 0.0)) for k in restricted_keys)
-        return score >= 0.75
-    return False
 
 
 async def _check_reachable(session: aiohttp.ClientSession) -> bool:
@@ -100,18 +49,18 @@ async def generate_image(
     workflow: str = "upscale",
 ) -> str:
     """
-    Generate an image via ComfyUI and save to disk.
+    Generate an image via ComfyUI and save to memory/images/.
 
-    Returns the absolute path to the saved PNG, or "" if blocked/failed.
+    Returns the absolute path to the saved PNG, or "" on failure.
 
     Args:
         prompt: Positive prompt (Danbooru-style tags)
         dimensions: "WIDTHxHEIGHT" e.g. "832x1216"
         filename: Base filename (no extension)
-        negative_prompt: Negative prompt. Defaults to a sensible set.
+        negative_prompt: Defaults to a sensible set if not provided
         seed: None or 0 = random
         uid: Optional suffix for filename uniqueness
-        workflow: "upscale" (~60s, higher quality) or "no_upscale" (~20s, faster)
+        workflow: "upscale" (~60s) or "no_upscale" (~20s)
     """
     if negative_prompt is None:
         negative_prompt = "blurry, ugly, deformed, low quality, watermark, text, signature"
@@ -182,7 +131,6 @@ async def generate_image(
 
     prompt_id = result["prompt_id"]
 
-    # Poll until complete
     connector = aiohttp.TCPConnector(force_close=True)
     async with aiohttp.ClientSession(connector=connector) as session:
         while True:
@@ -213,16 +161,6 @@ async def generate_image(
 
         async with session.get(f"{COMFYUI_URL}/view", params=params) as resp:
             img_data = await resp.read()
-
-    try:
-        blocked = _is_blocked_restricted(img_data)
-    except Exception as e:
-        log.warning("restricted detector error, allowing image: %s", e)
-        blocked = False
-
-    if blocked:
-        log.info("Image blocked by restricted detector.")
-        return ""
 
     suffix = uid or uuid.uuid4().hex[:4]
     os.makedirs(_IMAGES_DIR, exist_ok=True)
@@ -257,5 +195,5 @@ if __name__ == "__main__":
         print(f"Saved: {path}")
     else:
         import sys
-        print("Generation blocked or failed.")
+        print("Generation failed.")
         sys.exit(1)

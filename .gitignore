@@ -19,7 +19,7 @@ ADMIN_INSTRUCTIONS.md
 memory/rag/
 
 # Generated images
-workspace/images/
+memory/images/
 
 # Secrets
 .env
