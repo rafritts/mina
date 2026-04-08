@@ -18,13 +18,13 @@ Mina runs as a Discord bot. The gateway layer handles message delivery in and ou
 Discord Events
       │
       ▼
-discord_gateway.py          ← Event handlers, debouncing, typing indicator
+discord_gateway.py          ← Event handlers, debouncing, inflight cancellation, typing indicator
       │
       ▼
-main.py (chat loop)         ← Unchanged — subconscious + Mina turn
+mina_turn() / heartbeat     ← Unchanged — subconscious + Mina turn
       │
       ▼
-discord_gateway.py          ← Delivers response back to Discord
+discord_gateway.py          ← Chunked text delivery + image attachment delivery
 ```
 
 The gateway does not know about biology, memory, or the subconscious. It knows how to receive messages and send replies. The chat loop does not know about Discord. Separation is clean.
@@ -59,22 +59,62 @@ XAI_API_KEY="..."
 ### Event: `on_message`
 
 1. Ignore messages from Mina herself
-2. Ignore bots
+2. Ignore other bots
 3. If allowlist is set, ignore channels not on the list
 4. If DMs are disabled, ignore DMs
 5. Append message to per-channel pending queue
 6. Cancel existing debounce task for this channel; start a new one (100ms delay)
-7. When debounce fires: drain pending queue, call `_run_turn(channel, messages)`
+7. When debounce fires: cancel any inflight turn for this channel, drain pending queue, call `_run_turn(channel, messages)`
 
 ### `_run_turn(channel, messages)`
 
-1. Show typing indicator (`async with channel.typing()`)
-2. Format messages as user input (join multiple pending messages if batched)
-3. Call the main chat loop turn directly (not as a subprocess)
-4. Send response back to Discord
-5. If Mina is asleep: the subconscious system prompt will reflect that; her response (or non-response) is still delivered
+1. Store the asyncio Task in `_inflight[channel_id]`
+2. Show typing indicator (`async with channel.typing()`)
+3. Format pending messages as user input — if multiple were batched, join them with newlines
+4. Touch `.last_user_active`
+5. Call the Mina turn (load state → subconscious → Mina → tools)
+6. Deliver response
+7. Remove from `_inflight` on completion or cancellation
 
-**No inflight cancellation for now.** If Mina is mid-turn when a new message arrives, it queues. Keep it simple until there's a reason to add it.
+### Inflight Cancellation
+
+Per-channel task tracking:
+
+```python
+_inflight: dict[int, asyncio.Task] = {}
+```
+
+When a new message arrives for a channel that already has an inflight turn:
+- The running task is cancelled
+- The new message is appended to the pending queue
+- Debounce fires normally — the new turn picks up all pending messages including those from the cancelled turn
+
+This is simple. No rescue mechanism, no re-prepending. The cancelled turn is just dropped. Mina's state may have been partially updated if tools fired before cancellation — that's acceptable.
+
+---
+
+## History Seeding on Startup
+
+On `on_ready`, for each channel Mina can see (subject to allowlist):
+
+1. Fetch the last N messages from Discord's message history (`N = 50`, configurable)
+2. Filter out messages from other bots
+3. Format and append to `conversation.json` as if they had been received in real-time
+4. Mark a `[DISCORD_SEED]` system message in history so the subconscious knows these are catchup messages
+
+This is the key behavior: if the user sends Mina three messages while she's offline, when the bot comes back up she sees them all and can respond. She was just away — not absent.
+
+**Format:**
+```json
+{"role": "system", "content": "[DISCORD_SEED]"},
+{"role": "user", "content": "username: hey are you there"},
+{"role": "user", "content": "username: hello??"},
+{"role": "user", "content": "username: ok guess you're asleep"}
+```
+
+The bot then immediately runs a turn so Mina can respond to the backlog.
+
+**Deduplication:** Messages already present in `conversation.json` (matched by content + approximate timestamp) are not re-added. This prevents double-seeding on rapid restarts.
 
 ---
 
@@ -82,59 +122,65 @@ XAI_API_KEY="..."
 
 ### Text responses
 
-Discord's hard limit is 2000 characters per message. Mina's responses will often exceed this.
+Discord's hard limit is 2000 characters per message.
 
-**Chunking strategy:** Split on sentence boundaries (`. `, `! `, `? `) at ≤1950 chars. Never cut mid-word or mid-sentence. Send chunks sequentially with a small delay between them (simulates natural pacing, avoids rate limiting).
+**Chunking strategy:** Split on sentence boundaries (`. `, `! `, `? `) at ≤1950 chars. Never cut mid-word or mid-sentence. Send chunks sequentially with a brief delay between them (100–200ms) — simulates natural pacing and avoids rate limiting.
 
-Unlike raika which raises an error and forces the LLM to retry, Mina's responses are prose-heavy and chunking is the right answer here.
+### Image delivery
 
-### Image responses
-
-When Mina calls `generate_image`, the result path is returned to her turn. The gateway detects image paths in tool results and delivers them as Discord file attachments.
+When Mina calls `generate_image`, the tool returns a file path. The gateway detects `.png` paths in tool results and delivers them as Discord attachments:
 
 ```python
 await channel.send(file=discord.File(path))
 ```
 
-If Mina includes a caption in her response after calling `generate_image`, it is sent as a preceding text message.
+If Mina includes text in her response after a `generate_image` call, it is sent as a preceding text message before the attachment.
 
-No embed. Attachment only (same as raika).
-
----
-
-## ComfyUI Delivery Layer
-
-The `generate_image` tool in `tools_mina.py` currently returns a file path. That path needs to be delivered to Discord.
-
-**Pattern:**
-- `handle_generate_image()` in `tools_mina.py` returns the path as a string
-- The gateway's turn runner checks tool results: if a result looks like a file path ending in `.png`, it delivers it as an attachment
-- The gateway holds the channel reference throughout the turn, so delivery target is always resolved
-
-This keeps the tool itself Discord-agnostic. The gateway is what knows how to send files.
+No embed. Attachment only.
 
 ---
 
 ## Slash Commands
 
-Minimal set for MVP. Add more as needed.
+All commands respond ephemerally unless noted. Built and registered on `on_ready`.
+
+### Session / History
 
 | Command | Description |
 |---|---|
-| `/new` | Clear conversation history for this channel. Fresh start. |
-| `/state` | Show Mina's current biological state (first, second, third-order values). Ephemeral. |
-| `/sleep <hours>` | Tell Mina to go to sleep for N hours. |
-| `/wake` | Force-wake Mina from sleep. She'll be groggy. |
-| `/compress <factor>` | Set time compression factor (e.g. `/compress 10` for 10x). Ephemeral confirmation. |
-| `/heartbeat` | Manually trigger one heartbeat cycle. Ephemeral. |
+| `/new` | Clear `conversation.json` for this session. Fresh start. Mina won't remember anything before this. |
+| `/history <n>` | Show the last N entries from conversation history. Default 10. Ephemeral. |
 
-All commands respond ephemerally (visible only to the user who ran them) unless they produce content Mina should also see.
+### State / Biology
+
+| Command | Description |
+|---|---|
+| `/state` | Show Mina's full biological state — first, second, and third-order values. Ephemeral. |
+| `/compress <factor>` | Set `time_compression_factor` in config.json. e.g. `/compress 10` for 10x speed. Ephemeral. |
+
+### Sleep
+
+| Command | Description |
+|---|---|
+| `/sleep <hours>` | Put Mina to sleep for N hours. Writes directly to state.json. |
+| `/wake` | Force-wake Mina. Applies a cortisol spike + norepinephrine bump to simulate groggy waking. |
+
+### Heartbeat
+
+| Command | Description |
+|---|---|
+| `/heartbeat` | Manually trigger one heartbeat cycle (both phases). Useful for testing. Ephemeral. |
+
+### Maintenance
+
+| Command | Description |
+|---|---|
+| `/clean <n>` | Delete the last N messages Mina sent in this channel. Default 10. |
+| `/status` | Show uptime, current biological summary (one line), sleeping status, heartbeat interval. Ephemeral. |
 
 ---
 
-## Conversation History
-
-Mina already has `conversation.json` as her shared history. The Discord gateway appends to this the same way the CLI does.
+## Conversation History Format
 
 **Message format in history:**
 ```json
@@ -142,40 +188,37 @@ Mina already has `conversation.json` as her shared history. The Discord gateway 
 {"role": "assistant", "content": "response text"}
 ```
 
-The username prefix in user messages gives Mina context for who she's talking to — important when/if multiple people are in the same channel.
-
-**On bot startup:** The gateway does NOT seed history from Discord's message history. Mina's `conversation.json` is the source of truth. Discord's history is ephemeral delivery infrastructure, not memory.
+The username prefix in user messages gives Mina context for who is speaking — important if multiple people are in the same channel.
 
 ---
 
 ## Presence
 
-On startup, Mina sets a presence that reflects her state in broad strokes:
+On startup and after each turn, Mina's Discord presence reflects her sleep state:
 
-- Default: `online` with activity "thinking"
-- When sleeping: `idle`
-- No presence string that reveals specific biological values — that would break the emergent quality
+- Awake: `online`
+- Sleeping: `idle`
 
-The subconscious can update presence via a tool if we want this to be dynamic. Out of scope for MVP.
+No status text that reveals biological values. That breaks the emergent quality.
 
 ---
 
 ## Entry Point
 
-`discord_gateway.py` becomes the new primary entry point:
+`discord_gateway.py` becomes the primary entry point:
 
 ```bash
 python discord_gateway.py
 ```
 
-The CLI (`main.py`) still works for development and testing. The heartbeat loop is started inside the Discord bot's `on_ready`, same as it's started inside `main()` today.
+The CLI (`main.py`) still works for development and testing. The heartbeat asyncio background task is started inside `on_ready`.
 
 ---
 
 ## What This Does Not Cover
 
-- Multi-server support (Mina is a single-instance bot, one server)
+- Multi-server support (single-instance bot, one server)
 - Voice channels
 - Reaction-based interactions
-- Any form of content moderation or role-gating (add later if needed)
-- Presence that dynamically reflects biological state (future spec)
+- Content moderation or role-gating
+- Dynamic presence reflecting biological state (future)
