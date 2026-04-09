@@ -1,5 +1,8 @@
 {
   "heartbeat_interval_seconds": 1800,
   "time_compression_factor": 1.0,
-  "comfyui_host": "localhost"
+  "comfyui_host": "localhost",
+  "sleep_window_start": 22,
+  "sleep_window_end": 8,
+  "naps_enabled": true
 }

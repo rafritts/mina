@@ -18,12 +18,28 @@ _CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
 _OUTBOX_FILE = os.path.join(_PROJECT_ROOT, "run", "outbox.jsonl")
 
 
-def _compression_factor() -> float:
+def _load_config() -> dict:
     try:
         with open(_CONFIG_FILE) as f:
-            return float(json.load(f).get("time_compression_factor", 1.0))
+            return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        return 1.0
+        return {}
+
+
+def _compression_factor() -> float:
+    return float(_load_config().get("time_compression_factor", 1.0))
+
+
+def _is_sleep_window(cfg: dict) -> bool:
+    """Return True if current local hour is within the configured sleep window."""
+    start = int(cfg.get("sleep_window_start", 22))
+    end = int(cfg.get("sleep_window_end", 8))
+    hour = time.localtime().tm_hour
+    # Window wraps midnight (e.g. 22 → 8): allowed if hour >= start OR hour < end
+    # Same-day window (e.g. 14 → 17): allowed if start <= hour < end
+    if start > end:
+        return hour >= start or hour < end
+    return start <= hour < end
 
 
 # ---------------------------------------------------------------------------
@@ -35,16 +51,35 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "sleep",
-            "description": "Go to sleep. You will be unavailable for a while.",
+            "description": (
+                "Go to sleep for the night. Only works during your sleep window "
+                "(configured hours — outside that window this will be blocked). "
+                "Use nap if you need rest outside those hours."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "duration_hours": {
                         "type": "number",
-                        "description": "How long you want to sleep (suggestion only — actual duration may vary).",
+                        "description": "How long you want to sleep in simulated hours (suggestion only — actual duration may vary).",
                     }
                 },
                 "required": ["duration_hours"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "nap",
+            "description": (
+                "Take a short nap to knock down sleep pressure. "
+                "Lasts one heartbeat cycle. Available any time if naps are enabled."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
             },
         },
     },
@@ -187,7 +222,17 @@ TOOLS = [t for t in TOOLS if t["function"]["name"] != "message_user"]
 # ---------------------------------------------------------------------------
 
 def handle_sleep(args: dict, state: BiologicalState) -> tuple[str, BiologicalState]:
-    """Set sleeping state. Returns result message and updated state."""
+    """Set sleeping state. Blocked outside the configured sleep window."""
+    cfg = _load_config()
+    if not _is_sleep_window(cfg):
+        if cfg.get("naps_enabled", True):
+            return (
+                "It's outside your sleep window — full sleep isn't available right now. "
+                "You can take a nap if you need rest.",
+                state,
+            )
+        return "It's outside your sleep window — you can't sleep right now.", state
+
     duration_hours = float(args.get("duration_hours", 8.0))
     compression = _compression_factor()
     real_seconds = (duration_hours * 3600) / compression
@@ -200,6 +245,23 @@ def handle_sleep(args: dict, state: BiologicalState) -> tuple[str, BiologicalSta
         f"You drift off to sleep. Expected wake in {duration_hours:.1f} simulated hours.",
         state,
     )
+
+
+def handle_nap(args: dict, state: BiologicalState) -> tuple[str, BiologicalState]:
+    """Take a short nap lasting one heartbeat interval. Bypasses the sleep window."""
+    cfg = _load_config()
+    if not cfg.get("naps_enabled", True):
+        return "Napping isn't available right now.", state
+
+    heartbeat_s = float(cfg.get("heartbeat_interval_seconds", 1800))
+    compression = float(cfg.get("time_compression_factor", 1.0))
+
+    state.sleeping = True
+    state.sleep_start = time.time()
+    state.sleep_expected_wake = time.time() + heartbeat_s  # one real heartbeat
+
+    sim_minutes = round(heartbeat_s * compression / 60.0)
+    return f"You close your eyes for a short nap (~{sim_minutes} simulated minutes).", state
 
 
 def handle_eat(args: dict, state: BiologicalState) -> tuple[str, BiologicalState]:
@@ -340,6 +402,9 @@ def call_tool(name: str, args: dict, state: BiologicalState) -> tuple[str, Biolo
     """
     if name == "sleep":
         msg, state = handle_sleep(args, state)
+        return msg, state, {}
+    elif name == "nap":
+        msg, state = handle_nap(args, state)
         return msg, state, {}
     elif name == "eat":
         msg, state = handle_eat(args, state)
