@@ -751,22 +751,72 @@ async def cmd_clean(interaction: discord.Interaction, n: int = 0):
     await interaction.followup.send(f"Deleted {deleted} message(s).", ephemeral=True)
 
 
-@tree.command(name="status", description="Show Mina's status.")
-async def cmd_status(interaction: discord.Interaction):
+@tree.command(name="context", description="Show Mina's context window, bio state, and config.")
+async def cmd_context(interaction: discord.Interaction):
+    import monologue as _monologue
+
     cfg = _load_config()
     s = load_state()
     d = derived(s)
     to = d["third_order"]
 
-    sleep_str = f"sleeping (wakes {time.strftime('%H:%M', time.localtime(s.sleep_expected_wake))})" \
-        if s.sleeping and s.sleep_expected_wake else ("sleeping" if s.sleeping else "awake")
+    # --- Conversation stats ---
+    history = load_history()
+    from main import HISTORY_MAX
+    total_msgs = len(history)
+    role_counts: dict[str, int] = {}
+    for m in history:
+        role = m.get("role", "?")
+        role_counts[role] = role_counts.get(role, 0) + 1
+    pct = (total_msgs / HISTORY_MAX * 100) if HISTORY_MAX else 0
+    bar_filled = min(20, int(pct / 5))
+    bar = "\u2588" * bar_filled + "\u2591" * (20 - bar_filled)
+    role_str = "  ".join(f"{r}: {c}" for r, c in sorted(role_counts.items()))
+
+    # --- Monologue stats ---
+    mono_entries = _monologue.get_recent(500)
+    mono_count = len(mono_entries)
+    if mono_entries:
+        age_s = int(time.time() - mono_entries[-1]["ts"])
+        if age_s < 60:
+            mono_age = f"{age_s}s ago"
+        elif age_s < 3600:
+            mono_age = f"{age_s // 60}m ago"
+        else:
+            mono_age = f"{age_s // 3600}h ago"
+    else:
+        mono_age = "never"
+
+    # --- Bio state ---
+    sleep_str = (
+        f"sleeping (wakes {time.strftime('%H:%M', time.localtime(s.sleep_expected_wake))})"
+        if s.sleeping and s.sleep_expected_wake
+        else ("sleeping" if s.sleeping else "awake")
+    )
 
     lines = [
-        f"**Status:** {sleep_str}",
-        f"**Compression:** {cfg.get('time_compression_factor', 1.0)}x",
-        f"**Heartbeat interval:** {cfg.get('heartbeat_interval_seconds', 1800)}s",
-        f"**Mood snapshot:** anxiety={to['anxiety']} depression={to['depression']} "
-        f"boredom={to['boredom']} loneliness={to['loneliness']}",
+        "**Mina — Context**",
+        "```",
+        "Conversation",
+        f"  Messages:  {total_msgs} / {HISTORY_MAX}  ({pct:.1f}%)",
+        f"  Progress:  [{bar}]",
+        f"  Breakdown: {role_str}",
+        "",
+        "Monologue",
+        f"  Entries:   {mono_count} / 500  (last: {mono_age})",
+        "",
+        "Biological State",
+        f"  Status:    {sleep_str}",
+        f"  Biomarks:  energy={s.energy:.0f}  hunger={s.hunger:.0f}  thirst={s.thirst:.0f}  "
+        f"fatigue={s.fatigue:.0f}",
+        f"  Mood:      anxiety={to['anxiety']}  depression={to['depression']}  "
+        f"boredom={to['boredom']}  loneliness={to['loneliness']}",
+        "",
+        "Config",
+        f"  Compression: {cfg.get('time_compression_factor', 1.0)}x  "
+        f"Heartbeat: {cfg.get('heartbeat_interval_seconds', 1800)}s  "
+        f"Paused: {os.path.exists(_PAUSED_FLAG)}",
+        "```",
     ]
     await interaction.response.send_message("\n".join(lines), ephemeral=True)
 
