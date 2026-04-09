@@ -19,6 +19,7 @@ _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 _RUN_DIR = os.path.join(_PROJECT_ROOT, "run")
 _LOG_DIR = os.path.join(_PROJECT_ROOT, "logs")
 _LOG_FILE = os.path.join(_LOG_DIR, "mina.log")
+_CONV_FILE = os.path.join(_RUN_DIR, "conversation.json")
 _STOPPED_FLAG = os.path.join(_RUN_DIR, ".stopped")
 _READY_FILE = os.path.join(_RUN_DIR, "ready")
 
@@ -32,14 +33,12 @@ LOG_ARCHIVE_KEEP = 10  # keep last N session tombstones
 # ---------------------------------------------------------------------------
 
 def _tombstone_log() -> None:
-    """Archive mina.log as a timestamped session log. No-op if log is empty/absent."""
-    if not os.path.exists(_LOG_FILE):
-        return
-    if os.path.getsize(_LOG_FILE) == 0:
-        return
+    """Archive mina.log and conversation.json as timestamped session files. No-op if absent/empty."""
     ts = time.strftime("%Y%m%dT%H%M%S")
-    archive = os.path.join(_LOG_DIR, f"mina-{ts}.log")
-    os.rename(_LOG_FILE, archive)
+    if os.path.exists(_LOG_FILE) and os.path.getsize(_LOG_FILE) > 0:
+        os.rename(_LOG_FILE, os.path.join(_LOG_DIR, f"mina-{ts}.log"))
+    if os.path.exists(_CONV_FILE) and os.path.getsize(_CONV_FILE) > 2:
+        os.rename(_CONV_FILE, os.path.join(_LOG_DIR, f"conversation-{ts}.json"))
     _prune_tombstones()
 
 
@@ -47,15 +46,16 @@ def _prune_tombstones() -> None:
     """Remove oldest session tombstones beyond LOG_ARCHIVE_KEEP."""
     if not os.path.exists(_LOG_DIR):
         return
-    archives = sorted(
-        f for f in os.listdir(_LOG_DIR)
-        if f.startswith("mina-") and f.endswith(".log")
-    )
-    for old in archives[:-LOG_ARCHIVE_KEEP] if len(archives) > LOG_ARCHIVE_KEEP else []:
-        try:
-            os.remove(os.path.join(_LOG_DIR, old))
-        except OSError:
-            pass
+    for prefix, suffix in [("mina-", ".log"), ("conversation-", ".json")]:
+        archives = sorted(
+            f for f in os.listdir(_LOG_DIR)
+            if f.startswith(prefix) and f.endswith(suffix)
+        )
+        for old in archives[:-LOG_ARCHIVE_KEEP] if len(archives) > LOG_ARCHIVE_KEEP else []:
+            try:
+                os.remove(os.path.join(_LOG_DIR, old))
+            except OSError:
+                pass
 
 
 def _open_log():

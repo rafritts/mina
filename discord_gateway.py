@@ -251,17 +251,26 @@ async def _outbox_watcher() -> None:
 
         # Resolve home channel — prefer last-active, fall back to config default
         channel = None
+        channel_id = None
         try:
             with open(_HOME_CHANNEL_FILE) as f:
-                channel = client.get_channel(int(f.read().strip()))
+                channel_id = int(f.read().strip())
         except (FileNotFoundError, ValueError, TypeError):
             pass
 
-        if channel is None:
+        if channel_id is None:
             cfg = _load_config()
             default_id = cfg.get("discord_default_channel_id")
             if default_id:
-                channel = client.get_channel(int(default_id))
+                channel_id = int(default_id)
+
+        if channel_id is not None:
+            channel = client.get_channel(channel_id)
+            if channel is None:
+                try:
+                    channel = await client.fetch_channel(channel_id)
+                except Exception:
+                    pass
 
         if channel is None:
             print("[OUTBOX] No channel available — re-queuing messages.")

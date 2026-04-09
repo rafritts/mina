@@ -33,7 +33,7 @@ from subconscious import encode_response, encode_stimulus, evaluate_activity_del
 from tools_mina import HEARTBEAT_TOOLS, call_tool, handle_generate_image
 
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-_HISTORY_FILE = os.path.join(_PROJECT_ROOT, "conversation.json")
+_HISTORY_FILE = os.path.join(_PROJECT_ROOT, "run", "conversation.json")
 _LAST_ACTIVE_FILE = os.path.join(_PROJECT_ROOT, ".last_user_active")
 _CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
 

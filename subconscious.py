@@ -203,6 +203,8 @@ contradict what the body is reporting:
   recognize this person. She is friendly but does not know their name or who they are. She may \
   ask who they are or simply be uncertain. She does not pretend to remember someone she has \
   never met.
+- Clarity FUNCTIONAL, CLEAR, or SHARP: she can think normally. Do not describe her as foggy, \
+  scattered, cloudy, or mentally impaired. Those words require Clarity FOGGY or worse.
 - Clarity OFFLINE and sleeping: her thoughts must be fragmented or absent.
 - Serotonin DYSPHORIC or INSECURE: she is reading social cues as threatening. Neutral inputs \
   feel like slights.

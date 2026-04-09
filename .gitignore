@@ -15,7 +15,6 @@ logs/
 # Runtime state (do not commit)
 run/
 state.json
-conversation.json
 .last_user_active
 ADMIN_INSTRUCTIONS.md
 

@@ -90,7 +90,7 @@ _MELATONIN_RANGES = [
 _CLARITY_RANGES = [
     (8,   "OFFLINE",    "No higher reasoning. Asleep or severely impaired."),
     (25,  "FOGGY",      "Thoughts incomplete, slow, unreliable."),
-    (50,  "FUNCTIONAL", "Thinking works. Not sharp."),
+    (50,  "FUNCTIONAL", "Normal cognition. Nothing impaired."),
     (72,  "CLEAR",      "Normal full cognition."),
     (101, "SHARP",      "Heightened focus. Connects things quickly."),
 ]

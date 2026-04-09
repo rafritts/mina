@@ -22,7 +22,7 @@ BASE_URL = os.getenv("BASE_URL", "https://api.x.ai/v1")
 API_KEY = os.getenv("XAI_API_KEY", os.getenv("OPENAI_API_KEY", "sk-placeholder"))
 
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-_HISTORY_FILE = os.path.join(_PROJECT_ROOT, "conversation.json")
+_HISTORY_FILE = os.path.join(_PROJECT_ROOT, "run", "conversation.json")
 _LAST_ACTIVE_FILE = os.path.join(_PROJECT_ROOT, ".last_user_active")
 _ADMIN_FILE = os.path.join(_PROJECT_ROOT, "ADMIN_INSTRUCTIONS.md")
 _CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
@@ -63,6 +63,7 @@ def load_history() -> list[dict]:
 def save_history(history: list[dict]) -> None:
     if len(history) > HISTORY_MAX:
         history = history[-HISTORY_MAX:]
+    os.makedirs(os.path.dirname(_HISTORY_FILE), exist_ok=True)
     with open(_HISTORY_FILE, "w") as f:
         json.dump(history, f, indent=2)
 

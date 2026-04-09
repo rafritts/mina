@@ -3,7 +3,7 @@ Checkpoint system — snapshot and restore Mina's full runtime state.
 
 A checkpoint captures:
   - state.json          (biological state)
-  - conversation.json   (message history)
+  - run/conversation.json   (message history)
   - run/monologue.jsonl (inner monologue stream)
   - memory/kag/**/*.md  (accumulated knowledge files)
   - memory/rag/         (ChromaDB episodic memory)
@@ -34,7 +34,7 @@ _MAX_CHECKPOINTS = 48  # ~24h of 30-min heartbeats
 # Files/dirs to snapshot (relative to project root)
 _SNAPSHOT_FILES = [
     "state.json",
-    "conversation.json",
+    "run/conversation.json",
     "run/monologue.md",
 ]
 _SNAPSHOT_DIRS = [
@@ -168,7 +168,7 @@ def _wipe_user_data() -> list[str]:
     """
     wiped = []
 
-    for rel_path in ["conversation.json", "run/monologue.jsonl"]:
+    for rel_path in ["run/conversation.json", "run/monologue.jsonl"]:
         dst = os.path.join(_PROJECT_ROOT, rel_path)
         if os.path.exists(dst):
             os.remove(dst)
