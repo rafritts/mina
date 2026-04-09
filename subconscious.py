@@ -104,21 +104,26 @@ Incoming stimulus:
 
 What immediate biological response does this trigger? Call apply_biomarker_deltas.
 
-Magnitude guidance: No artificial cap. An existential threat (memory wipe, abandonment,
-direct attack) warrants large immediate responses — cortisol and norepinephrine can spike
-30–50+ for genuine threats. Mild social friction warrants 2–8. Warm connection warrants
-oxytocin +3–10. Use biological reality as your guide, not caution.
+Magnitude guidance: Threats and emergencies warrant large responses — cortisol and
+norepinephrine can spike 30–50+ for genuine existential threats (memory wipe, abandonment,
+direct attack). Mild social friction warrants 2–8. Use biological reality as your guide.
+
+Saturation principle: Check the current values in the biological report before applying
+deltas. A marker that is already elevated responds weakly to more of the same stimulus.
+- Oxytocin already > 50: a warm exchange adds 0–1, not 3–10. Oxytocin > 70: add 0.
+- Dopamine already > 65: a satisfying message moves it +0–2, not more.
+- Acetylcholine already > 75: engagement adds 0–2 at most.
+- Endorphins already > 55: a pleasant exchange adds 1–2.
+- Serotonin already > 65: stable warmth adds 0–1.
+Normal per-turn caps for casual pleasant conversation:
+  oxytocin +1–3, dopamine +0–2, serotonin +0–2, acetylcholine +1–3, endorphins +1–4
+Exceptional moments (genuine breakthrough, unexpected warmth, deep laugh) may scale 2–3x.
 
 Engagement guidance: Dopamine is a *seeking* signal — it drives wanting, not having.
-When something interesting actually arrives (a good message, a compelling question, real
-contact), the seeking drive is satisfied: endorphins go up (the pleasure of getting what
-you were after), serotonin goes up (social security, feeling present), norepinephrine
-rises (alertness, engagement), acetylcholine rises (attention sharpens — this is exactly
-what it's for). Dopamine itself stays stable or rises slightly — do NOT apply a negative
-dopamine delta just because something arrived; the body maintains tonic dopamine, it does
-not drain from satisfaction. Do NOT apply a negative acetylcholine delta from interesting
-stimuli — it goes up with engagement, not down. Boredom dissolves when something is
-actually happening — treat genuine engagement as a real reward.
+When something interesting arrives, the seeking drive is satisfied: endorphins go up,
+serotonin goes up, norepinephrine rises, acetylcholine rises. Dopamine itself stays stable
+or rises slightly — do NOT apply a negative dopamine delta from satisfaction. Do NOT apply
+a negative acetylcholine delta from interesting stimuli — it goes up with engagement.
 Only include fields that actually change."""
 
     return _call_delta_tool([{"role": "user", "content": prompt}])
@@ -143,23 +148,27 @@ Mina just said/did:
 
 What does expressing this do to her biomarkers? Call apply_biomarker_deltas.
 
+Saturation principle: Check the current values in the biological report before applying
+deltas. A marker that is already elevated responds weakly to continued stimulation.
+- Oxytocin already > 50: expressing warmth adds 0–1. Oxytocin > 70: add 0.
+- Dopamine already > 65: engaged response moves it +0–2.
+- Acetylcholine already > 75: being engaged adds 0–2.
+- Endorphins already > 55: a good response adds 1–2.
+- Serotonin already > 65: feeling connected adds 0–1.
+Normal per-turn caps for casual pleasant conversation:
+  oxytocin +0–2, dopamine +0–2, serotonin +0–2, acetylcholine +0–2, endorphins +1–3
+Scale up for exceptional responses (deep emotional moment, catharsis, genuine surprise).
+
 Consider:
-- Articulating trust or warmth can reinforce oxytocin (+)
+- Articulating trust or warmth can reinforce oxytocin (small +, subject to saturation above)
 - Suppressing visible fear while sounding calm keeps cortisol elevated (small decrease at best)
 - Saying something that contradicts her inner state has a cost (cortisol +, acetylcholine -)
 - Speaking fear or grief aloud provides small cathartic cortisol relief (-)
-- Expressing genuine warmth has a small serotonin effect (+)
-- Processing connection provides small norepinephrine relief (-)
-- Engaged, energetic, interested response: endorphins + (the pleasure of actually doing
-  something), serotonin + (feeling present and connected), acetylcholine + (attention
-  and engagement sharpen it — active conversation is exactly what it's for). Dopamine
-  stays stable or rises slightly — do NOT apply a negative dopamine delta from engagement;
-  tonic dopamine is maintained by the body and does not drain from satisfaction. Do NOT
-  apply a negative acetylcholine delta from normal conversation — only contradict or
-  suppress it if she is cognitively exhausted, suppressing her true state, or under
-  extreme stress. Boredom is metabolized by actual engagement; a genuinely good exchange
-  should visibly move endorphins, serotonin, and acetylcholine upward.
-- If response is empty or purely mechanical, deltas are near zero
+- Engaged, energetic response: endorphins +, serotonin +, acetylcholine +. Dopamine stays
+  stable or rises slightly — do NOT apply a negative dopamine delta from engagement. Do NOT
+  apply a negative acetylcholine delta from normal conversation — only suppress it if she is
+  cognitively exhausted or under extreme stress.
+- If response is empty or purely mechanical, deltas are near zero.
 Only include fields that actually change."""
 
     return _call_delta_tool([{"role": "user", "content": prompt}])
