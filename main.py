@@ -108,7 +108,8 @@ async def _mina_turn(
     new_entries: list[dict] = []
     image_paths: list[str] = []
 
-    response = _get_client().chat.completions.create(
+    response = await asyncio.to_thread(
+        _get_client().chat.completions.create,
         model=MODEL,
         messages=messages,
         tools=TOOLS,
@@ -156,7 +157,7 @@ async def _mina_turn(
             save_state(state)
             print(f"  [result] {result}")
             if name == "do" and extra:
-                _apply_do_deltas(state, extra)
+                await asyncio.to_thread(_apply_do_deltas, state, extra)
 
         new_entries.append({
             "role": "tool",
@@ -165,7 +166,8 @@ async def _mina_turn(
         })
 
     follow_messages = api_messages(history, system_prompt) + new_entries
-    follow_response = _get_client().chat.completions.create(
+    follow_response = await asyncio.to_thread(
+        _get_client().chat.completions.create,
         model=MODEL,
         messages=follow_messages,
         temperature=0.85,
@@ -242,7 +244,7 @@ async def run_turn(user_input: str, username: str = "user") -> tuple[str, list[s
 
     history.append({"role": "user", "content": f"{username}: {user_input}"})
 
-    deltas, system_prompt = run_mode1(state, history, kag_context, rag_context)
+    deltas, system_prompt = await asyncio.to_thread(run_mode1, state, history, kag_context, rag_context)
     if not system_prompt:
         system_prompt = "You are Mina. Respond naturally."
 

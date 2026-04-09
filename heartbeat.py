@@ -125,7 +125,8 @@ async def _run_mina_free_time(
     new_entries = [{"role": "system", "content": "[HEARTBEAT]"}]
     pending_do = {}
 
-    response = client.chat.completions.create(
+    response = await asyncio.to_thread(
+        client.chat.completions.create,
         model=MODEL,
         messages=messages,
         tools=HEARTBEAT_TOOLS,
@@ -173,7 +174,8 @@ async def _run_mina_free_time(
 
         # Follow-up response after tool calls
         follow_messages = messages + new_entries[1:]  # skip the [HEARTBEAT] marker
-        follow_response = client.chat.completions.create(
+        follow_response = await asyncio.to_thread(
+            client.chat.completions.create,
             model=MODEL,
             messages=follow_messages,
             temperature=0.9,
@@ -256,7 +258,7 @@ async def run_heartbeat() -> None:
 
     # --- Phase 1: Subconscious reflection (Mode 2) ---
     _log("Phase 1: subconscious reflection.")
-    reflection = run_mode2(state, history, kag_context)
+    reflection = await asyncio.to_thread(run_mode2, state, history, kag_context)
 
     _log(f"Reflection summary: {reflection['reflection_summary']}")
 
@@ -285,7 +287,7 @@ async def run_heartbeat() -> None:
 
     # Run subconscious Mode 1 to get Mina's system prompt
     state = load_and_advance()  # re-advance in case time passed
-    deltas, system_prompt = run_mode1(state, history, kag_context, rag_context)
+    deltas, system_prompt = await asyncio.to_thread(run_mode1, state, history, kag_context, rag_context)
     state = apply_deltas(state, deltas)
     save_state(state)
 
@@ -306,7 +308,7 @@ async def run_heartbeat() -> None:
         activity = pending_do.get("activity", "")
         description = pending_do.get("description", "")
         state = load_and_advance()  # fresh advance before evaluation
-        do_deltas = _evaluate_do_deltas(state, activity, description)
+        do_deltas = await asyncio.to_thread(_evaluate_do_deltas, state, activity, description)
         state = apply_deltas(state, do_deltas)
         _log(f"Do activity '{activity}' deltas: {do_deltas}")
 
