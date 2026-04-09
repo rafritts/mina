@@ -60,22 +60,36 @@ _IMAGE_MAX_BYTES = 500_000  # 500 KB target
 
 def _normalise_image(data: bytes, mime: str) -> tuple[str, str]:
     """
-    Resize to fit within _IMAGE_MAX_EDGE, re-encode as JPEG, reduce quality
-    until under _IMAGE_MAX_BYTES. Returns (base64_string, mime_type).
+    Resize to fit within _IMAGE_MAX_EDGE, re-encode as JPEG, and aggressively
+    reduce quality + dimensions until under _IMAGE_MAX_BYTES.
+    Returns (base64_string, mime_type).
     """
     img = Image.open(io.BytesIO(data)).convert("RGB")
     w, h = img.size
-    if max(w, h) > _IMAGE_MAX_EDGE:
-        scale = _IMAGE_MAX_EDGE / max(w, h)
+    max_edge = _IMAGE_MAX_EDGE
+    if max(w, h) > max_edge:
+        scale = max_edge / max(w, h)
         img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
 
-    for quality in (80, 70, 60, 50):
+    compressed = b""
+    for quality in (80, 70, 60, 50, 40, 30, 20):
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=quality, optimize=True)
+        compressed = buf.getvalue()
+        if len(compressed) <= _IMAGE_MAX_BYTES:
+            return base64.b64encode(compressed).decode("utf-8"), "image/jpeg"
+
+    # Quality reduction alone wasn't enough — halve dimensions and retry
+    w2, h2 = img.size
+    img = img.resize((w2 // 2, h2 // 2), Image.LANCZOS)
+    for quality in (60, 40, 20):
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=quality, optimize=True)
         compressed = buf.getvalue()
         if len(compressed) <= _IMAGE_MAX_BYTES:
             break
 
+    # Return whatever we have — best effort
     return base64.b64encode(compressed).decode("utf-8"), "image/jpeg"
 
 
@@ -337,8 +351,9 @@ async def _run_turn(channel: discord.abc.Messageable, messages: list[discord.Mes
                             if resp.status == 200:
                                 raw = await resp.read()
                                 image_b64, image_mime = _normalise_image(raw, content_type)
-                                print(f"[VISION] {att.filename} → {len(raw)//1024}KB raw, "
-                                      f"{len(base64.b64decode(image_b64))//1024}KB compressed")
+                                out_kb = len(base64.b64decode(image_b64)) // 1024
+                                over = "⚠ OVER LIMIT" if out_kb > 500 else "ok"
+                                print(f"[VISION] {att.filename} {len(raw)//1024}KB → {out_kb}KB ({over})")
                 except Exception as e:
                     print(f"[VISION ERROR] {att.filename}: {e}")
                 break
