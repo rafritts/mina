@@ -190,13 +190,20 @@ async def _mina_turn(
 # Shared run_turn — called by both CLI and discord_gateway
 # ---------------------------------------------------------------------------
 
-async def run_turn(user_input: str, username: str = "user") -> tuple[str, list[str]]:
+async def run_turn(
+    user_input: str,
+    username: str = "user",
+    image_b64: str | None = None,
+    image_mime: str = "image/jpeg",
+) -> tuple[str, list[str]]:
     """
     Execute one full Mina turn.
 
     Args:
         user_input: The message text.
         username: Display name of the speaker (prefixed in history).
+        image_b64: Optional base64-encoded image for vision.
+        image_mime: MIME type of the image (default image/jpeg).
 
     Returns:
         (reply_text, image_paths) — reply is the final assistant text;
@@ -211,7 +218,7 @@ async def run_turn(user_input: str, username: str = "user") -> tuple[str, list[s
     log_state(state)
 
     # [1] encode_stimulus — biological response to incoming message
-    stimulus = f"{username}: {user_input}"
+    stimulus = f"{username}: {user_input}" + (" [sent an image]" if image_b64 else "")
     stimulus_deltas = await asyncio.to_thread(encode_stimulus, state, stimulus)
     if stimulus_deltas:
         print(f"[STIMULUS DELTAS] {stimulus_deltas}")
@@ -231,7 +238,16 @@ async def run_turn(user_input: str, username: str = "user") -> tuple[str, list[s
         history.append({"role": "system", "content": f"[ADMIN]\n{admin}"})
         print("  [admin] Instructions consumed.")
 
-    history.append({"role": "user", "content": f"{username}: {user_input}"})
+    # Build user content — multimodal if image attached
+    if image_b64:
+        user_content = [
+            {"type": "text", "text": f"{username}: {user_input}"},
+            {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
+        ]
+        print(f"[VISION] Image attached ({image_mime})")
+    else:
+        user_content = f"{username}: {user_input}"
+    history.append({"role": "user", "content": user_content})
 
     # [3] generate_system_prompt — Mode 1 reads biological report + monologue → writes monologue, returns system prompt
     system_prompt = await asyncio.to_thread(run_mode1, report, history, kag_context, rag_context)

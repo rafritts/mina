@@ -15,9 +15,13 @@ import sys
 import tempfile
 import time
 
+import base64
+import io
+
 import aiohttp
 import discord
 from discord import app_commands
+from PIL import Image
 
 from main import run_turn, bio_tick_loop, heartbeat_loop, load_history, save_history, touch_last_active
 
@@ -48,6 +52,31 @@ DEBOUNCE_DELAY = 0.1   # seconds — batch rapid messages
 CHUNK_SIZE = 1950       # max chars per Discord message
 _DEFAULT_AVATAR = os.path.join(_PROJECT_ROOT, "avatar.png")
 _DISCORD_API = "https://discord.com/api/v10"
+
+_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
+_IMAGE_MAX_EDGE = 1024   # px — resize before encoding
+_IMAGE_MAX_BYTES = 500_000  # 500 KB target
+
+
+def _normalise_image(data: bytes, mime: str) -> tuple[str, str]:
+    """
+    Resize to fit within _IMAGE_MAX_EDGE, re-encode as JPEG, reduce quality
+    until under _IMAGE_MAX_BYTES. Returns (base64_string, mime_type).
+    """
+    img = Image.open(io.BytesIO(data)).convert("RGB")
+    w, h = img.size
+    if max(w, h) > _IMAGE_MAX_EDGE:
+        scale = _IMAGE_MAX_EDGE / max(w, h)
+        img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+
+    for quality in (80, 70, 60, 50):
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=quality, optimize=True)
+        compressed = buf.getvalue()
+        if len(compressed) <= _IMAGE_MAX_BYTES:
+            break
+
+    return base64.b64encode(compressed).decode("utf-8"), "image/jpeg"
 
 
 # ---------------------------------------------------------------------------
@@ -277,14 +306,37 @@ async def _run_turn(channel: discord.abc.Messageable, messages: list[discord.Mes
         user_input = messages[0].content
         username = messages[0].author.display_name
     else:
-        # Multiple messages batched — join them
         username = messages[0].author.display_name
         lines = [f"{m.author.display_name}: {m.content}" for m in messages]
         user_input = "\n".join(lines)
 
+    # Collect first image attachment across all batched messages
+    image_b64 = None
+    image_mime = "image/jpeg"
+    for msg in messages:
+        for att in msg.attachments:
+            content_type = (att.content_type or "").split(";")[0].strip()
+            if content_type in _IMAGE_TYPES:
+                try:
+                    async with aiohttp.ClientSession() as http:
+                        async with http.get(att.url) as resp:
+                            if resp.status == 200:
+                                raw = await resp.read()
+                                image_b64, image_mime = _normalise_image(raw, content_type)
+                                print(f"[VISION] {att.filename} → {len(raw)//1024}KB raw, "
+                                      f"{len(base64.b64decode(image_b64))//1024}KB compressed")
+                except Exception as e:
+                    print(f"[VISION ERROR] {att.filename}: {e}")
+                break
+        if image_b64:
+            break
+
     async with channel.typing():
         try:
-            reply, image_paths = await run_turn(user_input, username=username)
+            reply, image_paths = await run_turn(
+                user_input, username=username,
+                image_b64=image_b64, image_mime=image_mime,
+            )
         except asyncio.CancelledError:
             raise
         except Exception as e:
