@@ -14,6 +14,7 @@ from state import BiologicalState, apply_deltas, load_state, save_state, _clamp
 
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 _CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
+_OUTBOX_FILE = os.path.join(_PROJECT_ROOT, "run", "outbox.jsonl")
 
 
 def _compression_factor() -> float:
@@ -116,6 +117,23 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "message_user",
+            "description": "Send a message to the user in Discord. Use this when you want to reach out — you have something on your mind, you want company, you noticed something, whatever. You initiate.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "What you want to say.",
+                    }
+                },
+                "required": ["content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "generate_image",
             "description": "Generate an image via ComfyUI.",
             "parameters": {
@@ -152,6 +170,12 @@ TOOLS = [
         },
     },
 ]
+
+
+# During regular turns, message_user is not offered (she's already in a conversation).
+# During heartbeat free-time, all tools including message_user are available.
+HEARTBEAT_TOOLS = TOOLS  # message_user is already in TOOLS; filter it out for main turns below
+TOOLS = [t for t in TOOLS if t["function"]["name"] != "message_user"]
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +264,17 @@ def handle_rest(args: dict, state: BiologicalState) -> tuple[str, BiologicalStat
     return "You rest for a while.", state
 
 
+def handle_message_user(args: dict, state: BiologicalState) -> tuple[str, BiologicalState]:
+    """Queue a message for delivery to the Discord channel."""
+    content = args.get("content", "").strip()
+    if not content:
+        return "[message_user: no content provided]", state
+    os.makedirs(os.path.dirname(_OUTBOX_FILE), exist_ok=True)
+    with open(_OUTBOX_FILE, "a") as f:
+        f.write(json.dumps({"content": content, "timestamp": time.time()}) + "\n")
+    return f"Message queued.", state
+
+
 def handle_do(args: dict, state: BiologicalState) -> tuple[str, BiologicalState, dict]:
     """
     Do tool — returns (message, state, pending_deltas).
@@ -313,5 +348,8 @@ def call_tool(name: str, args: dict, state: BiologicalState) -> tuple[str, Biolo
     elif name == "do":
         msg, state, pending = handle_do(args, state)
         return msg, state, pending
+    elif name == "message_user":
+        msg, state = handle_message_user(args, state)
+        return msg, state, {}
     else:
         return f"[Unknown tool: {name}]", state, {}

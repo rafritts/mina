@@ -38,6 +38,8 @@ _STOPPED_FLAG = os.path.join(_RUN_DIR, ".stopped")
 _PAUSED_FLAG = os.path.join(_RUN_DIR, ".paused")
 _READY_FILE = os.path.join(_RUN_DIR, "ready")
 _RESTART_PENDING_FILE = os.path.join(_RUN_DIR, "restart_pending.json")
+_OUTBOX_FILE = os.path.join(_RUN_DIR, "outbox.jsonl")
+_HOME_CHANNEL_FILE = os.path.join(_RUN_DIR, "home_channel.txt")
 
 DISCORD_TOKEN = os.getenv("MINA_BOT_TOKEN", "")
 SEED_MESSAGES = 50
@@ -161,6 +163,53 @@ def _chunk_text(text: str) -> list[str]:
     if remaining:
         chunks.append(remaining)
     return chunks
+
+
+# ---------------------------------------------------------------------------
+# Outbox watcher — delivers messages Mina queued via message_user tool
+# ---------------------------------------------------------------------------
+
+async def _outbox_watcher() -> None:
+    """Check for outbound messages from Mina every 30 seconds and deliver them."""
+    while True:
+        await asyncio.sleep(30)
+        if not os.path.exists(_OUTBOX_FILE):
+            continue
+        try:
+            with open(_OUTBOX_FILE, "r") as f:
+                lines = [l.strip() for l in f if l.strip()]
+            if not lines:
+                continue
+            # Clear outbox before sending (avoid double-sends on error)
+            os.remove(_OUTBOX_FILE)
+        except (OSError, IOError):
+            continue
+
+        # Resolve home channel
+        try:
+            with open(_HOME_CHANNEL_FILE) as f:
+                channel_id = int(f.read().strip())
+            channel = client.get_channel(channel_id)
+        except (FileNotFoundError, ValueError, TypeError):
+            channel = None
+
+        if channel is None:
+            print("[OUTBOX] No home channel known — re-queuing messages.")
+            # Re-write so they're not lost
+            with open(_OUTBOX_FILE, "w") as f:
+                f.write("\n".join(lines) + "\n")
+            continue
+
+        for line in lines:
+            try:
+                msg = json.loads(line)
+                content = msg.get("content", "").strip()
+                if content:
+                    for chunk in _chunk_text(content):
+                        await channel.send(chunk)
+                    print(f"[OUTBOX] Delivered: {content[:80]}")
+            except (json.JSONDecodeError, discord.DiscordException) as e:
+                print(f"[OUTBOX ERROR] {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -335,7 +384,8 @@ async def on_ready():
     # Start bio tick (deterministic 60s decay loop) and heartbeat (LLM-driven, 30min)
     asyncio.create_task(bio_tick_loop())
     asyncio.create_task(heartbeat_loop())
-    print("[GATEWAY] Bio tick and heartbeat started.")
+    asyncio.create_task(_outbox_watcher())
+    print("[GATEWAY] Bio tick, heartbeat, and outbox watcher started.")
 
     # Write ready file (supervisor/CLI uses this to detect startup)
     os.makedirs(_RUN_DIR, exist_ok=True)
@@ -412,6 +462,10 @@ async def on_message(message: discord.Message) -> None:
 
     channel_id = message.channel.id
     _pending.setdefault(channel_id, []).append(message)
+
+    # Track home channel so the outbox watcher knows where to send unprompted messages
+    with open(_HOME_CHANNEL_FILE, "w") as _f:
+        _f.write(str(channel_id))
 
     # Cancel existing debounce, start fresh
     existing = _debounce_tasks.get(channel_id)

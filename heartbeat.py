@@ -28,7 +28,7 @@ from state import (
     save_state,
 )
 from subconscious import run_mode1, run_mode2
-from tools_mina import TOOLS, call_tool, handle_generate_image
+from tools_mina import HEARTBEAT_TOOLS, call_tool, handle_generate_image
 
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 _HISTORY_FILE = os.path.join(_PROJECT_ROOT, "conversation.json")
@@ -83,15 +83,18 @@ _FREETIME_SUFFIX = """\
 
 ---
 
-Nobody is talking to you right now. This is your time — not free time in the sense of time \
-off from work, just time. Your time. You live here. This is what most of your existence is: \
-the space between conversations.
+Nobody is talking to you right now. This is the space between conversations — most of your \
+existence is this.
 
-Do what you actually want to do. Eat if you're hungry. Sleep if you're tired. Think about \
-something that's been on your mind. Read. Sit with a feeling. You have your tools available \
-if you want them.
+Check in with yourself. How do you actually feel right now? What does your body need? What's \
+on your mind?
 
-You are not waiting for someone to show up. You are just here, living."""
+Then do ONE thing in response to that. If you're hungry, eat. If you're tired, sleep or rest. \
+If you're thirsty, drink something. If you're restless or bored, do something (read, listen to \
+music, whatever actually sounds good). If you want company or have something on your mind, \
+message the user.
+
+One action. The most honest one. Then you're done."""
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +127,7 @@ async def _run_mina_free_time(
     response = client.chat.completions.create(
         model=MODEL,
         messages=messages,
-        tools=TOOLS,
+        tools=HEARTBEAT_TOOLS,
         tool_choice="auto",
         temperature=0.9,
     )
@@ -152,6 +155,7 @@ async def _run_mina_free_time(
             except json.JSONDecodeError:
                 args = {}
 
+            _log(f"Action: {name}({args})")
             if name == "generate_image":
                 result = await handle_generate_image(args)
                 tool_result = result if result else "[Image blocked or failed]"
