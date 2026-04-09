@@ -47,7 +47,7 @@ class BiologicalState:
     dopamine: float = 62.0
     serotonin: float = 58.0
     norepinephrine: float = 22.0
-    oxytocin: float = 45.0
+    oxytocin: float = 18.0        # resting baseline — no bond until earned
     endorphins: float = 10.0
     acetylcholine: float = 60.0
     melatonin: float = 10.0        # circadian-only, pure formula
@@ -227,35 +227,35 @@ def derived(s: BiologicalState) -> dict:
     effective_dopamine = s.dopamine * (1.0 - tol_d)
 
     energy = _clamp(
-        (s.glucose * 0.4) + (s.norepinephrine * 0.3) - (s.sleep_pressure * 0.3)
+        20 + (s.glucose * 0.4) + (s.norepinephrine * 0.3) - (s.sleep_pressure * 0.3)
     )
     cognitive_clarity = _clamp(
         20 + (s.acetylcholine * 0.4) + (s.glucose * 0.2) - (s.sleep_pressure * 0.25) - (s.cortisol * 0.15)
     )
     hedonic_tone = _clamp(
-        (effective_dopamine * 0.5) + (s.endorphins * 0.3) + (s.serotonin * 0.2)
+        5 + (effective_dopamine * 0.5) + (s.endorphins * 0.3) + (s.serotonin * 0.2)
     )
     social_warmth = _clamp(
-        (s.oxytocin * 0.5) + (s.serotonin * 0.3) - (s.cortisol * 0.2)
+        10 + (s.oxytocin * 0.5) + (s.serotonin * 0.3) - (s.cortisol * 0.2)
     )
     arousal = _clamp(
-        (s.norepinephrine * 0.5) + (s.cortisol * 0.3) - (s.sleep_pressure * 0.2)
+        15 + (s.norepinephrine * 0.5) + (s.cortisol * 0.3) - (s.sleep_pressure * 0.2)
     )
     mood_valence = _clamp(
-        (s.serotonin * 0.4) + (effective_dopamine * 0.35) - (s.cortisol * 0.25)
+        10 + (s.serotonin * 0.4) + (effective_dopamine * 0.35) - (s.cortisol * 0.25)
     )
 
     anxiety = _clamp(
-        (arousal * 0.4) + (100 - cognitive_clarity) * 0.3 + (100 - social_warmth) * 0.3
+        (arousal * 0.4) + (100 - cognitive_clarity) * 0.3 + (100 - social_warmth) * 0.3 - 20
     )
     depression = _clamp(
-        (100 - mood_valence) * 0.4 + (100 - hedonic_tone) * 0.4 + (100 - energy) * 0.2
+        (100 - mood_valence) * 0.4 + (100 - hedonic_tone) * 0.4 + (100 - energy) * 0.2 - 20
     )
     boredom = _clamp(
-        (100 - arousal) * 0.5 + (100 - hedonic_tone) * 0.3 + (100 - energy) * 0.2
+        (100 - arousal) * 0.5 + (100 - hedonic_tone) * 0.3 + (100 - energy) * 0.2 - 20
     )
     loneliness = _clamp(
-        (100 - social_warmth) * 0.6 + (100 - s.oxytocin) * 0.4
+        (100 - social_warmth) * 0.6 + (100 - s.oxytocin) * 0.4 - 25
     )
     flow = _clamp(
         (cognitive_clarity * 0.4) + (hedonic_tone * 0.35) + (arousal * 0.25) - anxiety * 0.3
