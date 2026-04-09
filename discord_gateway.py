@@ -19,7 +19,7 @@ import aiohttp
 import discord
 from discord import app_commands
 
-from main import run_turn, heartbeat_loop, load_history, save_history, touch_last_active
+from main import run_turn, bio_tick_loop, heartbeat_loop, load_history, save_history, touch_last_active
 
 # Suppress noisy-but-harmless WebSocket transport errors on reconnect
 class _SuppressResetError(logging.Filter):
@@ -332,9 +332,10 @@ async def on_ready():
         type=discord.ActivityType.listening, name="you"
     ))
 
-    # Start heartbeat
+    # Start bio tick (deterministic 60s decay loop) and heartbeat (LLM-driven, 30min)
+    asyncio.create_task(bio_tick_loop())
     asyncio.create_task(heartbeat_loop())
-    print("[GATEWAY] Heartbeat started.")
+    print("[GATEWAY] Bio tick and heartbeat started.")
 
     # Write ready file (supervisor/CLI uses this to detect startup)
     os.makedirs(_RUN_DIR, exist_ok=True)

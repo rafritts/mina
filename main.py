@@ -273,6 +273,18 @@ async def run_turn(user_input: str, username: str = "user") -> tuple[str, list[s
 # Heartbeat background loop (shared — started by both CLI and gateway)
 # ---------------------------------------------------------------------------
 
+async def bio_tick_loop() -> None:
+    """Advance biological state every 60 seconds, deterministically (no LLM)."""
+    while True:
+        await asyncio.sleep(60)
+        if os.path.exists(_PAUSED_FLAG):
+            continue
+        try:
+            load_and_advance()  # saves internally
+        except Exception as e:
+            print(f"[BIO TICK ERROR] {e}")
+
+
 async def heartbeat_loop() -> None:
     from heartbeat import run_heartbeat
     while True:
@@ -297,6 +309,7 @@ async def _cli_main() -> None:
     cfg = _load_config()
     print(f"Mina CLI — time_compression={cfg.get('time_compression_factor', 1.0)}x\n")
 
+    asyncio.create_task(bio_tick_loop())
     asyncio.create_task(heartbeat_loop())
 
     while True:
