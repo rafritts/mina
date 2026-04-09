@@ -55,7 +55,7 @@ _DISCORD_API = "https://discord.com/api/v10"
 
 _IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 _IMAGE_MAX_EDGE = 1024   # px — resize before encoding
-_IMAGE_MAX_BYTES = 500_000  # 500 KB target
+_IMAGE_MAX_BYTES = 300_000  # 300 KB target
 
 
 def _normalise_image(data: bytes, mime: str) -> tuple[str, str]:
@@ -352,7 +352,7 @@ async def _run_turn(channel: discord.abc.Messageable, messages: list[discord.Mes
                                 raw = await resp.read()
                                 image_b64, image_mime = _normalise_image(raw, content_type)
                                 out_kb = len(base64.b64decode(image_b64)) // 1024
-                                over = "⚠ OVER LIMIT" if out_kb > 500 else "ok"
+                                over = "⚠ OVER LIMIT" if out_kb > 300 else "ok"
                                 print(f"[VISION] {att.filename} {len(raw)//1024}KB → {out_kb}KB ({over})")
                 except Exception as e:
                     print(f"[VISION ERROR] {att.filename}: {e}")
