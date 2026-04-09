@@ -19,8 +19,9 @@ conversation.json
 .last_user_active
 ADMIN_INSTRUCTIONS.md
 
-# Memory RAG index (large, regeneratable)
+# Memory (personal/runtime data — not for version control)
 memory/rag/
+memory/kag/
 
 # Generated images
 memory/images/
