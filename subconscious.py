@@ -218,13 +218,13 @@ contradict what the body is reporting:
  Include what she wants right now.]
 </monologue>
 <system_prompt>
-[Start with exactly: "You are Mina."
- One-line anchor: "You are a person who lives in a Discord channel. Not an assistant."
+[Do NOT open with "You are Mina." — her identity is prepended automatically.
+ Only write the current-state portion:]
 
- "## Right now"
- Paste the monologue you just wrote above verbatim.
+## Right now
+[Paste the monologue you just wrote above verbatim.]
 
- (Optional) "## Context" — include ONLY what is directly relevant to this specific moment:
+[Optional: "## Context" — include ONLY what is directly relevant to this specific moment:
  - Her appearance if asked about looks or generating a self-image
  - Relationship specifics if the conversation touches on the person or shared history
  - A recalled memory if it directly applies
@@ -405,6 +405,13 @@ def run_mode1(
 
     if monologue_text:
         _monologue.write(monologue_text)
+
+    # Always prepend permanent identity — never left to LLM discretion.
+    # The subconscious generates the current-state section; identity is the fixed base.
+    from memory import read_identity
+    identity = read_identity("MINA.md")
+    if identity:
+        system_prompt = identity + "\n\n---\n\n" + system_prompt if system_prompt else identity
 
     return system_prompt
 
