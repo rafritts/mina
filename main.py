@@ -356,8 +356,8 @@ def _cli_run_command(cmd: str) -> bool:
             "  /state           — show current biological state\n"
             "  /checkpoints     — list available checkpoints\n"
             "  /rollback [N]    — restore checkpoint N (default 0 = most recent)\n"
-            "  /reset           — wipe memory/history, keep identity (checkpoint saved first)\n"
-            "  /factory-reset   — wipe everything including identity (checkpoint saved first)\n"
+            "  /reset           — wipe relationship/RAG/knowledge/history; keep biomarkers + identity\n"
+            "  /factory-reset   — same as /reset + reset biomarkers; identity (MINA.md/APPEARANCE.md) always preserved\n"
             "  exit / quit      — exit"
         )
         return True

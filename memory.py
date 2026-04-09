@@ -166,6 +166,17 @@ def _reset_collection() -> None:
     _collection = None
 
 
+def rag_wipe() -> None:
+    """
+    Completely destroy the RAG store. Deletes the on-disk ChromaDB directory
+    and resets the in-process cache. The store will be recreated empty on next use.
+    """
+    import shutil
+    _reset_collection()
+    if os.path.exists(_RAG_DIR):
+        shutil.rmtree(_RAG_DIR)
+
+
 def rag_add(text: str, metadata: Optional[dict] = None) -> None:
     """Embed and store an episodic memory."""
     collection = _get_collection()
