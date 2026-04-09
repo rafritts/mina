@@ -34,6 +34,7 @@ from memory import build_kag_context, build_rag_context
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 _CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
 _RUN_DIR = os.path.join(_PROJECT_ROOT, "run")
+_LOG_FILE = os.path.join(_PROJECT_ROOT, "logs", "mina.log")
 _STOPPED_FLAG = os.path.join(_RUN_DIR, ".stopped")
 _PAUSED_FLAG = os.path.join(_RUN_DIR, ".paused")
 _READY_FILE = os.path.join(_RUN_DIR, "ready")
@@ -121,6 +122,40 @@ def _load_config() -> dict:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
+
+
+# ---------------------------------------------------------------------------
+# Presence management
+# ---------------------------------------------------------------------------
+
+async def _update_presence(state) -> None:
+    """Set Discord presence to reflect Mina's current sleep/wake state."""
+    if state.sleeping:
+        if state.sleep_expected_wake:
+            wake_str = time.strftime("%H:%M", time.localtime(state.sleep_expected_wake))
+            activity_name = f"sleeping — wakes ~{wake_str}"
+        else:
+            activity_name = "sleeping"
+        await client.change_presence(
+            status=discord.Status.idle,
+            activity=discord.Activity(type=discord.ActivityType.watching, name=f"💤 {activity_name}"),
+        )
+    else:
+        await client.change_presence(
+            status=discord.Status.online,
+            activity=discord.Activity(type=discord.ActivityType.listening, name="you"),
+        )
+
+
+async def _presence_loop() -> None:
+    """Poll sleep state every 60s so auto-wake transitions update Discord presence."""
+    while True:
+        await asyncio.sleep(60)
+        try:
+            from state import load_state as _load_state
+            await _update_presence(_load_state())
+        except Exception as e:
+            print(f"[PRESENCE] Update error: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -259,9 +294,7 @@ async def _run_turn(channel: discord.abc.Messageable, messages: list[discord.Mes
     await _deliver(channel, reply, image_paths)
 
     # Update presence after turn
-    state = load_state()
-    presence = discord.Status.idle if state.sleeping else discord.Status.online
-    await client.change_presence(status=presence)
+    await _update_presence(load_state())
 
 
 # ---------------------------------------------------------------------------
@@ -375,17 +408,14 @@ async def on_ready():
     print("[GATEWAY] Slash commands synced.")
 
     # Set initial presence
-    state = load_state()
-    status = discord.Status.idle if state.sleeping else discord.Status.online
-    await client.change_presence(status=status, activity=discord.Activity(
-        type=discord.ActivityType.listening, name="you"
-    ))
+    await _update_presence(load_state())
 
-    # Start bio tick (deterministic 60s decay loop) and heartbeat (LLM-driven, 30min)
+    # Start background loops
     asyncio.create_task(bio_tick_loop())
     asyncio.create_task(heartbeat_loop())
     asyncio.create_task(_outbox_watcher())
-    print("[GATEWAY] Bio tick, heartbeat, and outbox watcher started.")
+    asyncio.create_task(_presence_loop())
+    print("[GATEWAY] Bio tick, heartbeat, outbox watcher, and presence loop started.")
 
     # Write ready file (supervisor/CLI uses this to detect startup)
     os.makedirs(_RUN_DIR, exist_ok=True)
@@ -480,10 +510,14 @@ async def on_message(message: discord.Message) -> None:
 # Slash commands
 # ---------------------------------------------------------------------------
 
-@tree.command(name="new", description="Clear conversation history. Fresh start.")
+@tree.command(name="new", description="Clear conversation history and restart. Archives the current log as a session tombstone.")
 async def cmd_new(interaction: discord.Interaction):
     save_history([])
-    await interaction.response.send_message("History cleared.", ephemeral=True)
+    await interaction.response.send_message("History cleared. Restarting...", ephemeral=True)
+    os.makedirs(_RUN_DIR, exist_ok=True)
+    with open(_RESTART_PENDING_FILE, "w") as f:
+        json.dump({"token": interaction.token, "application_id": interaction.application_id}, f)
+    os._exit(42)
 
 
 @tree.command(name="reset", description="Full reset: wipe Mina's memory, state, and history. A checkpoint is saved first.")
@@ -594,7 +628,7 @@ async def cmd_sleep(interaction: discord.Interaction, hours: float = 8.0):
     s = load_and_advance()
     _, s = handle_sleep({"duration_hours": hours}, s)
     save_state(s)
-    await client.change_presence(status=discord.Status.idle)
+    await _update_presence(s)
     await interaction.response.send_message(
         f"Mina is going to sleep for {hours:.1f} simulated hours.", ephemeral=True
     )
@@ -609,7 +643,7 @@ async def cmd_wake(interaction: discord.Interaction):
     # Groggy waking — cortisol spike, suppressed acetylcholine
     s = apply_deltas(s, {"cortisol": 20, "norepinephrine": 12, "acetylcholine": -15})
     save_state(s)
-    await client.change_presence(status=discord.Status.online)
+    await _update_presence(s)
     await interaction.response.send_message("Mina has been woken up.", ephemeral=True)
 
 

@@ -24,30 +24,43 @@ _READY_FILE = os.path.join(_RUN_DIR, "ready")
 
 RESTART_EXIT_CODE = 42
 MAX_BACKOFF = 60       # seconds
-LOG_MAX_BYTES = 10 * 1024 * 1024  # 10MB per file
-LOG_KEEP = 3
+LOG_ARCHIVE_KEEP = 10  # keep last N session tombstones
 
 
 # ---------------------------------------------------------------------------
 # Log file management
 # ---------------------------------------------------------------------------
 
-def _rotate_log():
+def _tombstone_log() -> None:
+    """Archive mina.log as a timestamped session log. No-op if log is empty/absent."""
     if not os.path.exists(_LOG_FILE):
         return
-    if os.path.getsize(_LOG_FILE) < LOG_MAX_BYTES:
+    if os.path.getsize(_LOG_FILE) == 0:
         return
-    for i in range(LOG_KEEP - 1, 0, -1):
-        src = f"{_LOG_FILE}.{i}"
-        dst = f"{_LOG_FILE}.{i + 1}"
-        if os.path.exists(src):
-            os.rename(src, dst)
-    os.rename(_LOG_FILE, f"{_LOG_FILE}.1")
+    ts = time.strftime("%Y%m%dT%H%M%S")
+    archive = os.path.join(_LOG_DIR, f"mina-{ts}.log")
+    os.rename(_LOG_FILE, archive)
+    _prune_tombstones()
+
+
+def _prune_tombstones() -> None:
+    """Remove oldest session tombstones beyond LOG_ARCHIVE_KEEP."""
+    if not os.path.exists(_LOG_DIR):
+        return
+    archives = sorted(
+        f for f in os.listdir(_LOG_DIR)
+        if f.startswith("mina-") and f.endswith(".log")
+    )
+    for old in archives[:-LOG_ARCHIVE_KEEP] if len(archives) > LOG_ARCHIVE_KEEP else []:
+        try:
+            os.remove(os.path.join(_LOG_DIR, old))
+        except OSError:
+            pass
 
 
 def _open_log():
     os.makedirs(_LOG_DIR, exist_ok=True)
-    _rotate_log()
+    _tombstone_log()
     # Line-buffered so writes appear immediately
     return open(_LOG_FILE, "a", buffering=1, encoding="utf-8")
 
