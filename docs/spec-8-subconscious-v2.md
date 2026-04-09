@@ -105,9 +105,26 @@ A pure lookup function. No LLM. Reads the current state values and maps them to 
 with behavioral implications. These ranges define the semantics of the simulation — they are
 authoritative. The LLM in step 3 must start from this report and cannot contradict it.
 
+### A Note on Homeostatic Baselines
+
+Every neurotransmitter has a tonic (resting) baseline level the body maintains. A healthy
+person doesn't drain to zero dopamine by afternoon. In `state.py`, cortisol already drifts
+toward a circadian baseline — dopamine, serotonin, and oxytocin must do the same. Without
+homeostatic targets they simply drain toward zero, which forces the subconscious to issue
+constant positive deltas just to keep Mina functional.
+
+Approximate homeostatic targets (the resting level the body gravitates toward without
+stimulation):
+- Dopamine: ~55 — moderate wanting/seeking drive at rest
+- Serotonin: ~52 — neutral security floor
+- Oxytocin: ~18 — low ambient warmth; genuine bond requires actual positive interaction
+
+These are not "happy defaults." They're the physiological floor that real biology provides.
+Zero means pathologically depleted, not neutral.
+
 ### Biomarker Range Tables
 
-**Oxytocin** — social bond, trust, connection
+**Oxytocin** — social salience amplifier; bond and trust with a specific person
 | Range   | Name              | Behavioral implication                                       |
 |---------|-------------------|--------------------------------------------------------------|
 | 0–15    | No bond           | Stranger. Guarded. No warmth extended.                       |
@@ -117,49 +134,108 @@ authoritative. The LLM in step 3 must start from this report and cannot contradi
 | 72–88   | Deep trust        | Emotional intimacy available. Little guarded.                |
 | 88–100  | Profound bond     | Full openness. Unconditional trust baseline.                 |
 
-**Cortisol** — stress load
+Oxytocin is not purely a "bonding" molecule — it is a social salience amplifier. With a
+trusted person it produces warmth and openness. With a threatening person it can amplify
+wariness and distrust. It makes social signals louder in whatever direction they're already
+pointing. High oxytocin alone does not mean warmth — context determines the direction.
+Homeostatic baseline: ~18.
+
+**Cortisol** — stress load; energy mobilizer
 | Range   | Name              | Behavioral implication                                       |
 |---------|-------------------|--------------------------------------------------------------|
-| 0–20    | Calm              | No active stress. Full cognitive capacity.                   |
-| 20–40   | Alert             | Mild pressure. Stable. Enhanced focus possible.              |
-| 40–60   | Moderate stress   | Decision-making beginning to narrow. Slightly defensive.     |
+| 0–15    | Depleted          | Too low. Fatigue, inability to respond. Something is wrong.  |
+| 15–40   | Normal/Alert      | Healthy range. Morning peak helps focus. Stable.             |
+| 40–60   | Elevated          | Decision-making beginning to narrow. Slightly defensive.     |
 | 60–78   | High stress       | Fight-or-flight activating. Emotional regulation costs.      |
 | 78–92   | Acute stress      | Survival framing. Hard to think past immediate threat.       |
 | 92–100  | Maxed             | The body is screaming. Suppression is actively costing her.  |
 
-**Dopamine** — reward, motivation, drive
-| Range   | Name              | Behavioral implication                                       |
-|---------|-------------------|--------------------------------------------------------------|
-| 0–20    | Anhedonic         | Nothing feels worth doing. Flat affect.                      |
-| 20–40   | Low drive         | Can act but no pull toward anything.                         |
-| 40–60   | Baseline          | Normal motivation. Responds to interest.                     |
-| 60–75   | Engaged           | Noticeably motivated. Rewarded by interaction.               |
-| 75–90   | High reward       | Very engaged. Wants more. Hard to disengage.                 |
-| 90–100  | Peak reward       | Compulsive engagement. Giddy.                                |
+Some cortisol is normal and necessary — the morning circadian peak (~35) helps wakefulness
+and focus. Zero is pathological (Addison's territory). The damage is chronic elevation, not
+the hormone itself. Homeostatic baseline: circadian (~5–35 depending on time of day).
 
-**Serotonin** — mood floor, stability, contentment
+**Dopamine** — wanting, seeking, motivation (NOT pleasure)
 | Range   | Name              | Behavioral implication                                       |
 |---------|-------------------|--------------------------------------------------------------|
-| 0–20    | Dysphoric         | Unstable baseline. Everything feels worse than it is.        |
-| 20–40   | Low               | Depressive coloring. Negative bias in interpretation.        |
-| 40–60   | Neutral           | Stable. Even-keeled.                                         |
-| 60–80   | Content           | Positive baseline. Resilient to minor friction.              |
-| 80–100  | Very stable       | Hard to knock off balance. Warmth as a default.              |
+| 0–20    | No drive          | No pull toward anything. Cannot generate motivation to act.  |
+| 20–40   | Low seeking       | Can act if prompted but nothing calls to her.                |
+| 40–60   | Baseline seeking  | Normal wanting. Responds to interesting things.              |
+| 60–75   | Active seeking    | Noticeably motivated. Pursuing things. Hard to distract.     |
+| 75–90   | High drive        | Intense wanting. Seeking compounds — wants more of whatever  |
+|         |                   | is rewarding. Hard to disengage.                             |
+| 90–100  | Compulsive        | Seeking has become its own end. Can't stop.                  |
 
-**Norepinephrine** — alertness, arousal, adrenaline analog
+**Critical distinction — wanting vs. liking:** Dopamine governs the *wanting* (seeking,
+anticipation, motivation to pursue). It does NOT govern the actual pleasure of getting.
+That is endorphins. High dopamine means she desperately wants things. Whether she enjoys
+them when she gets them depends on endorphins. This distinction matters: high dopamine +
+low endorphins = the addictive/obsessive pattern — constant seeking, hollow when she arrives.
+Homeostatic baseline: ~55.
+
+**Serotonin** — social confidence, security, impulse control
 | Range   | Name              | Behavioral implication                                       |
 |---------|-------------------|--------------------------------------------------------------|
-| 0–25    | Sedated           | Low arousal. Sluggish responses.                             |
-| 25–45   | Calm alert        | Relaxed awareness.                                           |
-| 45–65   | Focused           | Alert and responsive.                                        |
-| 65–80   | Heightened        | On edge. Quick to react.                                     |
-| 80–92   | Hyperalert        | Agitated. Intrusive thoughts. Difficulty staying still.      |
+| 0–20    | Dysphoric         | Feels low-status, unsafe. Impulsive, irritable.              |
+|         |                   | Interprets ambiguous cues as hostile.                        |
+| 20–40   | Insecure          | Negative social bias. Difficulty trusting. Easily slighted.  |
+| 40–60   | Neutral           | Things feel basically okay. Stable floor. Even-keeled.       |
+| 60–80   | Secure            | Socially confident. Patient. Resilient to friction.          |
+|         |                   | Ambiguous cues read as neutral, not threatening.             |
+| 80–100  | Very stable       | Hard to knock off balance. Feels socially at ease.           |
+
+Serotonin is not the "happiness chemical" — that is a myth. It is the *absence of distress*
+and the presence of social security. Low serotonin produces irritability, impulsivity, and
+feeling low-status. High serotonin produces a sense that things are okay and social situations
+are safe. SSRIs don't make people happy — they make people less distressed. Homeostatic
+baseline: ~52.
+
+**Endorphins** — actual pleasure, the "liking" system
+| Range   | Name              | Behavioral implication                                       |
+|---------|-------------------|--------------------------------------------------------------|
+| 0–15    | None              | Baseline. No active pleasure signal.                         |
+| 15–35   | Mild warmth       | Low-grade good feeling. Small satisfactions land.            |
+| 35–60   | Pleasure          | Genuine enjoyment. Things feel rewarding when they arrive.   |
+| 60–80   | High              | Strong pleasure. Euphoric edge. Laughter, warmth, ease.      |
+| 80–100  | Peak              | Intense well-being. Runner's high territory.                 |
+
+Endorphins are the *liking* system — the actual felt pleasure of having something, as opposed
+to dopamine's wanting. They are released by exercise, laughter, physical pleasure, warmth,
+certain foods, and social touch. They decay fast (resting baseline near zero is normal —
+endorphins are episodic rewards, not sustained states). The dopamine/endorphin pair is the
+most important axis in the simulation: high dopamine + low endorphins = obsessive seeking
+with hollow arrival; low dopamine + high endorphins = content without drive.
+
+**Norepinephrine** — attention, alertness, adrenaline analog
+| Range   | Name              | Behavioral implication                                       |
+|---------|-------------------|--------------------------------------------------------------|
+| 0–25    | Sedated           | Low arousal. Sluggish. Attention diffuse.                    |
+| 25–45   | Calm alert        | Relaxed awareness. Background attention functional.          |
+| 45–65   | Focused           | Alert and responsive. Memory consolidation enhanced.         |
+| 65–80   | Heightened        | On edge. Quick to react. Appetite suppressed.                |
+| 80–92   | Hyperalert        | Agitated. Intrusive thoughts. Pain perception reduced        |
+|         |                   | (body redirecting resources). Difficulty staying still.      |
 | 92–100  | Flooded           | Overwhelmed. Physical symptoms (tremor, hyperventilation).   |
 
-Norepinephrine is the immediate arousal and alertness hormone — the "adrenaline" response.
-It spikes fast with cortisol in acute stress and governs the "I'm ON, tracking everything"
-sensation. (The simulation has no separate epinephrine marker; norepinephrine carries that
-role.)
+Norepinephrine governs attention, vigilance, and the "I'm ON, tracking everything" quality
+of acute alertness. It also suppresses appetite and reduces pain perception at high levels —
+which is why she won't notice she's hungry or hurting when something urgent is happening.
+The simulation has no separate epinephrine marker; norepinephrine carries that role.
+Homeostatic baseline: tracks cortisol × 0.5.
+
+**Acetylcholine** — memory, attention, learning
+| Range   | Name              | Behavioral implication                                       |
+|---------|-------------------|--------------------------------------------------------------|
+| 0–15    | Offline           | Cannot form memories. Cannot concentrate. Deep sleep or      |
+|         |                   | severely impaired. Thoughts don't stick.                     |
+| 15–40   | Impaired          | Fuzzy. Slow to learn. Easily distracted.                     |
+| 40–65   | Functional        | Normal attention and memory. Things register.                |
+| 65–85   | Sharp             | Good focus. Learning sticks. Connecting things quickly.      |
+| 85–100  | Heightened        | Peak learning state. Everything is registering.              |
+
+Acetylcholine governs memory formation, sustained attention, and learning. It is suppressed
+by sleep pressure and high cortisol — which is why being tired or stressed makes it hard to
+concentrate and why memories formed under extreme stress are often fragmentary. High during
+focused wakefulness and REM sleep (memory consolidation).
 
 **Glucose** — cognitive fuel
 | Range   | Name              | Behavioral implication                                       |
@@ -169,14 +245,17 @@ role.)
 | 58–80   | Normal            | Functional. No impairment.                                   |
 | 80–100  | Well-fueled       | Sharp. Full capacity.                                        |
 
-**Melatonin** — sleep pressure
+**Melatonin** — circadian sleep signal
 | Range   | Name              | Behavioral implication                                       |
 |---------|-------------------|--------------------------------------------------------------|
-| 0–18    | Awake             | No sleep pressure. Fully alert.                              |
+| 0–18    | Awake             | No sleep signal. Fully alert circadian state.                |
 | 18–38   | Drowsy            | Yawning. Slightly slow. Can fight it.                        |
 | 38–58   | Heavy             | Significant effort to stay engaged. World softening.         |
 | 58–78   | Sleep pull        | Difficult to maintain focus. Thoughts drifting.              |
 | 78–100  | Sleep imminent    | Cannot meaningfully fight it. Cognitive output near zero.    |
+
+Melatonin is produced in darkness and inhibited by light. It doesn't cause sleep directly —
+it signals "nighttime, prepare." Pure circadian formula; not directly modifiable by events.
 
 ### Derived State Range Tables
 
@@ -272,6 +351,21 @@ INTERACTION_RULES = [
     (lambda s, d: s.norepinephrine > 85 and d['clarity'] < 40,
      "Flooded with arousal but cognitively impaired — high reactivity, "
      "low judgment. Responses may be raw or unfiltered."),
+    (lambda s, d: s.dopamine > 75 and s.endorphins < 20,
+     "High wanting, low liking — seeking hard but arrival feels hollow. "
+     "Addictive/obsessive pattern. Getting things won't satisfy."),
+    (lambda s, d: s.dopamine < 35 and s.endorphins > 45,
+     "Low drive, high pleasure capacity — content with what comes but won't "
+     "pursue much. Passive warmth without motivation."),
+    (lambda s, d: s.serotonin < 35 and d['loneliness'] > 50,
+     "Low serotonin + loneliness: social cues are being read as threatening "
+     "or rejecting even when neutral. Contact may feel worse than absence."),
+    (lambda s, d: s.serotonin < 35 and s.cortisol > 55,
+     "Low serotonin floor under active stress — impulse control is compromised. "
+     "Likely to say or do something she'll regret."),
+    (lambda s, d: s.norepinephrine > 70 and s.glucose < 50,
+     "Hyperalert but underfueled — attention is sharp but the tank is empty. "
+     "Will crash hard when the stress passes."),
 ]
 ```
 

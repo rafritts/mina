@@ -137,10 +137,17 @@ def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalSt
     s.cortisol = _clamp(s.cortisol + (baseline - s.cortisol) * min(1.0, 0.15 * sim_hours))
 
     # --- Dopamine ---
-    s.dopamine = _clamp(s.dopamine - 2.0 * sim_hours)
+    # Drifts toward homeostatic baseline (~55). Not a drain to zero —
+    # the body maintains tonic dopamine. Chronic stress or sleep dep suppresses it
+    # further via the cross-interaction matrix below.
+    dopamine_baseline = 55.0
+    s.dopamine = _clamp(s.dopamine + (dopamine_baseline - s.dopamine) * min(1.0, 0.08 * sim_hours))
 
     # --- Serotonin ---
-    s.serotonin = _clamp(s.serotonin - 1.0 * sim_hours)
+    # Drifts toward homeostatic baseline (~52). Not a drain to zero —
+    # serotonin has a tonic resting level. Low serotonin = dysphoric, not neutral.
+    serotonin_baseline = 52.0
+    s.serotonin = _clamp(s.serotonin + (serotonin_baseline - s.serotonin) * min(1.0, 0.06 * sim_hours))
 
     # --- Norepinephrine ---
     norepi_baseline = s.cortisol * 0.5
@@ -149,7 +156,11 @@ def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalSt
         s.norepinephrine = _clamp(s.norepinephrine + 8.0 * sim_hours)
 
     # --- Oxytocin ---
-    s.oxytocin = _clamp(s.oxytocin - 3.0 * sim_hours)
+    # Drifts toward a low resting baseline (~18) rather than draining to zero.
+    # Zero oxytocin would mean completely unable to form social connection.
+    # Real bonds require actual positive interaction to build above baseline.
+    oxytocin_baseline = 18.0
+    s.oxytocin = _clamp(s.oxytocin + (oxytocin_baseline - s.oxytocin) * min(1.0, 0.10 * sim_hours))
 
     # --- Endorphins ---
     s.endorphins = _clamp(s.endorphins - 15.0 * sim_hours)
