@@ -583,7 +583,11 @@ async def cmd_reset(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     try:
         summary = _ckpts.reset()
-        await interaction.followup.send(f"Reset complete.\n```{summary[:1800]}```", ephemeral=True)
+        os.makedirs(_RUN_DIR, exist_ok=True)
+        with open(_RESTART_PENDING_FILE, "w") as f:
+            json.dump({"token": interaction.token, "application_id": interaction.application_id}, f)
+        await interaction.followup.send(f"Reset complete. Restarting...\n```{summary[:1800]}```", ephemeral=True)
+        os._exit(42)
     except Exception as e:
         await interaction.followup.send(f"Reset failed: {e}", ephemeral=True)
 
@@ -594,7 +598,11 @@ async def cmd_factory_reset(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     try:
         summary = _ckpts.factory_reset()
-        await interaction.followup.send(f"Factory reset complete.\n```{summary[:1800]}```", ephemeral=True)
+        os.makedirs(_RUN_DIR, exist_ok=True)
+        with open(_RESTART_PENDING_FILE, "w") as f:
+            json.dump({"token": interaction.token, "application_id": interaction.application_id}, f)
+        await interaction.followup.send(f"Factory reset complete. Restarting...\n```{summary[:1800]}```", ephemeral=True)
+        os._exit(42)
     except Exception as e:
         await interaction.followup.send(f"Factory reset failed: {e}", ephemeral=True)
 
