@@ -88,42 +88,42 @@ _MELATONIN_RANGES = [
 
 # Derived state range tables
 _CLARITY_RANGES = [
-    (15,  "OFFLINE",    "No higher reasoning. Asleep or severely impaired."),
-    (35,  "FOGGY",      "Thoughts incomplete, slow, unreliable."),
-    (60,  "FUNCTIONAL", "Thinking works. Not sharp."),
-    (80,  "CLEAR",      "Normal full cognition."),
+    (8,   "OFFLINE",    "No higher reasoning. Asleep or severely impaired."),
+    (25,  "FOGGY",      "Thoughts incomplete, slow, unreliable."),
+    (50,  "FUNCTIONAL", "Thinking works. Not sharp."),
+    (72,  "CLEAR",      "Normal full cognition."),
     (101, "SHARP",      "Heightened focus. Connects things quickly."),
 ]
 
 _ANXIETY_RANGES = [
-    (20,  "CALM",     "No background worry."),
-    (40,  "MILD",     "Low hum. Manageable."),
-    (60,  "MODERATE", "Present and noticeable. Affects behavior."),
-    (78,  "HIGH",     "Difficult to set aside. Colors all perception."),
+    (35,  "CALM",     "No background worry."),
+    (52,  "MILD",     "Low hum. Manageable."),
+    (68,  "MODERATE", "Present and noticeable. Affects behavior."),
+    (84,  "HIGH",     "Difficult to set aside. Colors all perception."),
     (101, "SEVERE",   "Consuming. Hard to function normally."),
 ]
 
 _BOREDOM_RANGES = [
-    (25,  "STIMULATED",     "Engaged. No relief-seeking."),
-    (45,  "MILD BOREDOM",   "Background restlessness. Easily redirected."),
-    (65,  "ACTIVELY BORED", "Seeking stimulation. Will redirect or initiate things."),
-    (80,  "DISTRESS",       "Relief-seeking is a drive. Risky behavior attractive."),
+    (45,  "STIMULATED",     "Engaged. No relief-seeking."),
+    (60,  "MILD BOREDOM",   "Background restlessness. Easily redirected."),
+    (74,  "ACTIVELY BORED", "Seeking stimulation. Will redirect or initiate things."),
+    (88,  "DISTRESS",       "Relief-seeking is a drive. Risky behavior attractive."),
     (101, "INTOLERABLE",    "Will do almost anything to escape. Health trade-offs made trivially."),
 ]
 
 _LONELINESS_RANGES = [
-    (25,  "CONNECTED", "Socially fulfilled. No drive to seek contact."),
-    (50,  "MILD",      "Aware of absence. Receptive to contact."),
-    (70,  "LONELY",    "Actively wanting connection. May reach out."),
-    (88,  "ACHING",    "Distressing. Social contact feels urgent."),
+    (55,  "CONNECTED", "Socially fulfilled. No drive to seek contact."),
+    (68,  "MILD",      "Aware of absence. Receptive to contact."),
+    (80,  "LONELY",    "Actively wanting connection. May reach out."),
+    (92,  "ACHING",    "Distressing. Social contact feels urgent."),
     (101, "ISOLATED",  "Consuming. Colors everything negatively."),
 ]
 
 _DEPRESSION_RANGES = [
-    (20,  "NONE",        "Normal baseline."),
-    (40,  "LOW MOOD",    "Slightly flat. Things feel a bit heavier."),
-    (60,  "MODERATE",    "Pervasive low. Motivation impaired. Hard to initiate."),
-    (80,  "SIGNIFICANT", "Meaningful functional impairment. Negative self-view."),
+    (35,  "NONE",        "Normal baseline."),
+    (52,  "LOW MOOD",    "Slightly flat. Things feel a bit heavier."),
+    (68,  "MODERATE",    "Pervasive low. Motivation impaired. Hard to initiate."),
+    (84,  "SIGNIFICANT", "Meaningful functional impairment. Negative self-view."),
     (101, "SEVERE",      "Near-inability to act. Everything feels pointless."),
 ]
 
