@@ -106,7 +106,7 @@ def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalSt
 
     # --- Sleep pressure ---
     if s.sleeping:
-        s.sleep_pressure = _clamp(s.sleep_pressure - 12.0 * sim_hours)
+        s.sleep_pressure = _clamp(s.sleep_pressure - 24.0 * sim_hours)
         # Auto-wake when sleep pressure clears
         if s.sleep_expected_wake and now >= s.sleep_expected_wake:
             s.sleeping = False
