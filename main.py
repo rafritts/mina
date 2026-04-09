@@ -254,7 +254,7 @@ async def run_turn(
     if not system_prompt:
         system_prompt = "You are Mina. Respond naturally."
 
-    print(f"[SYSTEM PROMPT] {system_prompt[:200]}...")
+    print(f"[SYSTEM PROMPT]\n{system_prompt}")
 
     # [4] Mina responds
     new_entries, state, image_paths = await _mina_turn(system_prompt, history, state)
