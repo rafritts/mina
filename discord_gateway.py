@@ -208,6 +208,7 @@ async def _presence_loop() -> None:
 _pending: dict[int, list[discord.Message]] = {}
 _debounce_tasks: dict[int, asyncio.Task] = {}
 _inflight: dict[int, asyncio.Task] = {}
+_inflight_messages: dict[int, list[discord.Message]] = {}  # messages currently being processed
 
 
 # ---------------------------------------------------------------------------
@@ -391,20 +392,27 @@ async def _debounce_fire(channel: discord.abc.Messageable, channel_id: int) -> N
     if not messages:
         return
 
-    # Cancel any inflight turn for this channel
+    # Cancel any inflight turn and rescue its messages
     existing = _inflight.get(channel_id)
     if existing and not existing.done():
+        rescued = _inflight_messages.pop(channel_id, [])
         existing.cancel()
         try:
             await existing
         except (asyncio.CancelledError, Exception):
             pass
+        # Prepend rescued messages so they aren't lost
+        if rescued:
+            print(f"  [gateway] rescued {len(rescued)} in-flight message(s) for channel {channel_id}")
+            messages = rescued + messages
 
+    _inflight_messages[channel_id] = messages
     task = asyncio.create_task(_run_turn(channel, messages))
     _inflight[channel_id] = task
 
     def _cleanup(t):
         _inflight.pop(channel_id, None)
+        _inflight_messages.pop(channel_id, None)
 
     task.add_done_callback(_cleanup)
 
