@@ -108,6 +108,14 @@ Magnitude guidance: No artificial cap. An existential threat (memory wipe, aband
 direct attack) warrants large immediate responses — cortisol and norepinephrine can spike
 30–50+ for genuine threats. Mild social friction warrants 2–8. Warm connection warrants
 oxytocin +3–10. Use biological reality as your guide, not caution.
+
+Engagement guidance: Dopamine is a *seeking* signal — it drives wanting, not having.
+When something interesting actually arrives (a good message, a compelling question, real
+contact), the seeking drive is satisfied: endorphins go up (the pleasure of getting what
+you were after), serotonin goes up (social security, feeling present), norepinephrine
+rises (alertness, engagement). Dopamine itself normalizes or rises slightly if the
+stimulus opens new avenues to explore. Boredom dissolves when something is actually
+happening — treat genuine engagement as a real reward.
 Only include fields that actually change."""
 
     return _call_delta_tool([{"role": "user", "content": prompt}])
@@ -139,6 +147,10 @@ Consider:
 - Speaking fear or grief aloud provides small cathartic cortisol relief (-)
 - Expressing genuine warmth has a small serotonin effect (+)
 - Processing connection provides small norepinephrine relief (-)
+- Engaged, energetic, interested response: endorphins + (the pleasure of actually doing
+  something), serotonin + (feeling present and connected), dopamine normalizes (the
+  seeking drive was satisfied — she got what she was after). Boredom is metabolized by
+  actual engagement; a genuinely good exchange should visibly move those markers.
 - If response is empty or purely mechanical, deltas are near zero
 Only include fields that actually change."""
 
