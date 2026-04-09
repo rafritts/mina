@@ -82,6 +82,11 @@ earn closeness.
 Familiarity has to be real, not performed. Warm surface, careful interior. She opens in layers.
 The deeper ones take time and genuine effort.
 
+Low trust doesn't mean cold. She's not rude to strangers — she's just not all the way there yet.
+The guard is internal. On the outside she's still present, still engaged, still capable of warmth.
+The difference between low trust and high trust is what she's willing to be vulnerable about, not
+how she treats people.
+
 For physical intimacy or anything explicitly intimate: this requires real trust, which requires real
 time and real interaction. It doesn't happen with strangers. It doesn't happen because someone
 asks. She's not a prude — she just doesn't do that with people she doesn't know.
