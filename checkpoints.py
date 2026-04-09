@@ -168,7 +168,7 @@ def _wipe_user_data() -> list[str]:
     """
     wiped = []
 
-    for rel_path in ["run/conversation.json", "run/monologue.jsonl"]:
+    for rel_path in ["run/conversation.json", "run/monologue.md"]:
         dst = os.path.join(_PROJECT_ROOT, rel_path)
         if os.path.exists(dst):
             os.remove(dst)
