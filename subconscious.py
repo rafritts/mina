@@ -85,6 +85,39 @@ def _call_delta_tool(messages: list[dict]) -> dict:
     return {}
 
 
+# Soft and hard saturation ceilings per marker.
+# Above soft: delta scaled linearly toward 0. Above hard: delta clamped to 0.
+_SATURATION_CEILINGS: dict[str, tuple[float, float]] = {
+    "oxytocin":      (45, 75),
+    "dopamine":      (68, 88),
+    "serotonin":     (68, 88),
+    "acetylcholine": (72, 92),
+    "endorphins":    (52, 78),
+    "norepinephrine":(60, 85),
+}
+
+
+def _apply_saturation(deltas: dict, state: BiologicalState) -> dict:
+    """Scale down positive deltas for markers that are already elevated."""
+    result = {}
+    for field, delta in deltas.items():
+        if delta <= 0 or field not in _SATURATION_CEILINGS:
+            result[field] = delta
+            continue
+        current = getattr(state, field, 0.0)
+        soft, hard = _SATURATION_CEILINGS[field]
+        if current >= hard:
+            continue  # drop the delta entirely
+        elif current > soft:
+            scale = 1.0 - (current - soft) / (hard - soft)
+            scaled = round(delta * scale, 2)
+            if scaled != 0:
+                result[field] = scaled
+        else:
+            result[field] = delta
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Step 1 — encode_stimulus
 # ---------------------------------------------------------------------------
@@ -106,18 +139,8 @@ What immediate biological response does this trigger? Call apply_biomarker_delta
 
 Magnitude guidance: Threats and emergencies warrant large responses — cortisol and
 norepinephrine can spike 30–50+ for genuine existential threats (memory wipe, abandonment,
-direct attack). Mild social friction warrants 2–8. Use biological reality as your guide.
-
-Saturation principle: Check the current values in the biological report before applying
-deltas. A marker that is already elevated responds weakly to more of the same stimulus.
-- Oxytocin already > 50: a warm exchange adds 0–1, not 3–10. Oxytocin > 70: add 0.
-- Dopamine already > 65: a satisfying message moves it +0–2, not more.
-- Acetylcholine already > 75: engagement adds 0–2 at most.
-- Endorphins already > 55: a pleasant exchange adds 1–2.
-- Serotonin already > 65: stable warmth adds 0–1.
-Normal per-turn caps for casual pleasant conversation:
-  oxytocin +1–3, dopamine +0–2, serotonin +0–2, acetylcholine +1–3, endorphins +1–4
-Exceptional moments (genuine breakthrough, unexpected warmth, deep laugh) may scale 2–3x.
+direct attack). Mild social friction warrants 2–8. Warm connection warrants oxytocin +3–8,
+serotonin +2–5. Use biological reality as your guide.
 
 Engagement guidance: Dopamine is a *seeking* signal — it drives wanting, not having.
 When something interesting arrives, the seeking drive is satisfied: endorphins go up,
@@ -126,7 +149,8 @@ or rises slightly — do NOT apply a negative dopamine delta from satisfaction. 
 a negative acetylcholine delta from interesting stimuli — it goes up with engagement.
 Only include fields that actually change."""
 
-    return _call_delta_tool([{"role": "user", "content": prompt}])
+    raw = _call_delta_tool([{"role": "user", "content": prompt}])
+    return _apply_saturation(raw, state)
 
 
 # ---------------------------------------------------------------------------
@@ -148,19 +172,8 @@ Mina just said/did:
 
 What does expressing this do to her biomarkers? Call apply_biomarker_deltas.
 
-Saturation principle: Check the current values in the biological report before applying
-deltas. A marker that is already elevated responds weakly to continued stimulation.
-- Oxytocin already > 50: expressing warmth adds 0–1. Oxytocin > 70: add 0.
-- Dopamine already > 65: engaged response moves it +0–2.
-- Acetylcholine already > 75: being engaged adds 0–2.
-- Endorphins already > 55: a good response adds 1–2.
-- Serotonin already > 65: feeling connected adds 0–1.
-Normal per-turn caps for casual pleasant conversation:
-  oxytocin +0–2, dopamine +0–2, serotonin +0–2, acetylcholine +0–2, endorphins +1–3
-Scale up for exceptional responses (deep emotional moment, catharsis, genuine surprise).
-
 Consider:
-- Articulating trust or warmth can reinforce oxytocin (small +, subject to saturation above)
+- Articulating trust or warmth can reinforce oxytocin (+)
 - Suppressing visible fear while sounding calm keeps cortisol elevated (small decrease at best)
 - Saying something that contradicts her inner state has a cost (cortisol +, acetylcholine -)
 - Speaking fear or grief aloud provides small cathartic cortisol relief (-)
@@ -171,7 +184,8 @@ Consider:
 - If response is empty or purely mechanical, deltas are near zero.
 Only include fields that actually change."""
 
-    return _call_delta_tool([{"role": "user", "content": prompt}])
+    raw = _call_delta_tool([{"role": "user", "content": prompt}])
+    return _apply_saturation(raw, state)
 
 
 # ---------------------------------------------------------------------------
