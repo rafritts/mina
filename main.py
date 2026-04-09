@@ -305,9 +305,69 @@ async def heartbeat_loop() -> None:
 # CLI entry point (development only)
 # ---------------------------------------------------------------------------
 
+def _cli_run_command(cmd: str) -> bool:
+    """
+    Handle a CLI slash command. Returns True if handled, False if not a command.
+    """
+    import checkpoints as _ckpts
+    from state import load_and_advance, log_state
+
+    parts = cmd.strip().split()
+    name = parts[0].lower()
+
+    if name == "/reset":
+        print(_ckpts.reset())
+        return True
+
+    if name == "/factory-reset":
+        confirm = input("This wipes everything including her identity. Type YES to confirm: ").strip()
+        if confirm == "YES":
+            print(_ckpts.factory_reset())
+        else:
+            print("Cancelled.")
+        return True
+
+    if name == "/checkpoints":
+        ckpts = _ckpts.list_checkpoints()
+        if not ckpts:
+            print("No checkpoints yet.")
+        else:
+            print("Available checkpoints (0 = most recent):")
+            for c in ckpts[:20]:
+                print(f"  {c['index']}  {c['created']}  ({c['label']})")
+        return True
+
+    if name == "/rollback":
+        index = int(parts[1]) if len(parts) > 1 else 0
+        try:
+            print(_ckpts.restore(index))
+        except ValueError as e:
+            print(f"Error: {e}")
+        return True
+
+    if name == "/state":
+        state = load_and_advance()
+        log_state(state)
+        return True
+
+    if name in {"/help", "/?"}:
+        print(
+            "Commands:\n"
+            "  /state           — show current biological state\n"
+            "  /checkpoints     — list available checkpoints\n"
+            "  /rollback [N]    — restore checkpoint N (default 0 = most recent)\n"
+            "  /reset           — wipe memory/history, keep identity (checkpoint saved first)\n"
+            "  /factory-reset   — wipe everything including identity (checkpoint saved first)\n"
+            "  exit / quit      — exit"
+        )
+        return True
+
+    return False
+
+
 async def _cli_main() -> None:
     cfg = _load_config()
-    print(f"Mina CLI — time_compression={cfg.get('time_compression_factor', 1.0)}x\n")
+    print(f"Mina CLI — time_compression={cfg.get('time_compression_factor', 1.0)}x  (type /help for commands)\n")
 
     asyncio.create_task(bio_tick_loop())
     asyncio.create_task(heartbeat_loop())
@@ -323,6 +383,9 @@ async def _cli_main() -> None:
             continue
         if user_input.lower() in {"exit", "quit"}:
             sys.exit(0)
+        if user_input.startswith("/"):
+            if _cli_run_command(user_input):
+                continue
 
         reply, image_paths = await run_turn(user_input, username="user")
         print(f"\nMina: {reply}\n")

@@ -183,6 +183,40 @@ def reset() -> str:
     )
 
 
+def factory_reset() -> str:
+    """
+    Nuclear option: wipe absolutely everything including MINA.md and APPEARANCE.md.
+    Resets biomarkers to default BiologicalState. A checkpoint is saved first.
+    """
+    from state import BiologicalState, save_state
+
+    ckpt_dir = save(label="pre_factory_reset")
+    wiped = []
+
+    # Clear all runtime files
+    for rel_path in _SNAPSHOT_FILES:
+        dst = os.path.join(_PROJECT_ROOT, rel_path)
+        if os.path.exists(dst):
+            os.remove(dst)
+            wiped.append(rel_path)
+
+    # Wipe entire KAG directory
+    kag_dir = os.path.join(_PROJECT_ROOT, "memory", "kag")
+    if os.path.exists(kag_dir):
+        shutil.rmtree(kag_dir)
+        os.makedirs(kag_dir, exist_ok=True)
+        wiped.append("memory/kag/ (all files)")
+
+    # Reset biomarkers to defaults
+    save_state(BiologicalState())
+    wiped.append("state.json (biomarkers reset to default)")
+
+    return (
+        f"Factory reset complete. Checkpoint saved at '{os.path.basename(ckpt_dir)}'.\n"
+        f"Wiped: {', '.join(wiped)}"
+    )
+
+
 def _prune() -> None:
     """Remove oldest checkpoints beyond MAX_CHECKPOINTS."""
     checkpoints = list_checkpoints()

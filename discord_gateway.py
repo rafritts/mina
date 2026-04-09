@@ -497,6 +497,17 @@ async def cmd_reset(interaction: discord.Interaction):
         await interaction.followup.send(f"Reset failed: {e}", ephemeral=True)
 
 
+@tree.command(name="factory-reset", description="Nuclear reset: wipe everything including identity and biomarkers. Checkpoint saved first.")
+async def cmd_factory_reset(interaction: discord.Interaction):
+    import checkpoints as _ckpts
+    await interaction.response.defer(ephemeral=True)
+    try:
+        summary = _ckpts.factory_reset()
+        await interaction.followup.send(f"Factory reset complete.\n```{summary[:1800]}```", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"Factory reset failed: {e}", ephemeral=True)
+
+
 @tree.command(name="checkpoints", description="List available checkpoints for rollback.")
 async def cmd_checkpoints(interaction: discord.Interaction):
     import checkpoints as _ckpts
