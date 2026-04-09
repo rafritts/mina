@@ -72,7 +72,7 @@ def _normalise_image(data: bytes, mime: str) -> tuple[str, str]:
         img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
 
     compressed = b""
-    for quality in (80, 70, 60, 50, 40, 30, 20):
+    for quality in (80, 70, 60, 50, 40, 30, 20, 10, 5):
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=quality, optimize=True)
         compressed = buf.getvalue()
