@@ -5,6 +5,7 @@ Maps first-order and derived state values to named ranges with behavioral
 implications. Output is ground truth for the subconscious LLM — it cannot
 contradict this report. Also provides needs_summary() for heartbeat stimulus.
 """
+import time
 from state import BiologicalState, derived
 
 # ---------------------------------------------------------------------------
@@ -195,7 +196,8 @@ def biological_report(state: BiologicalState) -> str:
     flat = {**so, **to}
 
     SEP = "━" * 52
-    lines = ["BIOLOGICAL STATE REPORT", SEP]
+    now_str = time.strftime("%A, %B %-d %Y  %-I:%M %p")
+    lines = ["BIOLOGICAL STATE REPORT", f"Time: {now_str}", SEP]
 
     def row(label: str, value: float, table: list) -> str:
         name, impl = _get_range(value, table)
