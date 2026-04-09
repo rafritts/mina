@@ -19,6 +19,7 @@ import time
 from openai import OpenAI
 
 from memory import build_kag_context, build_rag_context, rag_add, read_kag, write_kag
+import checkpoints
 from state import (
     BiologicalState,
     apply_deltas,
@@ -233,6 +234,13 @@ async def run_heartbeat() -> None:
         return
 
     _log("Starting.")
+
+    # --- Checkpoint before doing anything else ---
+    try:
+        ckpt = checkpoints.save(label="heartbeat")
+        _log(f"Checkpoint saved: {os.path.basename(ckpt)}")
+    except Exception as e:
+        _log(f"Checkpoint failed (non-fatal): {e}")
 
     # --- Load and advance state ---
     state = load_and_advance()

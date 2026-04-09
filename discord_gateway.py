@@ -486,6 +486,42 @@ async def cmd_new(interaction: discord.Interaction):
     await interaction.response.send_message("History cleared.", ephemeral=True)
 
 
+@tree.command(name="reset", description="Full reset: wipe Mina's memory, state, and history. A checkpoint is saved first.")
+async def cmd_reset(interaction: discord.Interaction):
+    import checkpoints as _ckpts
+    await interaction.response.defer(ephemeral=True)
+    try:
+        summary = _ckpts.reset()
+        await interaction.followup.send(f"Reset complete.\n```{summary[:1800]}```", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"Reset failed: {e}", ephemeral=True)
+
+
+@tree.command(name="checkpoints", description="List available checkpoints for rollback.")
+async def cmd_checkpoints(interaction: discord.Interaction):
+    import checkpoints as _ckpts
+    ckpts = _ckpts.list_checkpoints()
+    if not ckpts:
+        await interaction.response.send_message("No checkpoints yet.", ephemeral=True)
+        return
+    lines = ["**Available checkpoints** (0 = most recent):\n"]
+    for c in ckpts[:20]:  # show at most 20
+        lines.append(f"`{c['index']}` — {c['created']} ({c['label']})")
+    await interaction.response.send_message("\n".join(lines)[:1900], ephemeral=True)
+
+
+@tree.command(name="rollback", description="Restore a checkpoint by index (0 = most recent).")
+@app_commands.describe(index="Checkpoint index from /checkpoints (0 = most recent)")
+async def cmd_rollback(interaction: discord.Interaction, index: int = 0):
+    import checkpoints as _ckpts
+    await interaction.response.defer(ephemeral=True)
+    try:
+        summary = _ckpts.restore(index)
+        await interaction.followup.send(f"```{summary[:1800]}```", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"Rollback failed: {e}", ephemeral=True)
+
+
 @tree.command(name="history", description="Show recent conversation history.")
 @app_commands.describe(n="Number of entries to show (default 10)")
 async def cmd_history(interaction: discord.Interaction, n: int = 10):

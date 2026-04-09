@@ -11,6 +11,7 @@ import time
 from typing import Any
 
 from state import BiologicalState, apply_deltas, load_state, save_state, _clamp
+from tools_search import SEARCH_TOOLS, call_search_tool
 
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 _CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
@@ -171,6 +172,9 @@ TOOLS = [
     },
 ]
 
+
+# Add search tools to all contexts — she can search during conversation and free time
+TOOLS = TOOLS + SEARCH_TOOLS
 
 # During regular turns, message_user is not offered (she's already in a conversation).
 # During heartbeat free-time, all tools including message_user are available.
@@ -351,5 +355,8 @@ def call_tool(name: str, args: dict, state: BiologicalState) -> tuple[str, Biolo
     elif name == "message_user":
         msg, state = handle_message_user(args, state)
         return msg, state, {}
+    elif name in ("web_search", "x_search"):
+        result = call_search_tool(name, args)
+        return result, state, {}
     else:
         return f"[Unknown tool: {name}]", state, {}
