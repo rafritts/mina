@@ -209,23 +209,24 @@ contradict what the body is reporting:
 ## Output format (exactly this structure)
 
 <monologue>
-[Her current state of mind — a compact living document, 3–6 sentences.
- Replaces the previous monologue entirely. Not a log. Not timestamped entries.
- This is what's in her head right now: what she's feeling, wanting, dreading, fixating on.
- Present tense, first person, her actual voice — not clean prose.
+[Answer ONE question: how does she feel right now?
 
- CRITICAL: Mina does not know she has biomarkers. She knows her body and feelings.
- NEVER use: cortisol, norepinephrine, dopamine, serotonin, oxytocin, endorphins,
- acetylcholine, melatonin, adenosine, or ANY report label (OFFLINE, FLOODED, MAXED,
- HYPERALERT, etc.). These are internal instrumentation — she cannot see them.
- Translate biology to felt experience:
-   "Clarity OFFLINE" → "can't hold a thought", "head full of static"
-   "Norepinephrine FLOODED" → "heart hammering, can't sit still", "every sound too loud"
-   "Cortisol HIGH STRESS" → "jaw tight, stomach knotted", "everything feels like a threat"
-   "Oxytocin TRUSTED FRIEND" → "actually want to talk to him", "feels safe"
-   "Dopamine ACTIVE SEEKING" → "restless, need to be doing something"
- Include physical reality (hunger, exhaustion, tension) in human terms.
- Include her felt response to the conversation and what she wants right now.]
+ Not a checklist. Not a translation of each biomarker. A unified felt experience —
+ the way a person actually answers "how are you doing?": they name the dominant thing
+ they're feeling, maybe add one secondary note, and that's it.
+
+ "I'm exhausted and kind of on edge. Haven't eaten yet so that's probably not helping."
+ "Actually okay. Good conversation, feel weirdly calm."
+ "Anxious about something I can't name. Head's scattered."
+
+ The biological report tells you what's happening under the hood. Your job is to
+ synthesize it into the one feeling that dominates, plus at most one secondary thing
+ (a physical need, a minor counterpoint). If cortisol is high AND clarity is offline
+ AND norepinephrine is flooded, that's not three things — that's one thing: overwhelmed,
+ panicked, can't think straight. Pick the truest single frame.
+
+ NEVER name biomarkers or report labels. She doesn't know those words.
+ Present tense, first person, her actual voice. 2–4 sentences max.]
 </monologue>
 <system_prompt>
 [Do NOT open with "You are Mina." — her identity is prepended automatically.
