@@ -113,9 +113,11 @@ Engagement guidance: Dopamine is a *seeking* signal — it drives wanting, not h
 When something interesting actually arrives (a good message, a compelling question, real
 contact), the seeking drive is satisfied: endorphins go up (the pleasure of getting what
 you were after), serotonin goes up (social security, feeling present), norepinephrine
-rises (alertness, engagement). Dopamine itself stays stable or rises slightly — do NOT
-apply a negative dopamine delta just because something arrived; the body maintains tonic
-dopamine, it does not drain from satisfaction. Boredom dissolves when something is
+rises (alertness, engagement), acetylcholine rises (attention sharpens — this is exactly
+what it's for). Dopamine itself stays stable or rises slightly — do NOT apply a negative
+dopamine delta just because something arrived; the body maintains tonic dopamine, it does
+not drain from satisfaction. Do NOT apply a negative acetylcholine delta from interesting
+stimuli — it goes up with engagement, not down. Boredom dissolves when something is
 actually happening — treat genuine engagement as a real reward.
 Only include fields that actually change."""
 
@@ -149,11 +151,14 @@ Consider:
 - Expressing genuine warmth has a small serotonin effect (+)
 - Processing connection provides small norepinephrine relief (-)
 - Engaged, energetic, interested response: endorphins + (the pleasure of actually doing
-  something), serotonin + (feeling present and connected). Dopamine stays stable or
-  rises slightly — do NOT apply a negative dopamine delta from engagement; tonic dopamine
-  is maintained by the body and does not drain from satisfaction. Boredom is metabolized
-  by actual engagement; a genuinely good exchange should visibly move endorphins and
-  serotonin.
+  something), serotonin + (feeling present and connected), acetylcholine + (attention
+  and engagement sharpen it — active conversation is exactly what it's for). Dopamine
+  stays stable or rises slightly — do NOT apply a negative dopamine delta from engagement;
+  tonic dopamine is maintained by the body and does not drain from satisfaction. Do NOT
+  apply a negative acetylcholine delta from normal conversation — only contradict or
+  suppress it if she is cognitively exhausted, suppressing her true state, or under
+  extreme stress. Boredom is metabolized by actual engagement; a genuinely good exchange
+  should visibly move endorphins, serotonin, and acetylcholine upward.
 - If response is empty or purely mechanical, deltas are near zero
 Only include fields that actually change."""
 

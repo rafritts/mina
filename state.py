@@ -166,11 +166,13 @@ def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalSt
     s.endorphins = _clamp(s.endorphins - 15.0 * sim_hours)
 
     # --- Acetylcholine ---
-    # Base decay + sleep pressure suppression + cortisol suppression
-    ach_effective = s.acetylcholine - 0.5 * sim_hours
-    ach_effective -= (s.sleep_pressure * 0.3) * sim_hours * 0.05   # gradual suppression
-    ach_effective -= (max(0, s.cortisol - 50) * 0.1) * sim_hours * 0.05
-    s.acetylcholine = _clamp(ach_effective)
+    # Drifts toward a resting baseline (~58). Sleep pressure and high cortisol suppress it.
+    # Engagement/activity push it above baseline via encode deltas.
+    ach_baseline = 58.0
+    ach_baseline -= (s.sleep_pressure * 0.3)   # sleep dep suppresses baseline
+    ach_baseline -= max(0, s.cortisol - 50) * 0.2  # chronic stress suppresses baseline
+    ach_baseline = max(20.0, ach_baseline)  # floor so extreme states don't go negative
+    s.acetylcholine = _clamp(s.acetylcholine + (ach_baseline - s.acetylcholine) * min(1.0, 0.05 * sim_hours))
 
     # --- Melatonin (pure circadian) ---
     s.melatonin = _clamp(_circadian_melatonin(hour_of_day), 0, 100)
