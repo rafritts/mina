@@ -249,17 +249,22 @@ async def _outbox_watcher() -> None:
         except (OSError, IOError):
             continue
 
-        # Resolve home channel
+        # Resolve home channel — prefer last-active, fall back to config default
+        channel = None
         try:
             with open(_HOME_CHANNEL_FILE) as f:
-                channel_id = int(f.read().strip())
-            channel = client.get_channel(channel_id)
+                channel = client.get_channel(int(f.read().strip()))
         except (FileNotFoundError, ValueError, TypeError):
-            channel = None
+            pass
 
         if channel is None:
-            print("[OUTBOX] No home channel known — re-queuing messages.")
-            # Re-write so they're not lost
+            cfg = _load_config()
+            default_id = cfg.get("discord_default_channel_id")
+            if default_id:
+                channel = client.get_channel(int(default_id))
+
+        if channel is None:
+            print("[OUTBOX] No channel available — re-queuing messages.")
             with open(_OUTBOX_FILE, "w") as f:
                 f.write("\n".join(lines) + "\n")
             continue
@@ -331,17 +336,17 @@ async def _run_turn(channel: discord.abc.Messageable, messages: list[discord.Mes
         if image_b64:
             break
 
-    async with channel.typing():
-        try:
+    try:
+        async with channel.typing():
             reply, image_paths = await run_turn(
                 user_input, username=username,
                 image_b64=image_b64, image_mime=image_mime,
             )
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            print(f"[GATEWAY ERROR] turn failed: {e}")
-            return
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        print(f"[GATEWAY ERROR] turn failed: {e}")
+        return
 
     await _deliver(channel, reply, image_paths)
 
