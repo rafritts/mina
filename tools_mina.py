@@ -380,6 +380,11 @@ async def handle_generate_image(args: dict) -> str:
     if appearance_tags and appearance_tags not in prompt:
         prompt = f"{appearance_tags}, {prompt}"
 
+    print(f"  [comfy] workflow={workflow} dimensions={dimensions} seed={seed}")
+    print(f"  [comfy] prompt={prompt[:200]}")
+    if negative_prompt:
+        print(f"  [comfy] negative={negative_prompt[:120]}")
+
     try:
         path = await generate_image(
             prompt=prompt,
@@ -389,8 +394,10 @@ async def handle_generate_image(args: dict) -> str:
             seed=seed,
             workflow=workflow,
         )
+        print(f"  [comfy] output={path or 'none'}")
         return path or ""
     except Exception as e:
+        print(f"  [comfy] ERROR: {e}")
         return f"[Image generation failed: {e}]"
 
 

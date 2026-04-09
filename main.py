@@ -7,6 +7,7 @@ The CLI loop at the bottom is for development/testing only — Discord is the pr
 import asyncio
 import json
 import os
+import re
 import sys
 import time
 from openai import OpenAI
@@ -255,7 +256,10 @@ async def run_turn(
     if not system_prompt:
         system_prompt = "You are Mina. Respond naturally."
 
-    print(f"[SYSTEM PROMPT]\n{system_prompt}")
+    # Log just the "## Right now" section — the monologue, not the full identity dump
+    _rn_match = re.search(r"## Right now\n(.*?)(?=\n##|\Z)", system_prompt, re.DOTALL)
+    _rn_text = _rn_match.group(1).strip() if _rn_match else "(not found)"
+    print(f"[RIGHT NOW] {_rn_text}")
 
     # [4] Mina responds
     new_entries, state, image_paths = await _mina_turn(system_prompt, history, state)
