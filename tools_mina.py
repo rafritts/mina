@@ -295,7 +295,6 @@ def handle_do(args: dict, state: BiologicalState) -> tuple[str, BiologicalState,
 
 async def handle_generate_image(args: dict) -> str:
     """Generate an image via ComfyUI. Returns path or empty string."""
-    from memory import read_kag
     from skills.comfyui.comfyui_skill import generate_image
 
     prompt = args.get("prompt", "")
@@ -306,13 +305,15 @@ async def handle_generate_image(args: dict) -> str:
     seed = args.get("seed", None)
 
     # Prepend appearance tags for any image (Mina is always in the frame unless overridden)
-    appearance = read_kag("APPEARANCE.md")
+    from memory import read_identity
+    appearance = read_identity("APPEARANCE.md")
     appearance_tags = ""
     if appearance:
-        # Extract the ComfyUI tags line
+        # Extract the "prompt:" line from the ComfyUI Generation Tags section
         for line in appearance.splitlines():
-            if "1girl" in line or "solo" in line:
-                appearance_tags = line.strip()
+            stripped = line.strip()
+            if stripped.lower().startswith("prompt:"):
+                appearance_tags = stripped[len("prompt:"):].strip()
                 break
     if appearance_tags and appearance_tags not in prompt:
         prompt = f"{appearance_tags}, {prompt}"

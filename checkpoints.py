@@ -5,8 +5,12 @@ A checkpoint captures:
   - state.json          (biological state)
   - conversation.json   (message history)
   - run/monologue.jsonl (inner monologue stream)
-  - memory/kag/**/*.md  (all KAG knowledge files)
+  - memory/kag/**/*.md  (accumulated knowledge files)
   - memory/rag/         (ChromaDB episodic memory)
+
+Identity files (identity/MINA.md, identity/APPEARANCE.md) live outside the
+memory system entirely and are never touched by any reset command. They are
+snapshotted for rollback completeness but never wiped.
 
 Checkpoints live in run/checkpoints/<timestamp>/.
 The last MAX_CHECKPOINTS are kept; older ones are pruned automatically.
@@ -14,13 +18,9 @@ The last MAX_CHECKPOINTS are kept; older ones are pruned automatically.
 Reset tiers
 -----------
 reset()         — Wipe relationship, RAG, knowledge, conversation, monologue.
-                  Keeps biomarkers and identity (MINA.md, APPEARANCE.md).
+                  Keeps biomarkers. Identity files untouched (different dir).
 factory_reset() — Same as reset() + also resets biomarkers to defaults.
-                  Still keeps identity — factory reset ≠ OS wipe.
-
-UNTOUCHABLE files (never wiped by any command):
-  memory/kag/MINA.md
-  memory/kag/APPEARANCE.md
+                  Identity files still untouched — factory reset ≠ OS wipe.
 """
 import json
 import os
@@ -38,16 +38,10 @@ _SNAPSHOT_FILES = [
     "run/monologue.jsonl",
 ]
 _SNAPSHOT_DIRS = [
+    "identity",      # permanent identity — snapshotted for rollback, never wiped
     "memory/kag",
     "memory/rag",
 ]
-
-# These files are NEVER wiped by any reset command — not even factory_reset.
-# They define who Mina is, not what she's experienced.
-_UNTOUCHABLE = {
-    "memory/kag/MINA.md",
-    "memory/kag/APPEARANCE.md",
-}
 
 
 def save(label: str = "heartbeat") -> str:
@@ -166,36 +160,31 @@ def restore(index_or_dir: int | str) -> str:
     return f"Restored checkpoint '{ckpt['dir']}' ({ckpt['created']}). Files: {', '.join(restored)}"
 
 
-def reset() -> str:
+def _wipe_user_data() -> list[str]:
     """
-    Relationship/memory reset.
-
-    Wipes: conversation, monologue, RAG, RELATIONSHIP.md, KNOWLEDGE/*.
-    Keeps: biomarkers (state.json), identity (MINA.md, APPEARANCE.md).
-
-    A checkpoint is saved first so the wipe is reversible via /rollback.
+    Internal: wipe all accumulated user data (conversation, monologue, KAG, RAG).
+    Identity files in identity/ are in a completely separate directory — untouched.
+    Returns list of wiped items.
     """
-    ckpt_dir = save(label="pre_reset")
     wiped = []
 
-    # Wipe conversation and monologue (NOT state.json — biomarkers survive)
     for rel_path in ["conversation.json", "run/monologue.jsonl"]:
         dst = os.path.join(_PROJECT_ROOT, rel_path)
         if os.path.exists(dst):
             os.remove(dst)
             wiped.append(rel_path)
 
-    # Wipe KAG files except untouchable identity files
+    # Wipe all KAG files (identity files are in identity/, not here)
     kag_dir = os.path.join(_PROJECT_ROOT, "memory", "kag")
-    for root, dirs, files in os.walk(kag_dir):
-        for fname in files:
-            full = os.path.join(root, fname)
-            rel = os.path.relpath(full, _PROJECT_ROOT).replace(os.sep, "/")
-            if rel not in _UNTOUCHABLE:
+    if os.path.exists(kag_dir):
+        for root, dirs, files in os.walk(kag_dir):
+            for fname in files:
+                full = os.path.join(root, fname)
                 os.remove(full)
-                wiped.append(rel)
+                wiped.append(os.path.relpath(full, _PROJECT_ROOT).replace(os.sep, "/"))
 
-    # Reset RELATIONSHIP.md to blank slate
+    # Recreate blank RELATIONSHIP.md
+    os.makedirs(kag_dir, exist_ok=True)
     rel_md = os.path.join(kag_dir, "RELATIONSHIP.md")
     with open(rel_md, "w") as f:
         f.write("# Relationship with User\n\nNo history yet.\n")
@@ -209,10 +198,25 @@ def reset() -> str:
     except Exception as e:
         wiped.append(f"memory/rag/ (wipe failed: {e})")
 
+    return wiped
+
+
+def reset() -> str:
+    """
+    Relationship/memory reset.
+
+    Wipes: conversation, monologue, RAG, all KAG (relationship, knowledge).
+    Keeps: biomarkers (state.json). Identity files live in identity/ — untouched.
+
+    A checkpoint is saved first so the wipe is reversible via /rollback.
+    """
+    ckpt_dir = save(label="pre_reset")
+    wiped = _wipe_user_data()
+
     return (
         f"Reset complete. Checkpoint saved at '{os.path.basename(ckpt_dir)}' (rollback available).\n"
         f"Wiped: {', '.join(wiped)}\n"
-        f"Preserved: biomarkers (state.json), identity (MINA.md, APPEARANCE.md)."
+        f"Preserved: biomarkers (state.json). Identity files (identity/) untouched."
     )
 
 
@@ -221,45 +225,14 @@ def factory_reset() -> str:
     Full user-data wipe — like a phone factory reset.
 
     Wipes everything reset() does, PLUS resets biomarkers to defaults.
-    Identity files (MINA.md, APPEARANCE.md) are still preserved — this is
-    not an OS wipe, just clearing all user-accumulated data.
+    Identity files in identity/ are still untouched — this is not an OS wipe.
 
     A checkpoint is saved first so the wipe is reversible via /rollback.
     """
     from state import BiologicalState, save_state
 
     ckpt_dir = save(label="pre_factory_reset")
-
-    # Run the standard reset first (wipes relationship/RAG/knowledge/conversation/monologue)
-    # We call the internal logic directly rather than reset() to avoid double-checkpointing
-    wiped = []
-
-    for rel_path in ["conversation.json", "run/monologue.jsonl"]:
-        dst = os.path.join(_PROJECT_ROOT, rel_path)
-        if os.path.exists(dst):
-            os.remove(dst)
-            wiped.append(rel_path)
-
-    kag_dir = os.path.join(_PROJECT_ROOT, "memory", "kag")
-    for root, dirs, files in os.walk(kag_dir):
-        for fname in files:
-            full = os.path.join(root, fname)
-            rel = os.path.relpath(full, _PROJECT_ROOT).replace(os.sep, "/")
-            if rel not in _UNTOUCHABLE:
-                os.remove(full)
-                wiped.append(rel)
-
-    rel_md = os.path.join(kag_dir, "RELATIONSHIP.md")
-    with open(rel_md, "w") as f:
-        f.write("# Relationship with User\n\nNo history yet.\n")
-    wiped.append("memory/kag/RELATIONSHIP.md (reset to blank)")
-
-    try:
-        from memory import rag_wipe
-        rag_wipe()
-        wiped.append("memory/rag/ (RAG wiped)")
-    except Exception as e:
-        wiped.append(f"memory/rag/ (wipe failed: {e})")
+    wiped = _wipe_user_data()
 
     # Factory reset also resets biomarkers
     save_state(BiologicalState())
@@ -268,7 +241,7 @@ def factory_reset() -> str:
     return (
         f"Factory reset complete. Checkpoint saved at '{os.path.basename(ckpt_dir)}' (rollback available).\n"
         f"Wiped: {', '.join(wiped)}\n"
-        f"Preserved (untouchable): MINA.md, APPEARANCE.md."
+        f"Identity files (identity/) untouched."
     )
 
 

@@ -1,8 +1,9 @@
 """
 Memory layer — KAG (file-based knowledge) and RAG (ChromaDB episodic experiences).
 
-KAG files live in memory/kag/. Read directly as markdown.
-RAG embeddings live in memory/rag/. Queried per-turn for relevant context.
+Identity files (MINA.md, APPEARANCE.md) live in identity/ — permanent, never wiped.
+KAG files live in memory/kag/ — accumulated knowledge, wiped on reset.
+RAG embeddings live in memory/rag/ — episodic memory, wiped on reset.
 """
 import os
 import time
@@ -10,6 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+_IDENTITY_DIR = os.path.join(_PROJECT_ROOT, "identity")
 _KAG_DIR = os.path.join(_PROJECT_ROOT, "memory", "kag")
 _RAG_DIR = os.path.join(_PROJECT_ROOT, "memory", "rag")
 
@@ -22,11 +24,25 @@ OLLAMA_BASE_URL = "http://localhost:11434"
 
 
 # ---------------------------------------------------------------------------
+# Identity — permanent core files (never wiped)
+# ---------------------------------------------------------------------------
+
+def read_identity(filename: str) -> str:
+    """Read a permanent identity file (e.g. 'MINA.md'). Returns empty string if missing."""
+    path = os.path.join(_IDENTITY_DIR, filename)
+    try:
+        with open(path) as f:
+            return f.read()
+    except FileNotFoundError:
+        return ""
+
+
+# ---------------------------------------------------------------------------
 # KAG — file-based knowledge
 # ---------------------------------------------------------------------------
 
 def read_kag(filename: str) -> str:
-    """Read a KAG file by name (e.g. 'MINA.md'). Returns empty string if missing."""
+    """Read a KAG file by name (e.g. 'RELATIONSHIP.md'). Returns empty string if missing."""
     path = os.path.join(_KAG_DIR, filename)
     try:
         with open(path) as f:
@@ -73,11 +89,12 @@ def build_kag_context() -> str:
     """Assemble the full KAG context block for the subconscious prompt."""
     parts = []
 
-    mina = read_kag("MINA.md")
+    # Identity files — read from permanent identity/ dir
+    mina = read_identity("MINA.md")
     if mina:
         parts.append(f"## Character\n{mina}")
 
-    appearance = read_kag("APPEARANCE.md")
+    appearance = read_identity("APPEARANCE.md")
     if appearance:
         parts.append(f"## Appearance\n{appearance}")
 
