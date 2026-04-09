@@ -732,31 +732,6 @@ async def cmd_restart(interaction: discord.Interaction):
     os._exit(42)
 
 
-@tree.command(name="reset", description="Clear history and restart.")
-async def cmd_reset(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-
-    # Clean bot messages from this channel
-    deleted = 0
-    channel = interaction.channel or await client.fetch_channel(interaction.channel_id)
-    async for message in channel.history(limit=300):
-        if message.author == client.user:
-            try:
-                await message.delete()
-                deleted += 1
-            except discord.HTTPException:
-                pass
-
-    save_history([])
-    await interaction.followup.send(
-        f"Reset: {deleted} message(s) deleted, history cleared. Restarting...",
-        ephemeral=True,
-    )
-    os.makedirs(_RUN_DIR, exist_ok=True)
-    with open(_RESTART_PENDING_FILE, "w") as f:
-        json.dump({"token": interaction.token, "application_id": interaction.application_id}, f)
-    os._exit(42)
-
 
 @tree.command(name="clean", description="Delete Mina's messages in this channel.")
 @app_commands.describe(n="Number of messages to delete (default: all)")
