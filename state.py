@@ -230,7 +230,7 @@ def derived(s: BiologicalState) -> dict:
         (s.glucose * 0.4) + (s.norepinephrine * 0.3) - (s.sleep_pressure * 0.3)
     )
     cognitive_clarity = _clamp(
-        (s.acetylcholine * 0.4) + (s.glucose * 0.2) - (s.sleep_pressure * 0.25) - (s.cortisol * 0.15)
+        20 + (s.acetylcholine * 0.4) + (s.glucose * 0.2) - (s.sleep_pressure * 0.25) - (s.cortisol * 0.15)
     )
     hedonic_tone = _clamp(
         (effective_dopamine * 0.5) + (s.endorphins * 0.3) + (s.serotonin * 0.2)
