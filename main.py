@@ -13,7 +13,8 @@ from openai import OpenAI
 
 from memory import build_kag_context, build_rag_context
 from state import apply_deltas, load_and_advance, load_state, log_state, save_state
-from subconscious import run_mode1
+from bio_report import biological_report
+from subconscious import encode_response, encode_stimulus, evaluate_activity_deltas, run_mode1
 from tools_mina import TOOLS, call_tool, handle_generate_image
 
 MODEL = os.getenv("MODEL", "grok-4-1-fast-reasoning")
@@ -157,7 +158,13 @@ async def _mina_turn(
             save_state(state)
             print(f"  [result] {result}")
             if name == "do" and extra:
-                await asyncio.to_thread(_apply_do_deltas, state, extra)
+                activity = extra.get("activity", "")
+                description = extra.get("description", "")
+                do_deltas = await asyncio.to_thread(evaluate_activity_deltas, state, activity, description)
+                if do_deltas:
+                    state = apply_deltas(state, do_deltas)
+                    save_state(state)
+                    print(f"  [do deltas] {do_deltas}")
 
         new_entries.append({
             "role": "tool",
@@ -177,35 +184,6 @@ async def _mina_turn(
 
     return new_entries, state, image_paths
 
-
-def _apply_do_deltas(state, pending: dict) -> None:
-    """Ask subconscious for biological deltas from a `do` activity."""
-    from subconscious import _get_client as sc_client, MODEL as SC_MODEL, _format_state_for_subconscious
-    import re
-
-    activity = pending.get("activity", "")
-    description = pending.get("description", "")
-    prompt = (
-        f"{_format_state_for_subconscious(state)}\n\n"
-        f"Mina just did:\nActivity: {activity}\nDescription: {description}\n\n"
-        f"Output ONLY a JSON object of biological deltas (e.g. {{\"dopamine\": 8}}). "
-        f"No explanation. Small, realistic values."
-    )
-    try:
-        response = sc_client().chat.completions.create(
-            model=SC_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-        )
-        raw = response.choices[0].message.content or ""
-        m = re.search(r"\{.*\}", raw, re.DOTALL)
-        if m:
-            deltas = json.loads(m.group())
-            apply_deltas(state, deltas)
-            save_state(state)
-            print(f"  [do deltas] {deltas}")
-    except Exception as e:
-        print(f"  [do deltas error] {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -232,9 +210,20 @@ async def run_turn(user_input: str, username: str = "user") -> tuple[str, list[s
         print("[STATE] Biological updates paused — time not advanced.")
     log_state(state)
 
+    # [1] encode_stimulus — biological response to incoming message
+    stimulus = f"{username}: {user_input}"
+    stimulus_deltas = await asyncio.to_thread(encode_stimulus, state, stimulus)
+    if stimulus_deltas:
+        print(f"[STIMULUS DELTAS] {stimulus_deltas}")
+        state = apply_deltas(state, stimulus_deltas)
+        save_state(state)
+
+    # [2] biological_report — deterministic, from updated state
+    report = biological_report(state)
+    print(f"[BIO REPORT]\n{report}")
+
     kag_context = build_kag_context()
     rag_context = build_rag_context(user_input)
-
     history = load_history()
 
     admin = consume_admin_instructions()
@@ -244,17 +233,14 @@ async def run_turn(user_input: str, username: str = "user") -> tuple[str, list[s
 
     history.append({"role": "user", "content": f"{username}: {user_input}"})
 
-    deltas, system_prompt = await asyncio.to_thread(run_mode1, state, history, kag_context, rag_context)
+    # [3] generate_system_prompt — Mode 1 reads biological report + monologue → writes monologue, returns system prompt
+    system_prompt = await asyncio.to_thread(run_mode1, report, history, kag_context, rag_context)
     if not system_prompt:
         system_prompt = "You are Mina. Respond naturally."
 
-    print(f"[MONOLOGUE] {system_prompt}")
-    if deltas:
-        print(f"[DELTAS] {deltas}")
+    print(f"[SYSTEM PROMPT] {system_prompt[:200]}...")
 
-    state = apply_deltas(state, deltas)
-    save_state(state)
-
+    # [4] Mina responds
     new_entries, state, image_paths = await _mina_turn(system_prompt, history, state)
     save_state(state)
 
@@ -263,6 +249,14 @@ async def run_turn(user_input: str, username: str = "user") -> tuple[str, list[s
         if entry.get("role") == "assistant" and entry.get("content"):
             reply = entry["content"]
             break
+
+    # [5] encode_response — biological effect of what Mina just expressed
+    if reply:
+        response_deltas = await asyncio.to_thread(encode_response, state, reply)
+        if response_deltas:
+            print(f"[RESPONSE DELTAS] {response_deltas}")
+            state = apply_deltas(state, response_deltas)
+            save_state(state)
 
     history.extend(new_entries)
     save_history(history)

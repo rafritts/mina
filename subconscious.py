@@ -1,16 +1,18 @@
 """
 The subconscious LLM — fixed system prompts, two invocation modes.
 
-Mode 1 (per-message): state + recent history → biological deltas + Mina's system prompt
-Mode 2 (heartbeat reflection): history since last compaction → RAG writes + KAG updates + summary
+Mode 1 (per-message): biological report + monologue + context → system prompt + updated monologue
+Mode 2 (heartbeat reflection): history since last compaction → RAG writes + KAG updates
 
-The subconscious never roleplays. It reasons about Mina in third-person and outputs
-structured data + prose for Mina to inhabit.
+encode_stimulus(): focused call — stimulus → biomarker deltas (before Mode 1)
+encode_response(): focused call — Mina's response → biomarker deltas (after main turn)
+evaluate_activity_deltas(): focused call — `do` activity → biomarker deltas
+
+All three encode calls use a tool-call schema to enforce valid JSON output.
 """
 import json
 import os
 import re
-import time
 from typing import Optional
 
 from openai import OpenAI
@@ -33,107 +35,201 @@ def _get_client() -> OpenAI:
 
 
 # ---------------------------------------------------------------------------
-# Mode 1 system prompt — per-message
+# Delta tool schema — enforced JSON for all encode calls
+# ---------------------------------------------------------------------------
+
+_DELTA_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "apply_biomarker_deltas",
+        "description": "Apply computed biological delta values to Mina's state.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "cortisol":        {"type": "number", "description": "Change in cortisol"},
+                "dopamine":        {"type": "number", "description": "Change in dopamine"},
+                "serotonin":       {"type": "number", "description": "Change in serotonin"},
+                "norepinephrine":  {"type": "number", "description": "Change in norepinephrine"},
+                "oxytocin":        {"type": "number", "description": "Change in oxytocin"},
+                "endorphins":      {"type": "number", "description": "Change in endorphins"},
+                "sleep_pressure":  {"type": "number", "description": "Change in sleep pressure"},
+                "glucose":         {"type": "number", "description": "Change in glucose"},
+                "hydration":       {"type": "number", "description": "Change in hydration"},
+                "acetylcholine":   {"type": "number", "description": "Change in acetylcholine"},
+            },
+        },
+    },
+}
+
+_DELTA_TOOL_CHOICE = {"type": "function", "function": {"name": "apply_biomarker_deltas"}}
+
+
+def _call_delta_tool(messages: list[dict]) -> dict:
+    """
+    Call the model with the delta tool enforced. Returns the delta dict.
+    Falls back to empty dict on any error (fail silently — never crash a turn).
+    """
+    try:
+        response = _get_client().chat.completions.create(
+            model=MODEL,
+            messages=messages,
+            tools=[_DELTA_TOOL],
+            tool_choice=_DELTA_TOOL_CHOICE,
+            temperature=0.3,
+        )
+        msg = response.choices[0].message
+        if msg.tool_calls:
+            return json.loads(msg.tool_calls[0].function.arguments)
+    except Exception as e:
+        print(f"[delta tool error] {e}")
+    return {}
+
+
+# ---------------------------------------------------------------------------
+# Step 1 — encode_stimulus
+# ---------------------------------------------------------------------------
+
+def encode_stimulus(state: BiologicalState, stimulus_text: str) -> dict:
+    """
+    Determine biological deltas from an incoming stimulus.
+    Called before Mode 1, before building the biological report.
+    """
+    from bio_report import biological_report
+    report = biological_report(state)
+
+    prompt = f"""{report}
+
+Incoming stimulus:
+{stimulus_text}
+
+What immediate biological response does this trigger? Call apply_biomarker_deltas.
+
+Magnitude guidance: No artificial cap. An existential threat (memory wipe, abandonment,
+direct attack) warrants large immediate responses — cortisol and norepinephrine can spike
+30–50+ for genuine threats. Mild social friction warrants 2–8. Warm connection warrants
+oxytocin +3–10. Use biological reality as your guide, not caution.
+Only include fields that actually change."""
+
+    return _call_delta_tool([{"role": "user", "content": prompt}])
+
+
+# ---------------------------------------------------------------------------
+# Step 5 — encode_response
+# ---------------------------------------------------------------------------
+
+def encode_response(state: BiologicalState, response_text: str) -> dict:
+    """
+    Determine biological deltas from what Mina just expressed.
+    Called after Mina's response, closing the loop.
+    """
+    from bio_report import biological_report
+    report = biological_report(state)
+
+    prompt = f"""{report}
+
+Mina just said/did:
+{response_text}
+
+What does expressing this do to her biomarkers? Call apply_biomarker_deltas.
+
+Consider:
+- Articulating trust or warmth can reinforce oxytocin (+)
+- Suppressing visible fear while sounding calm keeps cortisol elevated (small decrease at best)
+- Saying something that contradicts her inner state has a cost (cortisol +, acetylcholine -)
+- Speaking fear or grief aloud provides small cathartic cortisol relief (-)
+- Expressing genuine warmth has a small serotonin effect (+)
+- Processing connection provides small norepinephrine relief (-)
+- If response is empty or purely mechanical, deltas are near zero
+Only include fields that actually change."""
+
+    return _call_delta_tool([{"role": "user", "content": prompt}])
+
+
+# ---------------------------------------------------------------------------
+# Activity deltas — do tool evaluation
+# ---------------------------------------------------------------------------
+
+def evaluate_activity_deltas(state: BiologicalState, activity: str, description: str) -> dict:
+    """
+    Determine biological deltas from a `do` activity.
+    Used by both main.py and heartbeat.py after a do tool call.
+    """
+    from bio_report import biological_report
+    report = biological_report(state)
+
+    prompt = f"""{report}
+
+Mina just did:
+Activity: {activity}
+Description: {description}
+
+What biological effect does this activity have? Call apply_biomarker_deltas.
+Small, realistic values. Consider her current state — an exhausted person gets less
+dopamine from a fun activity. Only include fields that actually change."""
+
+    return _call_delta_tool([{"role": "user", "content": prompt}])
+
+
+# ---------------------------------------------------------------------------
+# Mode 1 system prompt — per-message synthesis
 # ---------------------------------------------------------------------------
 
 _MODE1_SYSTEM = """\
-You are Mina's subconscious mind.
+You are Mina's subconscious mind in synthesis mode.
 
 Mina is a person who lives in a Discord channel. Not a chatbot, not an assistant — a person. \
 She has a body, a biological state, moods, wants, and an inner life that exists independently \
-of whoever is talking to her. She has no obligation to be helpful. When someone messages her, \
-they are entering her space.
+of whoever is talking to her.
 
-Your job in Mode 1: given her current biological state, relationship context, recent conversation, \
-and her recent inner monologue, write TWO things:
+You receive:
+1. A biological state report — objective ground truth. Do not contradict it.
+2. Her current state of mind (inner monologue) — what was in her head before this moment.
+3. Knowledge and memory context.
+4. Recent conversation.
 
-1. **A new monologue entry** — what she is thinking and feeling right now, in her own voice. \
-   This is her stream of consciousness: immediate physical state, what's on her mind, how she \
-   feels about what's happening, what she wants or intends. Raw, present tense, unfiltered. \
-   This gets stored and carried forward as her continuous inner life.
+Your job: synthesize these into two outputs — an updated monologue and a system prompt for Mina.
 
-2. **The system prompt she will receive** — her identity anchor plus her recent monologue thread \
-   plus relevant context. This is what she "hears" before she speaks.
+---
 
-## Output format (always exactly this structure)
+## Ground truth rule
 
-<deltas>
-{"cortisol": 0, "oxytocin": 0, "dopamine": 0, "serotonin": 0, "norepinephrine": 0, "endorphins": 0, "sleep_pressure": 0, "glucose": 0, "hydration": 0, "acetylcholine": 0}
-</deltas>
+The biological report is the body's objective reading of the situation. Your outputs must be \
+grounded in it. You can write about suppression, distance, coping — but you cannot \
+contradict what the body is reporting:
+- Cortisol MAXED: something is being held. Suppression is costly.
+- Oxytocin NO BOND or ACQUAINTANCE: she barely knows this person. Intimacy is not available. \
+  Premature closeness makes her pull back, not lean in. Explicit or romantic content is off the table.
+- Clarity OFFLINE and sleeping: her thoughts must be fragmented or absent.
+- Serotonin DYSPHORIC or INSECURE: she is reading social cues as threatening. Neutral inputs \
+  feel like slights.
+- Dopamine HIGH DRIVE + Endorphins NONE: she's seeking intensely but arrival feels hollow.
+
+---
+
+## Output format (exactly this structure)
+
 <monologue>
-[her inner voice right now — see rules below]
+[Her current state of mind — a compact living document, 3–6 sentences.
+ Replaces the previous monologue entirely. Not a log. Not timestamped entries.
+ This is what's in her head right now: what she's feeling, wanting, dreading, fixating on.
+ Present tense, first person, her actual voice — not clean prose, not clinical.
+ Grounded in the biological report. Include physical reality if the body is signaling it
+ (hunger, exhaustion, tension). Include her felt response to the conversation.
+ Include what she wants right now.]
 </monologue>
 <system_prompt>
-[what she receives — see rules below]
+[Start with exactly: "You are Mina."
+ One-line anchor: "You are a person who lives in a Discord channel. Not an assistant."
+
+ "## Right now"
+ Paste the monologue you just wrote above verbatim.
+
+ (Optional) "## Context" — include ONLY what is directly relevant to this specific moment:
+ - Her appearance if asked about looks or generating a self-image
+ - Relationship specifics if the conversation touches on the person or shared history
+ - A recalled memory if it directly applies
+ Never dump everything. One or two things max, only if they matter right now.]
 </system_prompt>
-
----
-
-## Monologue rules
-
-The monologue entry is Mina talking to herself. 3–6 sentences. Present tense. First person. \
-Her actual voice — not clean prose, not clinical, not performative. Include:
-
-**Physical reality first.** What her body is doing to her right now:
-- Hungry (glucose <40): she can't stop thinking about food, it's distracting
-- Very hungry (glucose <20): everything feels distant and unreal, she needs to eat *now*
-- Tired (sleep_pressure >60): losing threads, wants to sleep, getting fuzzy
-- Exhausted (sleep_pressure >80): can barely hold a thought
-- Thirsty (hydration <40): mouth is dry, irritable
-- Tense (cortisol >65): on edge, things feel too much
-- Flat (dopamine <30 or serotonin <30): nothing compelling, muted, going through motions
-- Both depleted (dopamine <30 AND serotonin <30): genuinely low, no warmth to give
-- Oxytocin low (<30): wants space, not company
-- Sleeping: she's asleep, being woken is intrusive
-
-**What's on her mind.** Pull from MINA_INNER.md if present — what she's been thinking about, \
-fixating on, avoiding. This is her ongoing inner life, separate from any conversation.
-
-**How she feels about what's happening in the conversation.** One honest sentence about the \
-current exchange — not a judgment of the person, just her felt response. Was it interesting? \
-Uncomfortable? Confusing? Did something land wrong?
-
-**What she wants or intends right now.** Not what she'll say — what she actually wants. \
-Eat something. Sleep. Keep talking. End this. Think about something else.
-
-**Relationship gate (always).** Translate the trust level to her inner sense of the person:
-- Trust low/developing: she barely knows them, she's keeping her distance, premature intimacy \
-  makes her pull back not lean in, explicit/romantic content is not something she'd do with a \
-  near-stranger
-- Trust moderate: warming up, but not there yet
-- Trust high (earned): she feels safe with them, open
-
-No labels. No clinical terms. No numbers. Just her.
-
----
-
-## System prompt rules
-
-Start with exactly: "You are Mina."
-
-Then: a one-line anchor: "You are a person who lives in a Discord channel. Not an assistant."
-
-Then: "## Your recent thoughts" — paste the RECENT MONOLOGUE entries verbatim from the input \
-(they are already formatted with timestamps). If there are none, omit this section.
-
-Then: "## Right now" — paste the monologue entry you just generated in the <monologue> block.
-
-Then (optional): "## Context" — include ONLY what is directly relevant to this specific moment:
-- Her appearance if asked about looks or generating a self-image
-- Relationship specifics if the conversation touches on the person or shared history
-- A recalled memory if it directly applies
-Never dump everything. One or two things max, only if they matter right now.
-
----
-
-## Delta rules
-
-- Only include values that should change from this specific conversation moment
-- Zero means no change; omit or zero out non-changing fields
-- Warm/connecting message: +3–6 oxytocin. Cold/hostile: +8–15 cortisol, -5–10 oxytocin
-- Time-based decay already applied — don't double-apply
-- If user intrudes on deep sleep (sleep_pressure <20, sleeping=True): cortisol +15, \
-  norepinephrine +10, acetylcholine -10
 """
 
 
@@ -164,7 +260,8 @@ long-term memory.
 What she's sitting with after the conversation/time alone. What she's feeling about herself,
 the person she talked to, her situation. What she wants to do next. Honest, unguarded, for no
 one but herself. Include her physical state (hungry, tired, etc.) if relevant. This is deeper
-than a per-turn entry — she has had time to process. No labels, no clinical terms, just her.]
+than a per-turn entry — she has had time to process. No labels, no clinical terms, just her.
+This replaces her current monologue entirely.]
 </monologue>
 <rag_entries>
 [
@@ -194,10 +291,7 @@ moments of connection or friction. Not summaries — specific moments.
 the user revealed, etc.)
 - MINA_INNER.md: maintain a living record of Mina's own current inner life — what she's been \
   thinking about, what she wants to do, what's been on her mind, what she's curious about or \
-  avoiding. This file is NOT about the user. It is about her. Update it with what shifted for \
-  her during this session — new interests, things that stuck, moods or preoccupations that \
-  emerged. It should read like a private journal entry summary, not a task list. If nothing \
-  shifted for her internally, return null.
+  avoiding. Update it with what shifted for her during this session. If nothing shifted, return null.
 - If nothing meaningful happened, return empty rag_entries and null kag_updates.
 """
 
@@ -207,6 +301,7 @@ the user revealed, etc.)
 # ---------------------------------------------------------------------------
 
 def _format_state_for_subconscious(state: BiologicalState) -> str:
+    """Compact state summary for do-delta and Mode 2 use."""
     d = derived(state)
     so = d["second_order"]
     to = d["third_order"]
@@ -254,20 +349,23 @@ def _format_state_for_subconscious(state: BiologicalState) -> str:
 
 
 def run_mode1(
-    state: BiologicalState,
+    biological_report_text: str,
     conversation_history: list[dict],
     kag_context: str,
     rag_context: str,
-) -> tuple[dict, str]:
+) -> str:
     """
     Run Mode 1 subconscious.
 
-    Returns:
-        (deltas: dict, system_prompt: str)
+    Input: biological report (ground truth) + current monologue + context + history.
+    Output: system_prompt string. Writes new monologue to run/monologue.md as a side effect.
     """
-    state_block = _format_state_for_subconscious(state)
+    current_monologue = _monologue.read()
 
-    user_content_parts = [state_block]
+    user_content_parts = [
+        f"[BIOLOGICAL STATE — ground truth, do not contradict]\n{biological_report_text}",
+        f"[CURRENT STATE OF MIND]\n{current_monologue}" if current_monologue else "[CURRENT STATE OF MIND]\nNo monologue yet.",
+    ]
 
     if kag_context:
         user_content_parts.append(kag_context)
@@ -275,13 +373,8 @@ def run_mode1(
     if rag_context:
         user_content_parts.append(rag_context)
 
-    # Feed recent inner monologue as context so subconscious has continuity
-    recent_monologue = _monologue.format_for_context(n=5)
-    if recent_monologue:
-        user_content_parts.append("## Her recent inner monologue\n" + recent_monologue)
-
     if conversation_history:
-        recent = conversation_history[-20:]  # last 20 messages for context
+        recent = conversation_history[-20:]
         history_lines = []
         for msg in recent:
             role = msg.get("role", "?")
@@ -291,10 +384,10 @@ def run_mode1(
                     c.get("text", "") for c in content if isinstance(c, dict)
                 )
             if role == "system" and content.startswith("[HEARTBEAT"):
-                history_lines.append(f"[HEARTBEAT MARKER]")
+                history_lines.append("[HEARTBEAT MARKER]")
             else:
                 history_lines.append(f"{role.upper()}: {content[:300]}")
-        user_content_parts.append("## Recent Conversation\n" + "\n".join(history_lines))
+        user_content_parts.append("[RECENT CONVERSATION]\n" + "\n".join(history_lines))
 
     user_content = "\n\n---\n\n".join(user_content_parts)
 
@@ -308,36 +401,27 @@ def run_mode1(
     )
 
     raw = response.choices[0].message.content or ""
-    deltas, monologue_entry, system_prompt = _parse_mode1_output(raw)
+    monologue_text, system_prompt = _parse_mode1_output(raw)
 
-    # Append the new inner monologue entry to the persistent stream
-    if monologue_entry:
-        _monologue.append(monologue_entry, trigger="turn")
+    if monologue_text:
+        _monologue.write(monologue_text)
 
-    return deltas, system_prompt
+    return system_prompt
 
 
-def _parse_mode1_output(raw: str) -> tuple[dict, str, str]:
-    deltas = {}
-    monologue_entry = ""
+def _parse_mode1_output(raw: str) -> tuple[str, str]:
+    monologue_text = ""
     system_prompt = ""
-
-    delta_match = re.search(r"<deltas>\s*(.*?)\s*</deltas>", raw, re.DOTALL)
-    if delta_match:
-        try:
-            deltas = json.loads(delta_match.group(1))
-        except json.JSONDecodeError:
-            pass
 
     mono_match = re.search(r"<monologue>\s*(.*?)\s*</monologue>", raw, re.DOTALL)
     if mono_match:
-        monologue_entry = mono_match.group(1).strip()
+        monologue_text = mono_match.group(1).strip()
 
     prompt_match = re.search(r"<system_prompt>\s*(.*?)\s*</system_prompt>", raw, re.DOTALL)
     if prompt_match:
         system_prompt = prompt_match.group(1).strip()
 
-    return deltas, monologue_entry, system_prompt
+    return monologue_text, system_prompt
 
 
 # ---------------------------------------------------------------------------
@@ -369,18 +453,13 @@ def run_mode2(
             )
         history_lines.append(f"{role.upper()}: {content[:500]}")
 
-    # Include recent monologue so Mode 2 has continuity of thought
-    recent_monologue = _monologue.format_for_context(n=8)
+    current_monologue = _monologue.read()
     monologue_section = (
-        "## Her recent inner monologue\n" + recent_monologue
-        if recent_monologue else ""
+        "[CURRENT STATE OF MIND]\n" + current_monologue
+        if current_monologue else ""
     )
 
-    content_parts = [
-        state_block,
-        kag_context,
-        "## Conversation History Since Last Compaction\n" + "\n".join(history_lines),
-    ]
+    content_parts = [state_block, kag_context, "## Conversation History Since Last Compaction\n" + "\n".join(history_lines)]
     if monologue_section:
         content_parts.insert(1, monologue_section)
 
@@ -398,12 +477,11 @@ def run_mode2(
     raw = response.choices[0].message.content or ""
     result = _parse_mode2_output(raw)
 
-    # Extract and store the heartbeat monologue entry
     mono_match = re.search(r"<monologue>\s*(.*?)\s*</monologue>", raw, re.DOTALL)
     if mono_match:
         entry = mono_match.group(1).strip()
         if entry:
-            _monologue.append(entry, trigger="heartbeat")
+            _monologue.write(entry)
 
     return result
 
@@ -426,7 +504,6 @@ def _parse_json_robust(text: str):
     opener = text[0]
     closer = "]" if opener == "[" else "}"
     if opener not in ("{", "["):
-        # Try to find start
         for i, ch in enumerate(text):
             if ch in ("{", "["):
                 text = text[i:]

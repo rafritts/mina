@@ -18,6 +18,7 @@ import time
 
 from openai import OpenAI
 
+from bio_report import biological_report, needs_summary
 from memory import build_kag_context, build_rag_context, rag_add, read_kag, write_kag
 import checkpoints
 from state import (
@@ -28,7 +29,7 @@ from state import (
     log_state,
     save_state,
 )
-from subconscious import run_mode1, run_mode2
+from subconscious import encode_response, encode_stimulus, evaluate_activity_deltas, run_mode1, run_mode2
 from tools_mina import HEARTBEAT_TOOLS, call_tool, handle_generate_image
 
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -190,40 +191,6 @@ async def _run_mina_free_time(
     return new_entries, pending_do
 
 
-# ---------------------------------------------------------------------------
-# do-activity delta evaluation via subconscious
-# ---------------------------------------------------------------------------
-
-def _evaluate_do_deltas(state: "BiologicalState", activity: str, description: str) -> dict:
-    """Ask the subconscious to determine biological deltas for a `do` activity."""
-    from subconscious import _get_client, MODEL as SC_MODEL, _format_state_for_subconscious
-
-    prompt = (
-        f"{_format_state_for_subconscious(state)}\n\n"
-        f"Mina just did the following during free time:\n"
-        f"Activity: {activity}\n"
-        f"Description: {description}\n\n"
-        f"Output ONLY a JSON object of biological deltas "
-        f"(e.g. {{\"dopamine\": 8, \"cortisol\": -5}}). "
-        f"No explanation. Small, realistic values. "
-        f"Consider her current state when deciding the effect."
-    )
-
-    try:
-        response = _get_client().chat.completions.create(
-            model=SC_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-        )
-        raw = response.choices[0].message.content or ""
-        import re as _re
-        m = _re.search(r"\{.*\}", raw, _re.DOTALL)
-        if m:
-            return json.loads(m.group())
-    except Exception as e:
-        _log(f"do-delta evaluation error: {e}")
-
-    return {}
 
 
 # ---------------------------------------------------------------------------
@@ -285,17 +252,31 @@ async def run_heartbeat() -> None:
     kag_context = build_kag_context()
     rag_context = build_rag_context("free time heartbeat")
 
-    # Run subconscious Mode 1 to get Mina's system prompt
-    state = load_and_advance()  # re-advance in case time passed
-    deltas, system_prompt = await asyncio.to_thread(run_mode1, state, history, kag_context, rag_context)
-    state = apply_deltas(state, deltas)
-    save_state(state)
+    # Re-advance state in case time passed during Mode 2
+    state = load_and_advance()
+
+    # [1] encode_stimulus — biological response to elapsed time + current needs
+    elapsed_minutes = (time.time() - (state.last_updated or time.time())) / 60.0
+    stimulus_text = needs_summary(state, elapsed_minutes)
+    _log(f"Heartbeat stimulus: {stimulus_text}")
+    stimulus_deltas = await asyncio.to_thread(encode_stimulus, state, stimulus_text)
+    if stimulus_deltas:
+        _log(f"Stimulus deltas: {stimulus_deltas}")
+        state = apply_deltas(state, stimulus_deltas)
+        save_state(state)
+
+    # [2] biological_report — deterministic, from updated state
+    report = biological_report(state)
+
+    # [3] generate_system_prompt — Mode 1
+    system_prompt = await asyncio.to_thread(run_mode1, report, history, kag_context, rag_context)
 
     if not system_prompt:
         _log("No system prompt from subconscious — skipping Mina turn.")
         _save_history(history)
         return
 
+    # [4] Mina's free time turn
     new_entries, pending_do = await _run_mina_free_time(state, system_prompt, history)
 
     # Append heartbeat entries to shared history
@@ -304,13 +285,28 @@ async def run_heartbeat() -> None:
     # --- Phase 3: State update ---
     _log("Phase 3: applying state updates.")
 
+    # [5a] do-activity deltas (if she used the do tool)
     if pending_do:
         activity = pending_do.get("activity", "")
         description = pending_do.get("description", "")
-        state = load_and_advance()  # fresh advance before evaluation
-        do_deltas = await asyncio.to_thread(_evaluate_do_deltas, state, activity, description)
-        state = apply_deltas(state, do_deltas)
-        _log(f"Do activity '{activity}' deltas: {do_deltas}")
+        state = load_and_advance()
+        do_deltas = await asyncio.to_thread(evaluate_activity_deltas, state, activity, description)
+        if do_deltas:
+            state = apply_deltas(state, do_deltas)
+            _log(f"Do activity '{activity}' deltas: {do_deltas}")
+
+    # [5b] encode_response — biological effect of what Mina said/did during free time
+    free_time_text = ""
+    for entry in reversed(new_entries):
+        if entry.get("role") == "assistant" and entry.get("content"):
+            free_time_text = entry["content"]
+            break
+    if free_time_text:
+        state = load_and_advance()
+        response_deltas = await asyncio.to_thread(encode_response, state, free_time_text)
+        if response_deltas:
+            state = apply_deltas(state, response_deltas)
+            _log(f"Response deltas: {response_deltas}")
 
     # Final time advance + save
     state = load_and_advance()

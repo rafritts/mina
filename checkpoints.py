@@ -35,7 +35,7 @@ _MAX_CHECKPOINTS = 48  # ~24h of 30-min heartbeats
 _SNAPSHOT_FILES = [
     "state.json",
     "conversation.json",
-    "run/monologue.jsonl",
+    "run/monologue.md",
 ]
 _SNAPSHOT_DIRS = [
     "identity",      # permanent identity — snapshotted for rollback, never wiped

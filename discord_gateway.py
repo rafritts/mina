@@ -773,21 +773,13 @@ async def cmd_context(interaction: discord.Interaction):
     bar = "\u2588" * bar_filled + "\u2591" * (20 - bar_filled)
     role_str = "  ".join(f"{r}: {c}" for r, c in sorted(role_counts.items()))
 
-    # --- Monologue stats ---
-    mono_entries = _monologue.get_recent(500)
-    mono_count = len(mono_entries)
-    if mono_entries:
-        age_s = int(time.time() - mono_entries[-1]["ts"])
-        if age_s < 60:
-            mono_age = f"{age_s}s ago"
-        elif age_s < 3600:
-            mono_age = f"{age_s // 60}m ago"
-        else:
-            mono_age = f"{age_s // 3600}h ago"
-    else:
-        mono_age = "never"
+    # --- Monologue ---
+    mono_text = _monologue.read()
+    mono_words = len(mono_text.split()) if mono_text else 0
+    mono_preview = mono_text[:120].replace("\n", " ") + ("…" if len(mono_text) > 120 else "") if mono_text else "(empty)"
 
     # --- Bio state ---
+    so = d["second_order"]
     sleep_str = (
         f"sleeping (wakes {time.strftime('%H:%M', time.localtime(s.sleep_expected_wake))})"
         if s.sleeping and s.sleep_expected_wake
@@ -803,13 +795,16 @@ async def cmd_context(interaction: discord.Interaction):
         f"  Breakdown: {role_str}",
         "",
         "Monologue",
-        f"  Entries:   {mono_count} / 500  (last: {mono_age})",
+        f"  Words:     {mono_words}",
+        f"  Preview:   {mono_preview}",
         "",
         "Biological State",
         f"  Status:    {sleep_str}",
-        f"  Biomarks:  energy={s.energy:.0f}  hunger={s.hunger:.0f}  thirst={s.thirst:.0f}  "
-        f"fatigue={s.fatigue:.0f}",
-        f"  Mood:      anxiety={to['anxiety']}  depression={to['depression']}  "
+        f"  First:     cortisol={s.cortisol:.0f}  dopamine={s.dopamine:.0f}  serotonin={s.serotonin:.0f}  "
+        f"oxytocin={s.oxytocin:.0f}",
+        f"  Second:    energy={so['energy']}  clarity={so['cognitive_clarity']}  "
+        f"valence={so['mood_valence']}",
+        f"  Third:     anxiety={to['anxiety']}  depression={to['depression']}  "
         f"boredom={to['boredom']}  loneliness={to['loneliness']}",
         "",
         "Config",
