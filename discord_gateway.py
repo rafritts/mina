@@ -852,23 +852,22 @@ async def cmd_clean(interaction: discord.Interaction, n: int = 0):
     channel = interaction.channel or await client.fetch_channel(interaction.channel_id)
 
     deleted_count = 0
-    limit_remaining = n if n > 0 else None
+    limit_remaining = [n] if n > 0 else None  # mutable container for nonlocal mutation
 
     def _is_mine(m: discord.Message) -> bool:
-        nonlocal limit_remaining
         if m.author != client.user:
             return False
         if limit_remaining is not None:
-            if limit_remaining <= 0:
+            if limit_remaining[0] <= 0:
                 return False
-            limit_remaining -= 1
+            limit_remaining[0] -= 1
         return True
 
-    # channel.purge() batches into bulk-delete (up to 100/call) for recent messages,
-    # falling back to individual deletes for messages older than 14 days.
-    # It also respects rate limits automatically.
+    # Scan at most 500 recent messages (limit=None scans all history, which hangs).
+    # For a specific n, scan n*5 to account for non-Mina messages interspersed.
+    scan_limit = (n * 5) if n > 0 else 500
     try:
-        deleted = await channel.purge(limit=None, check=_is_mine, bulk=True)
+        deleted = await channel.purge(limit=scan_limit, check=_is_mine, bulk=True)
         deleted_count = len(deleted)
     except discord.HTTPException as e:
         await interaction.followup.send(f"Error during purge: {e}", ephemeral=True)
