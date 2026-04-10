@@ -851,26 +851,35 @@ async def cmd_clean(interaction: discord.Interaction, n: int = 0):
     await interaction.response.defer(ephemeral=True)
     channel = interaction.channel or await client.fetch_channel(interaction.channel_id)
 
-    deleted_count = 0
-    limit_remaining = [n] if n > 0 else None  # mutable container for nonlocal mutation
-
-    def _is_mine(m: discord.Message) -> bool:
-        if m.author != client.user:
-            return False
-        if limit_remaining is not None:
-            if limit_remaining[0] <= 0:
-                return False
-            limit_remaining[0] -= 1
-        return True
-
-    # Scan at most 500 recent messages (limit=None scans all history, which hangs).
-    # For a specific n, scan n*5 to account for non-Mina messages interspersed.
+    import datetime as _dt
+    cutoff = discord.utils.utcnow() - _dt.timedelta(days=14)
     scan_limit = (n * 5) if n > 0 else 500
+
+    # Collect Mina's messages from recent history
+    mine: list[discord.Message] = []
+    async for msg in channel.history(limit=scan_limit, oldest_first=False):
+        if msg.author != client.user:
+            continue
+        if msg.created_at < cutoff:
+            continue  # skip messages >14 days — bulk delete forbidden, individual delete is 1/sec
+        mine.append(msg)
+        if n > 0 and len(mine) >= n:
+            break
+
+    # Bulk delete in batches of 100 (Discord API limit per call)
+    deleted_count = 0
     try:
-        deleted = await channel.purge(limit=scan_limit, check=_is_mine, bulk=True)
-        deleted_count = len(deleted)
+        for i in range(0, len(mine), 100):
+            batch = mine[i:i + 100]
+            if len(batch) == 1:
+                await batch[0].delete()
+            else:
+                await channel.delete_messages(batch)
+            deleted_count += len(batch)
     except discord.HTTPException as e:
-        await interaction.followup.send(f"Error during purge: {e}", ephemeral=True)
+        await interaction.followup.send(
+            f"Deleted {deleted_count} before error: {e}", ephemeral=True
+        )
         return
 
     await interaction.followup.send(f"Deleted {deleted_count} message(s).", ephemeral=True)
