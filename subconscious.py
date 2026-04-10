@@ -455,7 +455,7 @@ def run_mode1(
         user_content_parts.append(rag_context)
 
     if conversation_history:
-        recent = conversation_history[-20:]
+        recent = conversation_history[-3:]
         history_lines = []
         for msg in recent:
             role = msg.get("role", "?")
@@ -464,7 +464,9 @@ def run_mode1(
                 content = " ".join(
                     c.get("text", "") for c in content if isinstance(c, dict)
                 )
-            if role == "system" and content.startswith("[HEARTBEAT"):
+            if role == "system" and content.startswith("[COMPACT]"):
+                history_lines.append("[EARLIER CONTEXT COMPACTED]")
+            elif role == "system" and content.startswith("[HEARTBEAT"):
                 history_lines.append("[HEARTBEAT MARKER]")
             else:
                 history_lines.append(f"{role.upper()}: {content[:300]}")

@@ -30,6 +30,8 @@ _CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
 _PAUSED_FLAG = os.path.join(_PROJECT_ROOT, "run", ".paused")
 
 HISTORY_MAX = 200
+HISTORY_KEEP = 10     # messages kept verbatim after compaction
+HISTORY_COMPACT_AT = 22  # trigger compaction when history exceeds this
 
 _client: OpenAI | None = None
 
@@ -69,6 +71,56 @@ def save_history(history: list[dict]) -> None:
         json.dump(history, f, indent=2)
 
 
+def _compact_history(history: list[dict]) -> list[dict]:
+    """
+    Summarize all but the last HISTORY_KEEP messages into a compact block.
+    Returns [compact_system_msg] + last HISTORY_KEEP messages.
+    """
+    overflow = history[:-HISTORY_KEEP]
+    recent   = history[-HISTORY_KEEP:]
+
+    # Only summarize user/assistant messages — skip system noise
+    to_summarize = [m for m in overflow if m.get("role") in ("user", "assistant")]
+    if not to_summarize:
+        return recent  # nothing worth keeping from overflow
+
+    lines = []
+    for m in to_summarize:
+        role = m.get("role", "?")
+        content = m.get("content", "")
+        if isinstance(content, list):
+            content = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
+        lines.append(f"{role.upper()}: {content[:400]}")
+
+    try:
+        response = _get_client().chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": (
+                    "Summarize this conversation excerpt in 4-8 bullet points. "
+                    "Cover: what was discussed, notable moments, things to remember. "
+                    "Be concise. No preamble."
+                )},
+                {"role": "user", "content": "\n".join(lines)},
+            ],
+            temperature=0.3,
+            max_tokens=400,
+        )
+        import token_stats as _ts
+        _ts.record_response("compact", response)
+        summary = response.choices[0].message.content or ""
+    except Exception as e:
+        print(f"[COMPACT ERROR] {e}")
+        return history  # fall back to uncompacted on error
+
+    if not summary:
+        return recent
+
+    compact_msg = {"role": "system", "content": f"[COMPACT]\n{summary}"}
+    print(f"[COMPACT] Summarized {len(overflow)} messages into {len(summary)} chars")
+    return [compact_msg] + recent
+
+
 def touch_last_active() -> None:
     with open(_LAST_ACTIVE_FILE, "w") as f:
         f.write(str(time.time()))
@@ -86,12 +138,23 @@ def consume_admin_instructions() -> str:
 
 def api_messages(history: list[dict], system_prompt: str) -> list[dict]:
     """Build the messages array for the API — single system message, no internal markers."""
-    messages = [{"role": "system", "content": system_prompt}]
+    compact_parts = []
+    conversation = []
     for msg in history:
-        if msg.get("role") == "system":
+        role = msg.get("role")
+        content = msg.get("content", "")
+        if role == "system":
+            # Inject compaction summaries into system prompt; skip other system messages
+            if isinstance(content, str) and content.startswith("[COMPACT]"):
+                compact_parts.append(content[len("[COMPACT]\n"):])
             continue
-        messages.append(msg)
-    return messages
+        conversation.append(msg)
+
+    full_system = system_prompt
+    if compact_parts:
+        full_system += "\n\n---\n\n[Earlier conversation summary]\n" + "\n\n".join(compact_parts)
+
+    return [{"role": "system", "content": full_system}] + conversation
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +347,8 @@ async def run_turn(
             save_state(state)
 
     history.extend(new_entries)
+    if len(history) > HISTORY_COMPACT_AT:
+        history = await asyncio.to_thread(_compact_history, history)
     save_history(history)
 
     import token_stats as _ts

@@ -243,6 +243,7 @@
     response:    'Response encode',
     activity:    'Activity encode',
     mode2:       'Heartbeat (Mode 2)',
+    compact:     'History compaction',
   };
 
   function fmtNum(n: number): string {
