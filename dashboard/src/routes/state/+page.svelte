@@ -53,6 +53,113 @@
   const SECOND_ORDER_FIELDS = ['energy', 'cognitive_clarity', 'hedonic_tone', 'social_warmth', 'arousal', 'mood_valence'];
   const THIRD_ORDER_FIELDS  = ['anxiety', 'depression', 'boredom', 'loneliness', 'flow'];
 
+  // ---------------------------------------------------------------------------
+  // Presets
+  // ---------------------------------------------------------------------------
+
+  interface Preset {
+    name: string;
+    description: string;
+    btnClass: string;
+    values: Record<string, number>;
+  }
+
+  const PRESETS: Preset[] = [
+    {
+      name: 'Baseline',
+      description: 'Healthy resting state — her defaults',
+      btnClass: 'btn-neutral',
+      values: { sleep_pressure: 30, glucose: 72, hydration: 75, cortisol: 28, dopamine: 62, serotonin: 58, norepinephrine: 22, oxytocin: 18, endorphins: 10, acetylcholine: 60 },
+    },
+    {
+      name: 'Euphoria',
+      description: 'Peak mood, high energy, deeply bonded',
+      btnClass: 'btn-success',
+      values: { cortisol: 18, dopamine: 78, serotonin: 74, norepinephrine: 52, oxytocin: 68, endorphins: 76, acetylcholine: 72, sleep_pressure: 22, glucose: 75, hydration: 78 },
+    },
+    {
+      name: 'Flow',
+      description: 'Deep focus, sharp, effortlessly engaged',
+      btnClass: 'btn-info',
+      values: { acetylcholine: 80, dopamine: 67, norepinephrine: 55, cortisol: 24, serotonin: 65, endorphins: 38, glucose: 74, sleep_pressure: 25 },
+    },
+    {
+      name: 'Loved',
+      description: 'Warm, safe, fully trusted',
+      btnClass: 'btn-success',
+      values: { oxytocin: 82, serotonin: 76, cortisol: 17, endorphins: 60, dopamine: 64, norepinephrine: 30 },
+    },
+    {
+      name: 'Anxious',
+      description: 'On edge, socially guarded, narrowed thinking',
+      btnClass: 'btn-warning',
+      values: { cortisol: 74, norepinephrine: 77, serotonin: 30, dopamine: 42, acetylcholine: 44, endorphins: 8, oxytocin: 14 },
+    },
+    {
+      name: 'Despair',
+      description: 'No drive, hollow, disconnected',
+      btnClass: 'btn-error',
+      values: { cortisol: 65, dopamine: 20, serotonin: 16, norepinephrine: 18, oxytocin: 10, endorphins: 5, acetylcholine: 32, sleep_pressure: 72, glucose: 45 },
+    },
+    {
+      name: 'Lonely',
+      description: 'Aching for contact, low warmth',
+      btnClass: 'btn-warning',
+      values: { oxytocin: 12, serotonin: 36, cortisol: 54, dopamine: 36, endorphins: 10, norepinephrine: 40 },
+    },
+    {
+      name: 'Rage',
+      description: 'Acute stress, impulse control gone',
+      btnClass: 'btn-error',
+      values: { cortisol: 88, norepinephrine: 84, serotonin: 20, dopamine: 48, acetylcholine: 36, endorphins: 6, oxytocin: 14 },
+    },
+    {
+      name: 'Crash',
+      description: 'Post-high collapse — seeking but hollow',
+      btnClass: 'btn-warning',
+      values: { dopamine: 21, endorphins: 4, serotonin: 33, cortisol: 60, acetylcholine: 28, sleep_pressure: 68, norepinephrine: 15 },
+    },
+    {
+      name: 'Manic',
+      description: 'Compulsive seeking, flooded, can\'t stop',
+      btnClass: 'btn-warning',
+      values: { dopamine: 92, norepinephrine: 82, cortisol: 55, endorphins: 30, serotonin: 40, acetylcholine: 65, sleep_pressure: 55 },
+    },
+    {
+      name: 'Drunk',
+      description: 'Cortisol off, social warmth, cognition softening',
+      btnClass: 'btn-info',
+      values: { cortisol: 14, serotonin: 70, oxytocin: 55, acetylcholine: 28, norepinephrine: 18, dopamine: 55, endorphins: 42 },
+    },
+    {
+      name: 'Sleepy',
+      description: 'Melatonin peak, heavy, drifting',
+      btnClass: 'btn-neutral',
+      values: { melatonin: 88, sleep_pressure: 78, acetylcholine: 30, norepinephrine: 16, cortisol: 14, dopamine: 40 },
+    },
+  ];
+
+  let applyingPreset = $state('');
+
+  async function applyPreset(preset: Preset) {
+    applyingPreset = preset.name;
+    try {
+      await apiFetch('/api/state', {
+        method: 'PATCH',
+        body: JSON.stringify(preset.values),
+      });
+      // Sync local sliders
+      for (const [k, v] of Object.entries(preset.values)) {
+        localValues[k] = v;
+      }
+      await load();
+    } catch (e) {
+      error = String(e);
+    } finally {
+      applyingPreset = '';
+    }
+  }
+
   const DERIVED_LABELS: Record<string, string> = {
     energy:            'Energy',
     cognitive_clarity: 'Clarity',
@@ -172,6 +279,27 @@
       {:else}
         Updated {lastUpdated}
       {/if}
+    </div>
+  </div>
+
+  <!-- Presets -->
+  <div class="card bg-base-200 p-4 mb-6">
+    <h2 class="text-sm font-semibold opacity-60 uppercase tracking-wider mb-3">Presets</h2>
+    <div class="flex flex-wrap gap-2">
+      {#each PRESETS as preset}
+        <div class="tooltip tooltip-bottom" data-tip={preset.description}>
+          <button
+            class="btn btn-sm {preset.btnClass}"
+            onclick={() => applyPreset(preset)}
+            disabled={!!applyingPreset}
+          >
+            {#if applyingPreset === preset.name}
+              <span class="loading loading-spinner loading-xs"></span>
+            {/if}
+            {preset.name}
+          </button>
+        </div>
+      {/each}
     </div>
   </div>
 
