@@ -1,7 +1,7 @@
 <script lang="ts">
   import '../app.css';
   import { onMount } from 'svelte';
-  import { setToken } from '$lib/api';
+  import { setToken, apiFetch } from '$lib/api';
   import { page } from '$app/stores';
 
   let { children } = $props();
@@ -42,6 +42,22 @@
     localStorage.setItem('dashboard_token', t);
     setToken(t);
   }
+
+  // Billing
+  let billingRemaining = $state<number | null>(null);
+
+  async function fetchBilling() {
+    try {
+      const data = await apiFetch<{ remaining?: number; error?: string }>('/api/billing');
+      if (typeof data.remaining === 'number') billingRemaining = data.remaining;
+    } catch { /* silent */ }
+  }
+
+  $effect(() => {
+    fetchBilling();
+    const id = setInterval(fetchBilling, 30_000);
+    return () => clearInterval(id);
+  });
 
   const navLinks = [
     { href: '/state',        label: 'State' },
@@ -102,7 +118,10 @@
         </ul>
       </div>
 
-      <div class="navbar-end gap-1">
+      <div class="navbar-end gap-3">
+        {#if billingRemaining !== null}
+          <span class="text-xs tabular-nums opacity-50">${billingRemaining.toFixed(2)} left</span>
+        {/if}
         <button
           class="btn btn-ghost btn-xs"
           onclick={() => { localStorage.removeItem('dashboard_token'); window.location.reload(); }}

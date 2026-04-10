@@ -256,6 +256,35 @@ def heartbeat_status(request: Request):
 
 
 # ---------------------------------------------------------------------------
+# xAI billing
+# ---------------------------------------------------------------------------
+
+@app.get("/api/billing")
+def get_billing(request: Request):
+    _check_auth(request)
+    import urllib.request as _urllib
+    import json as _json
+
+    management_key = os.getenv("XAI_MANAGEMENT_KEY", "")
+    team_id        = os.getenv("XAI_TEAM_ID", "")
+
+    if not management_key or not team_id:
+        return {"error": "billing_not_configured"}
+
+    url = f"https://management-api.x.ai/v1/billing/teams/{team_id}/postpaid/invoice/preview"
+    try:
+        req = _urllib.Request(url, headers={"Authorization": f"Bearer {management_key}"})
+        with _urllib.urlopen(req, timeout=10) as resp:
+            data = _json.loads(resp.read())
+        cap       = float(data["effectiveSpendingLimit"]) / 100
+        used      = float(data["coreInvoice"]["amountBeforeVat"]) / 100
+        remaining = cap - used
+        return {"cap": round(cap, 2), "used": round(used, 2), "remaining": round(remaining, 2)}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=502)
+
+
+# ---------------------------------------------------------------------------
 # Token usage
 # ---------------------------------------------------------------------------
 
