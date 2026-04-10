@@ -273,7 +273,10 @@ def get_billing(request: Request):
 
     url = f"https://management-api.x.ai/v1/billing/teams/{team_id}/postpaid/invoice/preview"
     try:
-        req = _urllib.Request(url, headers={"Authorization": f"Bearer {management_key}"})
+        req = _urllib.Request(url, headers={
+                "Authorization": f"Bearer {management_key}",
+                "User-Agent": "Mozilla/5.0",  # management API blocks Python's default UA
+            })
         with _urllib.urlopen(req, timeout=10) as resp:
             data = _json.loads(resp.read())
         cap       = float(data["effectiveSpendingLimit"]) / 100
