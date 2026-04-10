@@ -242,7 +242,7 @@ async def run_turn(
     admin = consume_admin_instructions()
     if admin:
         history.append({"role": "system", "content": f"[ADMIN]\n{admin}"})
-        print("  [admin] Instructions consumed.")
+        print(f"  [admin] {admin}")
 
     # Build user content — multimodal if image attached
     if image_b64:

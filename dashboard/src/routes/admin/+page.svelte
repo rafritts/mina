@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { apiFetch } from '$lib/api';
 
   // ---------------------------------------------------------------------------
@@ -37,16 +37,23 @@
       const admin = await apiFetch<{ pending: boolean; text: string | null }>('/api/admin/pending');
       adminPending = admin.pending;
       if (admin.pending && admin.text) adminText = admin.text;
+      else if (!admin.pending) adminText = '';
 
       const inject = await apiFetch<{ pending: boolean; text: string | null }>('/api/inject/pending');
       injectPending = inject.pending;
       if (inject.pending && inject.text) injectText = inject.text;
+      else if (!inject.pending) injectText = '';
     } catch (e) {
       // Non-fatal
     }
   }
 
-  onMount(checkPending);
+  let pollInterval: ReturnType<typeof setInterval>;
+  onMount(() => {
+    checkPending();
+    pollInterval = setInterval(checkPending, 3000);
+  });
+  onDestroy(() => clearInterval(pollInterval));
 
   // ---------------------------------------------------------------------------
   // Admin handlers

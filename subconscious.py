@@ -446,7 +446,7 @@ def run_mode1(
 
     if injection:
         user_content_parts.append(f"[SUBCONSCIOUS INJECTION — integrate this into her current state of mind]\n{injection}")
-        print(f"  [mode1] subconscious injection consumed ({len(injection)} chars)")
+        print(f"  [inject] {injection}")
 
     if kag_context:
         user_content_parts.append(kag_context)
