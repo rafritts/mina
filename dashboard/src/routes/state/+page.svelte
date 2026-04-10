@@ -13,11 +13,21 @@
     third_order: Record<string, number>;
   }
 
+  interface TokenStats {
+    session_start: number | null;
+    total_input: number;
+    total_output: number;
+    total_reasoning: number;
+    turns: number;
+    by_label: Record<string, { input: number; output: number; reasoning: number }>;
+  }
+
   // ---------------------------------------------------------------------------
   // State
   // ---------------------------------------------------------------------------
 
   let data = $state<StateData | null>(null);
+  let tokens = $state<TokenStats | null>(null);
   let error = $state('');
   let lastUpdated = $state('');
 
@@ -218,6 +228,33 @@
     } catch (e) {
       error = String(e);
     }
+
+    // Token stats — best-effort, don't block state display
+    try {
+      tokens = await apiFetch<TokenStats>('/api/tokens');
+    } catch (_) {}
+  }
+
+  const TOKEN_LABEL_NAMES: Record<string, string> = {
+    stimulus:    'Stimulus encode',
+    mode1:       'Mode 1 (subconscious)',
+    main:        'Main response',
+    main_follow: 'Follow-up',
+    response:    'Response encode',
+    activity:    'Activity encode',
+    mode2:       'Heartbeat (Mode 2)',
+  };
+
+  function fmtNum(n: number): string {
+    return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+  }
+
+  function sessionAge(ts: number | null): string {
+    if (!ts) return 'unknown';
+    const secs = Math.floor(Date.now() / 1000 - ts);
+    if (secs < 60) return `${secs}s ago`;
+    if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+    return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m ago`;
   }
 
   onMount(() => {
@@ -517,5 +554,50 @@
 
       </div>
     </div>
+
+    <!-- Session Token Stats -->
+    {#if tokens}
+      <div class="card bg-base-200 p-4 mt-2">
+        <h2 class="text-sm font-semibold opacity-60 uppercase tracking-wider mb-3">Session Tokens</h2>
+        <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm mb-3">
+          <span>Started <span class="font-mono opacity-70">{sessionAge(tokens.session_start)}</span></span>
+          <span>Turns <span class="font-mono font-bold">{tokens.turns}</span></span>
+          <span>In <span class="font-mono font-bold text-info">{fmtNum(tokens.total_input)}</span></span>
+          <span>Out <span class="font-mono font-bold text-success">{fmtNum(tokens.total_output)}</span></span>
+          {#if tokens.total_reasoning > 0}
+            <span>Reasoning <span class="font-mono font-bold text-warning">{fmtNum(tokens.total_reasoning)}</span></span>
+          {/if}
+          <span class="opacity-50">Total <span class="font-mono">{fmtNum(tokens.total_input + tokens.total_output)}</span></span>
+        </div>
+        {#if Object.keys(tokens.by_label).length > 0}
+          <div class="overflow-x-auto">
+            <table class="table table-xs w-full">
+              <thead>
+                <tr class="opacity-50">
+                  <th>Call</th>
+                  <th class="text-right">In</th>
+                  <th class="text-right">Out</th>
+                  {#if tokens.total_reasoning > 0}
+                    <th class="text-right">Reasoning</th>
+                  {/if}
+                </tr>
+              </thead>
+              <tbody>
+                {#each Object.entries(tokens.by_label) as [label, counts]}
+                  <tr>
+                    <td class="opacity-70">{TOKEN_LABEL_NAMES[label] ?? label}</td>
+                    <td class="text-right font-mono text-info">{fmtNum(counts.input)}</td>
+                    <td class="text-right font-mono text-success">{fmtNum(counts.output)}</td>
+                    {#if tokens.total_reasoning > 0}
+                      <td class="text-right font-mono text-warning">{fmtNum(counts.reasoning ?? 0)}</td>
+                    {/if}
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {/if}
+      </div>
+    {/if}
   {/if}
 </div>

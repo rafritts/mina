@@ -25,7 +25,7 @@ API_KEY = os.getenv("XAI_API_KEY", os.getenv("OPENAI_API_KEY", "sk-placeholder")
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 _HISTORY_FILE = os.path.join(_PROJECT_ROOT, "run", "conversation.json")
 _LAST_ACTIVE_FILE = os.path.join(_PROJECT_ROOT, ".last_user_active")
-_ADMIN_FILE = os.path.join(_PROJECT_ROOT, "ADMIN_INSTRUCTIONS.md")
+_ADMIN_FILE = os.path.join(_PROJECT_ROOT, "run", "ADMIN_INSTRUCTIONS.md")
 _CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
 _PAUSED_FLAG = os.path.join(_PROJECT_ROOT, "run", ".paused")
 
@@ -119,6 +119,8 @@ async def _mina_turn(
         tool_choice="auto",
         temperature=0.85,
     )
+    import token_stats as _ts
+    _ts.record_response("main", response)
 
     msg = response.choices[0].message
     finish = response.choices[0].finish_reason
@@ -181,6 +183,8 @@ async def _mina_turn(
         messages=follow_messages,
         temperature=0.85,
     )
+    import token_stats as _ts
+    _ts.record_response("main_follow", follow_response)
     follow_msg = follow_response.choices[0].message
     new_entries.append({"role": "assistant", "content": follow_msg.content or ""})
 
@@ -281,6 +285,9 @@ async def run_turn(
 
     history.extend(new_entries)
     save_history(history)
+
+    import token_stats as _ts
+    _ts.increment_turns()
 
     touch_last_active()
     return reply, image_paths

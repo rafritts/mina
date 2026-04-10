@@ -32,7 +32,7 @@ import uvicorn
 _STATE_FILE      = _PROJECT_ROOT / "state.json"
 _MONOLOGUE_FILE  = _PROJECT_ROOT / "run" / "monologue.md"
 _RELATION_FILE   = _PROJECT_ROOT / "memory" / "kag" / "RELATIONSHIP.md"
-_ADMIN_FILE      = _PROJECT_ROOT / "ADMIN_INSTRUCTIONS.md"
+_ADMIN_FILE      = _PROJECT_ROOT / "run" / "ADMIN_INSTRUCTIONS.md"
 _INJECT_FILE     = _PROJECT_ROOT / "run" / "subconscious_inject.md"
 _DASHBOARD_BUILD = _PROJECT_ROOT / "dashboard" / "build"
 
@@ -223,6 +223,17 @@ def delete_inject(request: Request):
     except FileNotFoundError:
         pass
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Token usage
+# ---------------------------------------------------------------------------
+
+@app.get("/api/tokens")
+def get_tokens(request: Request):
+    _check_auth(request)
+    import token_stats
+    return token_stats.get()
 
 
 # ---------------------------------------------------------------------------

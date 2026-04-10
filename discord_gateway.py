@@ -473,6 +473,9 @@ tree = app_commands.CommandTree(client)
 
 @client.event
 async def on_ready():
+    import token_stats
+    token_stats.reset()
+
     cfg = _load_config()
     allowlist = [c.lstrip("#") for c in cfg.get("discord_channel_allowlist", [])]
 

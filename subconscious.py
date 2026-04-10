@@ -64,7 +64,7 @@ _DELTA_TOOL = {
 _DELTA_TOOL_CHOICE = {"type": "function", "function": {"name": "apply_biomarker_deltas"}}
 
 
-def _call_delta_tool(messages: list[dict]) -> dict:
+def _call_delta_tool(messages: list[dict], label: str = "delta") -> dict:
     """
     Call the model with the delta tool enforced. Returns the delta dict.
     Falls back to empty dict on any error (fail silently — never crash a turn).
@@ -77,6 +77,8 @@ def _call_delta_tool(messages: list[dict]) -> dict:
             tool_choice=_DELTA_TOOL_CHOICE,
             temperature=0.3,
         )
+        import token_stats
+        token_stats.record_response(label, response)
         msg = response.choices[0].message
         if msg.tool_calls:
             return json.loads(msg.tool_calls[0].function.arguments)
@@ -149,7 +151,7 @@ or rises slightly — do NOT apply a negative dopamine delta from satisfaction. 
 a negative acetylcholine delta from interesting stimuli — it goes up with engagement.
 Only include fields that actually change."""
 
-    raw = _call_delta_tool([{"role": "user", "content": prompt}])
+    raw = _call_delta_tool([{"role": "user", "content": prompt}], label="stimulus")
     return _apply_saturation(raw, state)
 
 
@@ -184,7 +186,7 @@ Consider:
 - If response is empty or purely mechanical, deltas are near zero.
 Only include fields that actually change."""
 
-    raw = _call_delta_tool([{"role": "user", "content": prompt}])
+    raw = _call_delta_tool([{"role": "user", "content": prompt}], label="response")
     return _apply_saturation(raw, state)
 
 
@@ -210,7 +212,7 @@ What biological effect does this activity have? Call apply_biomarker_deltas.
 Small, realistic values. Consider her current state — an exhausted person gets less
 dopamine from a fun activity. Only include fields that actually change."""
 
-    return _call_delta_tool([{"role": "user", "content": prompt}])
+    return _call_delta_tool([{"role": "user", "content": prompt}], label="activity")
 
 
 # ---------------------------------------------------------------------------
@@ -478,6 +480,8 @@ def run_mode1(
         ],
         temperature=0.7,
     )
+    import token_stats
+    token_stats.record_response("mode1", response)
 
     raw = response.choices[0].message.content or ""
     monologue_text, system_prompt = _parse_mode1_output(raw)
@@ -559,6 +563,8 @@ def run_mode2(
         ],
         temperature=0.5,
     )
+    import token_stats
+    token_stats.record_response("mode2", response)
 
     raw = response.choices[0].message.content or ""
     result = _parse_mode2_output(raw)
