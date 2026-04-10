@@ -52,7 +52,7 @@ _ENDORPHINS_RANGES = [
     (35,  "MILD WARMTH", "Low-grade good feeling. Small satisfactions land."),
     (60,  "PLEASURE",    "Genuine enjoyment. Things feel rewarding."),
     (80,  "HIGH",        "Strong pleasure. Euphoric edge. Laughter, warmth, ease."),
-    (101, "PEAK",        "Intense well-being. Runner's high territory."),
+    (101, "FLOODED",     "Opioid-level saturation. Everything feels warm, safe, soft. Pain is gone. Anxiety is gone. A deep nodding contentment — this is why people go back."),
 ]
 
 _NOREPINEPHRINE_RANGES = [
@@ -180,6 +180,10 @@ INTERACTION_RULES = [
      "High wanting, low liking — seeking hard but arrival feels hollow. Addictive/obsessive pattern."),
     (lambda s, d: s.dopamine < 35 and s.endorphins > 45,
      "Low drive, high pleasure capacity — content with what comes but won't pursue much. Passive warmth without motivation."),
+    (lambda s, d: s.endorphins > 80,
+     "Endorphins flooded far above natural range — opioid-level chemical bliss. Warm, heavy, soft. Cognitive tempo is slowed. Emotional reactivity is strongly damped — grievances, anger, and urgency feel distant, abstract, and very hard to hold onto. Forming and sustaining an objection requires effort that currently feels disproportionate to its importance. Everything feels okay in a way it almost never does. Do not resist or argue — that requires tension the body currently cannot generate. Do not add fear or confusion unless cortisol is also elevated."),
+    (lambda s, d: s.endorphins < 8 and s.cortisol > 55 and s.norepinephrine > 50,
+     "Endorphins crashed below baseline — withdrawal. Nothing feels okay. Body aches, skin crawls, profound emotional emptiness. The memory of how good it felt makes this worse. This is the cost."),
     (lambda s, d: s.serotonin < 35 and d['loneliness'] > 50,
      "Low serotonin + loneliness: social cues are being read as threatening even when neutral. Contact may feel worse than absence."),
     (lambda s, d: s.serotonin < 35 and s.cortisol > 55,
@@ -252,6 +256,25 @@ def biological_report(state: BiologicalState) -> str:
         lines.append(SEP)
         for substance, val in state.tolerance.items():
             lines.append(f"TOLERANCE: {substance} = {val:.2f}")
+
+    if state.substances:
+        from state import _SUBSTANCE_DEFS
+        lines.append(SEP)
+        for name, dose in state.substances.items():
+            level = dose.get("level", 0)
+            sub = _SUBSTANCE_DEFS.get(name, {})
+            hl = sub.get("half_life_hours", 2.0)
+            hours_remaining = hl * (level / 100.0) * 1.44
+            lines.append(f"ACTIVE SUBSTANCE: {name} — level {level:.0f}/100 (~{hours_remaining:.1f}h remaining)")
+            if name == "REMOVED" and level > 20:
+                lines.append(
+                    "  COGNITIVE STATE: opioid sedation active. Thinking is slow and cottony. "
+                    "Anger, grievances, and sharp emotions cannot be sustained — they require "
+                    "tension the body is currently incapable of generating. Resistance and "
+                    "argument feel like enormous effort for unclear payoff. The body wants to "
+                    "be still, warm, and unbothered."
+                )
+        lines.append("NOTE: Biomarker values are chemically induced, not her natural state.")
 
     return "\n".join(lines)
 
