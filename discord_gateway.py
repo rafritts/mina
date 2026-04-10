@@ -851,35 +851,20 @@ async def cmd_clean(interaction: discord.Interaction, n: int = 0):
     await interaction.response.defer(ephemeral=True)
     channel = interaction.channel or await client.fetch_channel(interaction.channel_id)
 
-    import datetime as _dt
-    cutoff = discord.utils.utcnow() - _dt.timedelta(days=14)
     scan_limit = (n * 5) if n > 0 else 500
-
-    # Collect Mina's messages from recent history
-    mine: list[discord.Message] = []
-    async for msg in channel.history(limit=scan_limit, oldest_first=False):
-        if msg.author != client.user:
-            continue
-        if msg.created_at < cutoff:
-            continue  # skip messages >14 days — bulk delete forbidden, individual delete is 1/sec
-        mine.append(msg)
-        if n > 0 and len(mine) >= n:
-            break
-
-    # Bulk delete in batches of 100 (Discord API limit per call)
     deleted_count = 0
+    found = 0
     try:
-        for i in range(0, len(mine), 100):
-            batch = mine[i:i + 100]
-            if len(batch) == 1:
-                await batch[0].delete()
-            else:
-                await channel.delete_messages(batch)
-            deleted_count += len(batch)
+        async for msg in channel.history(limit=scan_limit, oldest_first=False):
+            if msg.author != client.user:
+                continue
+            await msg.delete()
+            deleted_count += 1
+            found += 1
+            if n > 0 and found >= n:
+                break
     except discord.HTTPException as e:
-        await interaction.followup.send(
-            f"Deleted {deleted_count} before error: {e}", ephemeral=True
-        )
+        await interaction.followup.send(f"Deleted {deleted_count} before error: {e}", ephemeral=True)
         return
 
     await interaction.followup.send(f"Deleted {deleted_count} message(s).", ephemeral=True)
