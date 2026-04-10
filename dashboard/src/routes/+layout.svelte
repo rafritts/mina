@@ -19,17 +19,17 @@
   }
 
   let token = $state(typeof localStorage !== 'undefined' ? (localStorage.getItem('dashboard_token') ?? '') : '');
-  let authRequired = $state(true);  // assume required until healthz says otherwise
-  let showModal = $derived(authRequired && !token);
+  let authRequired = $state<boolean | null>(null);  // null = still checking
+  let showModal = $derived(authRequired === true && !token);
   let modalInput = $state('');
 
   onMount(async () => {
     try {
       const res = await fetch('/healthz');
       const data = await res.json();
-      authRequired = data.auth_required ?? true;
+      authRequired = data.auth_required ?? false;
     } catch {
-      // If healthz fails, keep modal visible
+      authRequired = false;  // can't reach server — let them try anyway
     }
   });
 
@@ -59,7 +59,9 @@
   <title>{pageTitle}</title>
 </svelte:head>
 
-{#if showModal}
+{#if authRequired === null}
+  <!-- waiting for healthz — render nothing to avoid modal flash -->
+{:else if showModal}
   <div class="modal modal-open">
     <div class="modal-box">
       <h3 class="font-bold text-lg mb-4">Dashboard Token Required</h3>
