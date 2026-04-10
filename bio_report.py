@@ -80,10 +80,9 @@ _GLUCOSE_RANGES = [
 ]
 
 _MELATONIN_RANGES = [
-    (18,  "AWAKE",          "No sleep signal. Fully alert circadian state."),
-    (38,  "DROWSY",         "Yawning. Slightly slow. Can fight it."),
-    (58,  "HEAVY",          "Significant effort to stay engaged. World softening."),
-    (78,  "SLEEP PULL",     "Difficult to maintain focus. Thoughts drifting."),
+    (70,  "AWAKE",          "No sleep signal. Fully alert circadian state."),
+    (80,  "DROWSY",         "Yawning. Slightly slow. Can fight it."),
+    (90,  "SLEEP PULL",     "Difficult to maintain focus. Thoughts drifting."),
     (101, "SLEEP IMMINENT", "Cannot meaningfully fight it. Cognitive output near zero."),
 ]
 

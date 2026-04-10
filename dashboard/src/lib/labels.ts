@@ -83,10 +83,9 @@ export const RANGES: Record<string, RangeEntry[]> = {
     { upper: 101, name: 'EXHAUSTED',    color: 'error' },
   ],
   melatonin: [
-    { upper: 18,  name: 'AWAKE',          color: 'success' },
-    { upper: 38,  name: 'DROWSY',         color: 'info' },
-    { upper: 58,  name: 'HEAVY',          color: 'warning' },
-    { upper: 78,  name: 'SLEEP PULL',     color: 'warning' },
+    { upper: 70,  name: 'AWAKE',          color: 'success' },
+    { upper: 80,  name: 'DROWSY',         color: 'info' },
+    { upper: 90,  name: 'SLEEP PULL',     color: 'warning' },
     { upper: 101, name: 'SLEEP IMMINENT', color: 'error' },
   ],
 };
