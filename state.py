@@ -177,6 +177,32 @@ def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalSt
     # --- Melatonin (pure circadian) ---
     s.melatonin = _clamp(_circadian_melatonin(hour_of_day), 0, 100)
 
+    # --- Auto-sleep onset ---
+    # When melatonin enters SLEEP IMMINENT range and the clock is past
+    # sleep_window_start, Mina goes to sleep automatically and wakes at
+    # sleep_window_end. This is the only thing that sets sleeping=True;
+    # she can still be woken early by the user or by auto-wake above.
+    if not s.sleeping and s.melatonin >= 88:
+        sleep_start = float(cfg.get("sleep_window_start", 4))
+        sleep_end   = float(cfg.get("sleep_window_end", 8))
+        # Trigger window: [sleep_start, sleep_end) — no midnight crossing needed
+        # for a dawn sleep schedule, but handled correctly if start < end.
+        in_window = sleep_start <= hour_of_day < sleep_end
+        if in_window:
+            s.sleeping = True
+            s.sleep_start = now
+            # Next occurrence of sleep_end hour (same day, since end > start here)
+            lt = time.localtime(now)
+            wake = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday,
+                                int(sleep_end), int((sleep_end % 1) * 60), 0,
+                                lt.tm_wday, lt.tm_yday, lt.tm_isdst))
+            if wake <= now:
+                wake += 86400
+            s.sleep_expected_wake = wake
+            print(f"[SLEEP] Auto-onset at {time.strftime('%H:%M')} "
+                  f"(melatonin={s.melatonin:.0f}) — wake at "
+                  f"{time.strftime('%H:%M', time.localtime(wake))}")
+
     # --- Tolerance decay ---
     for substance in list(s.tolerance.keys()):
         s.tolerance[substance] = max(0.0, s.tolerance[substance] - 0.01 * sim_hours)
