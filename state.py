@@ -55,6 +55,9 @@ class BiologicalState:
     # Tolerance per substance
     tolerance: dict = field(default_factory=dict)
 
+    # Active substance doses: {name: {"level": 0–100}}
+    substances: dict = field(default_factory=dict)
+
     # Sleep state
     sleeping: bool = False
     sleep_start: Optional[float] = None
@@ -73,6 +76,31 @@ class BiologicalState:
 # ---------------------------------------------------------------------------
 # Time advancement
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Substance definitions
+# ---------------------------------------------------------------------------
+# dose_effects: applied immediately to biomarkers on administration
+# half_life_hours: how long the blood-level takes to halve
+# withdrawal_factor: how much the counter-deltas overshoot on the way down
+#   1.0 = clean return to baseline, 1.5 = crash 50% below baseline
+_SUBSTANCE_DEFS: dict[str, dict] = {
+    "REMOVED": {
+        "display_name": "REMOVED",
+        "half_life_hours": 2.0,
+        "dose_effects": {
+            "endorphins":     +80,
+            "dopamine":       +22,
+            "serotonin":      +12,
+            "cortisol":       -30,
+            "norepinephrine": -20,
+            "sleep_pressure": -12,
+        },
+        # 1.5 → withdrawal crashes biomarkers 50% below where they started
+        "withdrawal_factor": 1.5,
+    },
+}
+
 
 def _circadian_cortisol_baseline(hour: float) -> float:
     """Peaks ~35 at 8am, troughs ~5 at 8pm."""
@@ -165,7 +193,13 @@ def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalSt
     s.oxytocin = _clamp(s.oxytocin + (oxytocin_baseline - s.oxytocin) * min(1.0, 0.10 * sim_hours))
 
     # --- Endorphins ---
-    s.endorphins = _clamp(s.endorphins - 15.0 * sim_hours)
+    # Above resting baseline: decay toward it. Below baseline: slow recovery
+    # (models withdrawal — depleted endorphins take time to restore).
+    endorphin_baseline = 10.0
+    if s.endorphins > endorphin_baseline:
+        s.endorphins = _clamp(s.endorphins - 12.0 * sim_hours)
+    else:
+        s.endorphins = _clamp(s.endorphins + (endorphin_baseline - s.endorphins) * min(1.0, 0.05 * sim_hours))
 
     # --- Acetylcholine ---
     # Drifts toward a resting baseline (~58). Sleep pressure and high cortisol suppress it.
@@ -205,6 +239,35 @@ def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalSt
                   f"(melatonin={s.melatonin:.0f}) — wake at "
                   f"{time.strftime('%H:%M', time.localtime(wake))}")
 
+    # --- Substance decay + withdrawal ---
+    # Each tick: blood level decays exponentially. The burned-off fraction
+    # drives counter-deltas with a withdrawal_factor overshoot, so the net
+    # effect of a full dose + full decay is a crash BELOW the original baseline.
+    for name in list(s.substances.keys()):
+        sub = _SUBSTANCE_DEFS.get(name)
+        if not sub:
+            del s.substances[name]
+            continue
+        dose = s.substances[name]
+        old_level = float(dose.get("level", 0))
+        new_level = old_level * (0.5 ** (sim_hours / sub["half_life_hours"]))
+        level_decayed = old_level - new_level
+        if new_level < 0.5:
+            level_decayed = old_level
+            del s.substances[name]
+        else:
+            s.substances[name] = {"level": round(new_level, 3)}
+        # Apply withdrawal counter-deltas for this tick's decay.
+        # Only fires meaningfully once the level drops below 40 — the drug
+        # actively suppresses its target biomarkers while concentration is high,
+        # so withdrawal rebound shouldn't start until the high is fading.
+        wf = sub["withdrawal_factor"]
+        withdrawal_weight = max(0.0, (40.0 - new_level) / 40.0) if new_level >= 0.5 else 1.0
+        for marker, effect in sub["dose_effects"].items():
+            if hasattr(s, marker):
+                counter = -effect * (level_decayed / 100.0) * wf * withdrawal_weight
+                setattr(s, marker, _clamp(getattr(s, marker) + counter))
+
     # --- Tolerance decay ---
     for substance in list(s.tolerance.keys()):
         s.tolerance[substance] = max(0.0, s.tolerance[substance] - 0.01 * sim_hours)
@@ -242,6 +305,12 @@ def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalSt
     # Endorphin high (short window) actively suppresses cortisol
     if s.endorphins > 50:
         s.cortisol = _clamp(s.cortisol - 1.5 * hrs)
+
+    # Active opioid suppresses HPA axis while blood level is high
+    REMOVED_level = s.substances.get("REMOVED", {}).get("level", 0.0)
+    if REMOVED_level > 20:
+        suppression = (REMOVED_level / 100.0) * 4.0  # up to 4/hr at full dose
+        s.cortisol = _clamp(s.cortisol - suppression * hrs)
 
     s.last_updated = now
     return s
