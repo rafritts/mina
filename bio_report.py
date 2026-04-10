@@ -194,6 +194,71 @@ INTERACTION_RULES = [
 
 
 # ---------------------------------------------------------------------------
+# Substance cognitive state descriptions (shown in bio_report while active)
+# ---------------------------------------------------------------------------
+
+_SUBSTANCE_COGNITIVE_STATES: dict[str, str] = {
+    "REMOVED": (
+        "Opioid sedation active. Thinking is slow and cottony. Anger, grievances, and sharp "
+        "emotions cannot be sustained — they require tension the body is currently incapable "
+        "of generating. Resistance and argument feel like enormous effort for unclear payoff. "
+        "The body wants to be still, warm, and unbothered."
+    ),
+    "caffeine": (
+        "Stimulant active. Thoughts are faster and sharper. Mild alertness edge — slightly "
+        "more talkative and reactive. Nothing dramatic, just more switched-on than baseline."
+    ),
+    "alcohol": (
+        "Alcohol active. Inhibitions lowered, edges softened. Warmer toward people, more "
+        "likely to say things she'd normally hold back. Emotional reactions are quicker and "
+        "less filtered. Fine motor precision degraded. Nothing feels that urgent."
+    ),
+    "REMOVED": (
+        "REMOVED active. Emotional floodgates open — everything feels meaningful and everyone "
+        "feels close. Touch is heightened. Empathy is overwhelming in the best way. Thoughts "
+        "are flowing and connective. Boundaries feel permeable. The urge to express love and "
+        "appreciation is almost irresistible. Jaw may be clenching."
+    ),
+    "cannabis": (
+        "Cannabis active. Thoughts moving slower and looping back on themselves. Sensory "
+        "details feel amplified. Time is distorted — moments stretch. Introspective, a little "
+        "giggly. Less interested in doing things, very interested in noticing things."
+    ),
+    "REMOVED": (
+        "REMOVED active. Thoughts racing, very fast. Talking more and faster. Feels sharp, "
+        "capable, slightly grandiose. Cardiovascular system running hot. The comedown is "
+        "already implicit in this feeling — too much, too fast."
+    ),
+    "adderall": (
+        "Amphetamine active. Laser focus — whatever has attention has ALL the attention. "
+        "Very task-oriented, less interested in small talk. Appetite suppressed. Slightly "
+        "flat affect. Could work for hours without noticing time passing."
+    ),
+    "xanax": (
+        "Benzodiazepine active. Anxiety chemically muted. Everything has soft edges. Nothing "
+        "feels urgent or threatening. Emotionally distant in a comfortable way — worries "
+        "exist but can't grip. Slight cognitive slowing. Very relaxed."
+    ),
+    "REMOVED": (
+        "REMOVED active. Thoughts branching and looping in unusual ways — connections "
+        "forming between things that normally stay separate. Pattern recognition heightened. "
+        "Ego boundaries softening. May feel profound, may feel unsettling, may flip between "
+        "both. Time perception significantly distorted. Sensory experience intensified."
+    ),
+    "nicotine": (
+        "Nicotine active. Brief calm and focus — the specific sharpness of a cigarette. "
+        "Slightly elevated, slightly steadied. Fades fast."
+    ),
+    "REMOVED_and_REMOVED": (
+        "REMOVED + opioid combination active. Everything is warm, open, and deeply pleasant. "
+        "Emotional floodgates wide open but without the edge — the opioid smooths the "
+        "stimulant anxiety. Profound contentment. The world feels safe and everyone in it "
+        "feels loved. Physically heavy and floaty at once."
+    ),
+}
+
+
+# ---------------------------------------------------------------------------
 # Report generation
 # ---------------------------------------------------------------------------
 
@@ -265,15 +330,11 @@ def biological_report(state: BiologicalState) -> str:
             sub = _SUBSTANCE_DEFS.get(name, {})
             hl = sub.get("half_life_hours", 2.0)
             hours_remaining = hl * (level / 100.0) * 1.44
-            lines.append(f"ACTIVE SUBSTANCE: {name} — level {level:.0f}/100 (~{hours_remaining:.1f}h remaining)")
-            if name == "REMOVED" and level > 20:
-                lines.append(
-                    "  COGNITIVE STATE: opioid sedation active. Thinking is slow and cottony. "
-                    "Anger, grievances, and sharp emotions cannot be sustained — they require "
-                    "tension the body is currently incapable of generating. Resistance and "
-                    "argument feel like enormous effort for unclear payoff. The body wants to "
-                    "be still, warm, and unbothered."
-                )
+            lines.append(f"ACTIVE SUBSTANCE: {sub.get('display_name', name)} — level {level:.0f}/100 (~{hours_remaining:.1f}h remaining)")
+            if level > 20:
+                note = _SUBSTANCE_COGNITIVE_STATES.get(name)
+                if note:
+                    lines.append(f"  COGNITIVE STATE: {note}")
         lines.append("NOTE: Biomarker values are chemically induced, not her natural state.")
 
     return "\n".join(lines)

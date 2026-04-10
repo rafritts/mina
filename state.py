@@ -96,8 +96,129 @@ _SUBSTANCE_DEFS: dict[str, dict] = {
             "norepinephrine": -20,
             "sleep_pressure": -12,
         },
-        # 1.5 → withdrawal crashes biomarkers 50% below where they started
         "withdrawal_factor": 1.5,
+    },
+    "caffeine": {
+        "display_name": "Caffeine",
+        "half_life_hours": 5.5,
+        "dose_effects": {
+            "norepinephrine": +18,
+            "acetylcholine":  +15,
+            "dopamine":       +10,
+            "cortisol":       +12,
+            "sleep_pressure": -20,
+        },
+        "withdrawal_factor": 1.1,  # mild headache/fatigue on crash
+    },
+    "alcohol": {
+        "display_name": "Alcohol",
+        "half_life_hours": 1.5,
+        "dose_effects": {
+            "serotonin":      +18,
+            "dopamine":       +15,
+            "oxytocin":       +22,
+            "endorphins":     +18,
+            "cortisol":       -22,
+            "norepinephrine": -15,
+        },
+        "withdrawal_factor": 1.4,
+    },
+    "REMOVED": {
+        "display_name": "REMOVED",
+        "half_life_hours": 8.0,
+        "dose_effects": {
+            "serotonin":      +65,
+            "dopamine":       +28,
+            "norepinephrine": +30,
+            "oxytocin":       +45,
+            "endorphins":     +22,
+            "cortisol":       +18,
+        },
+        "withdrawal_factor": 1.8,  # severe serotonin crash — "blue Tuesdays"
+    },
+    "cannabis": {
+        "display_name": "Cannabis",
+        "half_life_hours": 4.0,
+        "dose_effects": {
+            "dopamine":       +18,
+            "serotonin":      +12,
+            "endorphins":     +15,
+            "cortisol":       -18,
+            "sleep_pressure": +8,
+        },
+        "withdrawal_factor": 1.05,  # minimal — mild anxiety/sleep disruption
+    },
+    "REMOVED": {
+        "display_name": "REMOVED",
+        "half_life_hours": 0.75,
+        "dose_effects": {
+            "dopamine":       +50,
+            "norepinephrine": +45,
+            "serotonin":      +18,
+            "cortisol":       +25,
+            "acetylcholine":  +15,
+        },
+        "withdrawal_factor": 1.6,
+    },
+    "adderall": {
+        "display_name": "Adderall",
+        "half_life_hours": 11.0,
+        "dose_effects": {
+            "dopamine":       +38,
+            "norepinephrine": +32,
+            "acetylcholine":  +12,
+            "cortisol":       +18,
+            "sleep_pressure": -25,
+        },
+        "withdrawal_factor": 1.4,
+    },
+    "xanax": {
+        "display_name": "Xanax",
+        "half_life_hours": 9.0,
+        "dose_effects": {
+            "cortisol":       -45,
+            "norepinephrine": -28,
+            "serotonin":      +12,
+            "sleep_pressure": +15,
+        },
+        "withdrawal_factor": 2.0,  # severe rebound anxiety
+    },
+    "REMOVED": {
+        "display_name": "REMOVED",
+        "half_life_hours": 2.5,
+        "dose_effects": {
+            "serotonin":      +45,
+            "dopamine":       +12,
+            "norepinephrine": +18,
+            "cortisol":       +20,  # initial anxiety/awe
+            "acetylcholine":  +15,
+        },
+        "withdrawal_factor": 0.85,  # slight positive afterglow
+    },
+    "nicotine": {
+        "display_name": "Nicotine",
+        "half_life_hours": 2.0,
+        "dose_effects": {
+            "acetylcholine":  +18,
+            "dopamine":       +14,
+            "norepinephrine": +12,
+            "cortisol":       +10,
+        },
+        "withdrawal_factor": 1.25,
+    },
+    "REMOVED_and_REMOVED": {
+        "display_name": "REMOVED + REMOVED",
+        "half_life_hours": 5.0,
+        "dose_effects": {
+            "serotonin":      +65,
+            "dopamine":       +40,
+            "norepinephrine": +20,
+            "oxytocin":       +45,
+            "endorphins":     +75,
+            "cortisol":       -15,
+            "sleep_pressure": -10,
+        },
+        "withdrawal_factor": 2.0,
     },
 }
 
@@ -309,8 +430,30 @@ def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalSt
     # Active opioid suppresses HPA axis while blood level is high
     REMOVED_level = s.substances.get("REMOVED", {}).get("level", 0.0)
     if REMOVED_level > 20:
-        suppression = (REMOVED_level / 100.0) * 4.0  # up to 4/hr at full dose
+        suppression = (REMOVED_level / 100.0) * 4.0
         s.cortisol = _clamp(s.cortisol - suppression * hrs)
+
+    # Alcohol and xanax actively suppress cortisol/norepinephrine while active
+    alcohol_level = s.substances.get("alcohol", {}).get("level", 0.0)
+    if alcohol_level > 20:
+        s.cortisol = _clamp(s.cortisol - (alcohol_level / 100.0) * 3.0 * hrs)
+        s.norepinephrine = _clamp(s.norepinephrine - (alcohol_level / 100.0) * 2.0 * hrs)
+
+    xanax_level = s.substances.get("xanax", {}).get("level", 0.0)
+    if xanax_level > 20:
+        s.cortisol = _clamp(s.cortisol - (xanax_level / 100.0) * 5.0 * hrs)
+        s.norepinephrine = _clamp(s.norepinephrine - (xanax_level / 100.0) * 3.0 * hrs)
+
+    # REMOVED and adderall actively sustain elevated dopamine/norepinephrine
+    REMOVED_level = s.substances.get("REMOVED", {}).get("level", 0.0)
+    if REMOVED_level > 20:
+        s.dopamine = _clamp(s.dopamine + (REMOVED_level / 100.0) * 3.0 * hrs)
+        s.norepinephrine = _clamp(s.norepinephrine + (REMOVED_level / 100.0) * 3.0 * hrs)
+
+    adderall_level = s.substances.get("adderall", {}).get("level", 0.0)
+    if adderall_level > 20:
+        s.dopamine = _clamp(s.dopamine + (adderall_level / 100.0) * 2.0 * hrs)
+        s.norepinephrine = _clamp(s.norepinephrine + (adderall_level / 100.0) * 2.0 * hrs)
 
     s.last_updated = now
     return s
