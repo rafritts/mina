@@ -141,13 +141,11 @@
 
   let applyingPreset = $state('');
   let presetSnapshot = $state<Record<string, number> | null>(null);
-  let undoTimer: ReturnType<typeof setTimeout> | null = null;
 
   async function applyPreset(preset: Preset) {
     applyingPreset = preset.name;
     // Snapshot current values before overwriting
     presetSnapshot = { ...localValues };
-    if (undoTimer) clearTimeout(undoTimer);
     try {
       await apiFetch('/api/state', {
         method: 'PATCH',
@@ -157,8 +155,7 @@
         localValues[k] = v;
       }
       await load();
-      // Auto-expire undo after 15s
-      undoTimer = setTimeout(() => { presetSnapshot = null; }, 15000);
+      // Undo stays until manually clicked or another preset is applied
     } catch (e) {
       error = String(e);
       presetSnapshot = null;
@@ -171,7 +168,6 @@
     if (!presetSnapshot) return;
     const snap = presetSnapshot;
     presetSnapshot = null;
-    if (undoTimer) { clearTimeout(undoTimer); undoTimer = null; }
     try {
       await apiFetch('/api/state', {
         method: 'PATCH',
@@ -328,7 +324,7 @@
       {/each}
 
       {#if presetSnapshot}
-        <button class="btn btn-sm btn-ghost gap-1 animate-pulse" onclick={undoPreset}>
+        <button class="btn btn-sm btn-ghost gap-1" onclick={undoPreset}>
           ↩ Undo
         </button>
       {/if}
