@@ -228,11 +228,15 @@ def derived(s: BiologicalState) -> dict:
     tol_d = s.tolerance.get("dopamine", 0.0)
     effective_dopamine = s.dopamine * (1.0 - tol_d)
 
+    # Melatonin above 40 starts suppressing energy/arousal/clarity —
+    # the circadian wind-down signal, independent of sleep pressure.
+    melatonin_drag = max(0.0, s.melatonin - 40) * 0.25
+
     energy = _clamp(
-        20 + (s.glucose * 0.4) + (s.norepinephrine * 0.3) - (s.sleep_pressure * 0.3)
+        20 + (s.glucose * 0.4) + (s.norepinephrine * 0.3) - (s.sleep_pressure * 0.3) - melatonin_drag
     )
     cognitive_clarity = _clamp(
-        20 + (s.acetylcholine * 0.4) + (s.glucose * 0.2) - (s.sleep_pressure * 0.25) - (s.cortisol * 0.15)
+        20 + (s.acetylcholine * 0.4) + (s.glucose * 0.2) - (s.sleep_pressure * 0.25) - (s.cortisol * 0.15) - melatonin_drag * 0.6
     )
     hedonic_tone = _clamp(
         5 + (effective_dopamine * 0.5) + (s.endorphins * 0.3) + (s.serotonin * 0.2)
@@ -241,7 +245,7 @@ def derived(s: BiologicalState) -> dict:
         10 + (s.oxytocin * 0.5) + (s.serotonin * 0.3) - (s.cortisol * 0.2)
     )
     arousal = _clamp(
-        15 + (s.norepinephrine * 0.5) + (s.cortisol * 0.3) - (s.sleep_pressure * 0.2)
+        15 + (s.norepinephrine * 0.5) + (s.cortisol * 0.3) - (s.sleep_pressure * 0.2) - melatonin_drag * 0.8
     )
     mood_valence = _clamp(
         10 + (s.serotonin * 0.4) + (effective_dopamine * 0.35) - (s.cortisol * 0.25)
