@@ -4,5 +4,6 @@
   "comfyui_host": "localhost",
   "sleep_window_start": 4,
   "sleep_window_end": 8,
-  "naps_enabled": false
+  "naps_enabled": false,
+  "creator_name": "Ryan"
 }
