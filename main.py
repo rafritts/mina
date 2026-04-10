@@ -136,8 +136,13 @@ def consume_admin_instructions() -> str:
         return ""
 
 
-def api_messages(history: list[dict], system_prompt: str) -> list[dict]:
-    """Build the messages array for the API — single system message, no internal markers."""
+def api_messages(history: list[dict], system_prompt: str, state_note: str = "") -> list[dict]:
+    """Build the messages array for the API — single system message, no internal markers.
+
+    state_note: if provided, appended to the last user message to give biological/emotional
+    state recency weight equal to the conversation. Counters the model's tendency to anchor
+    on conversational momentum and ignore system prompt context.
+    """
     compact_parts = []
     conversation = []
     for msg in history:
@@ -154,6 +159,17 @@ def api_messages(history: list[dict], system_prompt: str) -> list[dict]:
     if compact_parts:
         full_system += "\n\n---\n\n[Earlier conversation summary]\n" + "\n\n".join(compact_parts)
 
+    # Inject state_note into the last user message to give it recency weight
+    if state_note and conversation:
+        last = conversation[-1]
+        if last.get("role") == "user":
+            last_content = last["content"]
+            if isinstance(last_content, str):
+                conversation[-1] = {**last, "content": last_content + f"\n\n{state_note}"}
+            elif isinstance(last_content, list):
+                # Multimodal — append as additional text block
+                conversation[-1] = {**last, "content": last_content + [{"type": "text", "text": state_note}]}
+
     return [{"role": "system", "content": full_system}] + conversation
 
 
@@ -165,12 +181,13 @@ async def _mina_turn(
     system_prompt: str,
     history: list[dict],
     state,
+    state_note: str = "",
 ) -> tuple[list[dict], object, list[str]]:
     """
     One full Mina turn. Resolves all tool calls.
     Returns (new_history_entries, updated_state, image_paths).
     """
-    messages = api_messages(history, system_prompt)
+    messages = api_messages(history, system_prompt, state_note)
     new_entries: list[dict] = []
     image_paths: list[str] = []
 
@@ -338,8 +355,21 @@ async def run_turn(
     _rn_text = _rn_match.group(1).strip() if _rn_match else "(not found)"
     print(f"[RIGHT NOW] {_rn_text}")
 
+    # Build state_note: re-inject current emotional/biological state near the end of context
+    # so it has recency weight. Conversation momentum can otherwise override system prompt context.
+    _state_note_parts = [f"[Your current state, right now: {_rn_text}]"]
+    # If a substance is active, include the cognitive note so it isn't lost to conversation momentum
+    if state.substances:
+        from bio_report import biological_report as _bio_report
+        _full_report = _bio_report(state)
+        # Extract the COGNITIVE STATE lines if present
+        _cog_lines = [l for l in _full_report.splitlines() if "COGNITIVE STATE" in l]
+        if _cog_lines:
+            _state_note_parts.append("[" + " ".join(_cog_lines) + "]")
+    state_note = "\n".join(_state_note_parts)
+
     # [4] Mina responds
-    new_entries, state, image_paths = await _mina_turn(system_prompt, history, state)
+    new_entries, state, image_paths = await _mina_turn(system_prompt, history, state, state_note)
     save_state(state)
 
     reply = ""
