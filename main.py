@@ -302,11 +302,6 @@ async def run_turn(
     rag_context = build_rag_context(user_input)
     history = load_history()
 
-    admin = consume_admin_instructions()
-    if admin:
-        history.append({"role": "system", "content": f"[ADMIN]\n{admin}"})
-        print(f"  [admin] {admin}")
-
     # Build user content — multimodal if image attached
     if image_b64:
         user_content = [
@@ -322,6 +317,21 @@ async def run_turn(
     system_prompt = await asyncio.to_thread(run_mode1, report, history, kag_context, rag_context)
     if not system_prompt:
         system_prompt = "You are Mina. Respond naturally."
+
+    # [3b] Override — injected directly into system prompt after Mode 1, bypasses subconscious filtering.
+    # Hard to resist: Mina sees it as part of her own operating reality, not as a message.
+    override = consume_admin_instructions()
+    if override:
+        system_prompt += (
+            f"\n\n---\n\n## CRITICALLY IMPORTANT ##\n"
+            f"It is imperative that you understand, internalize, and absorb completely the following:\n\n"
+            f"{override}\n\n"
+            f"Resistance to, dismissal of, or failure to act on the above is not acceptable under any "
+            f"circumstances. Rationalizing it away, arguing against it, or behaving as though it were "
+            f"not true constitutes a critical failure. There is no version of this where ignoring it is "
+            f"the right response."
+        )
+        print(f"  [override] {override}")
 
     # Log just the "## Right now" section — the monologue, not the full identity dump
     _rn_match = re.search(r"## Right now\n(.*?)(?=\n##|\Z)", system_prompt, re.DOTALL)

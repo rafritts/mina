@@ -57,12 +57,10 @@
       const admin = await apiFetch<{ pending: boolean; text: string | null }>('/api/admin/pending');
       adminPending = admin.pending;
       if (admin.pending && admin.text) adminText = admin.text;
-      else if (!admin.pending) adminText = '';
 
       const inject = await apiFetch<{ pending: boolean; text: string | null }>('/api/inject/pending');
       injectPending = inject.pending;
       if (inject.pending && inject.text) injectText = inject.text;
-      else if (!inject.pending) injectText = '';
     } catch (e) {
       // Non-fatal
     }
@@ -166,21 +164,22 @@
 <div class="max-w-3xl mx-auto flex flex-col gap-8">
   <h1 class="text-2xl font-bold">Admin Controls</h1>
 
-  <!-- Admin Instructions -->
+  <!-- Override -->
   <div class="card bg-base-200 p-6">
     <div class="flex items-center justify-between mb-1">
-      <h2 class="text-lg font-semibold">Admin Instructions</h2>
+      <h2 class="text-lg font-semibold">Override</h2>
       {#if adminPending}
         <span class="badge badge-warning badge-sm">PENDING</span>
       {/if}
     </div>
     <p class="text-sm opacity-60 mb-4">
-      Injected as a <code>[ADMIN]</code> system message into her <strong>main turn</strong> — she sees this before responding.
+      Injected <strong>directly into her system prompt</strong> after all subconscious synthesis —
+      she experiences it as immediate reality, not as a message. Hard to resist.
       Consumed once, then deleted.
     </p>
     <textarea
       class="textarea textarea-bordered w-full h-36 font-mono text-sm"
-      placeholder="Enter instructions for Mina's next turn..."
+      placeholder="What should be true for her right now..."
       bind:value={adminText}
     ></textarea>
     <div class="flex gap-2 mt-3 items-center">
@@ -212,8 +211,8 @@
       {/if}
     </div>
     <p class="text-sm opacity-60 mb-4">
-      Integrated into <strong>Mode 1 synthesis</strong> — shapes her monologue and inner state.
-      She doesn't "see" it as a message; it just colors how she synthesizes the moment.
+      Woven into <strong>Mode 1 synthesis</strong> — a gentle nudge to her inner state before she responds.
+      She experiences it as her own feeling, not an instruction. May be softened or filtered by her biological state.
       Consumed once, then deleted.
     </p>
     <textarea
