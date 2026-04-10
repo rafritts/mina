@@ -1,7 +1,7 @@
 """
-Supervisor — owns the lifecycle of discord_gateway.py.
+Supervisor — owns the lifecycle of discord_gateway.py and dashboard_server.py.
 
-Exit code semantics from the child:
+Exit code semantics from the child (discord_gateway only):
   42  → intentional restart (/restart, /reset) — no backoff
   0 + run/.stopped exists → maintenance stop — do not restart
   anything else → crash — exponential backoff
@@ -13,6 +13,7 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -110,6 +111,24 @@ def _log(msg: str, tee) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
+def _run_dashboard(uv: str, log_f, tee_out) -> None:
+    """
+    Run dashboard_server.py in a background thread with simple restart-on-crash.
+    Stops when the supervisor exits (daemon thread).
+    """
+    cmd = [uv, "run", "python", "-u", "dashboard_server.py"]
+    backoff = 5
+    while True:
+        try:
+            _log("[DASHBOARD] Starting dashboard server.", tee_out)
+            proc = subprocess.Popen(cmd, cwd=_PROJECT_ROOT, stdout=log_f, stderr=log_f)
+            rc = proc.wait()
+            _log(f"[DASHBOARD] Exited with code {rc} — restarting in {backoff}s.", tee_out)
+        except Exception as e:
+            _log(f"[DASHBOARD] Launch error: {e} — retrying in {backoff}s.", tee_out)
+        time.sleep(backoff)
+
+
 def main():
     os.makedirs(_RUN_DIR, exist_ok=True)
 
@@ -124,6 +143,12 @@ def main():
     uv = os.path.expanduser("~/.local/bin/uv")
     if not os.path.exists(uv):
         uv = "uv"
+
+    # Start dashboard server as a daemon thread — auto-restarts on crash
+    dashboard_thread = threading.Thread(
+        target=_run_dashboard, args=(uv, log_f, tee_out), daemon=True
+    )
+    dashboard_thread.start()
 
     cmd = [uv, "run", "python", "-u", "discord_gateway.py"]
     crashes = 0

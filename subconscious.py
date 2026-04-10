@@ -408,6 +408,20 @@ def _format_state_for_subconscious(state: BiologicalState) -> str:
     return "\n".join(lines)
 
 
+_INJECT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run", "subconscious_inject.md")
+
+
+def _consume_injection() -> str:
+    """Read and delete run/subconscious_inject.md. Returns content or empty string."""
+    try:
+        with open(_INJECT_FILE) as f:
+            content = f.read().strip()
+        os.remove(_INJECT_FILE)
+        return content
+    except FileNotFoundError:
+        return ""
+
+
 def run_mode1(
     biological_report_text: str,
     conversation_history: list[dict],
@@ -421,11 +435,16 @@ def run_mode1(
     Output: system_prompt string. Writes new monologue to run/monologue.md as a side effect.
     """
     current_monologue = _monologue.read()
+    injection = _consume_injection()
 
     user_content_parts = [
         f"[BIOLOGICAL STATE — ground truth, do not contradict]\n{biological_report_text}",
         f"[CURRENT STATE OF MIND]\n{current_monologue}" if current_monologue else "[CURRENT STATE OF MIND]\nNo monologue yet.",
     ]
+
+    if injection:
+        user_content_parts.append(f"[SUBCONSCIOUS INJECTION — integrate this into her current state of mind]\n{injection}")
+        print(f"  [mode1] subconscious injection consumed ({len(injection)} chars)")
 
     if kag_context:
         user_content_parts.append(kag_context)

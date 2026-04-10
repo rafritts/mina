@@ -28,3 +28,6 @@ memory/images/
 # Secrets
 .env
 *.key
+dashboard/build/
+dashboard/node_modules/
+dashboard/.svelte-kit/
