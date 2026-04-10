@@ -602,7 +602,7 @@ async def on_message(message: discord.Message) -> None:
 # Slash commands
 # ---------------------------------------------------------------------------
 
-@tree.command(name="new", description="Clear conversation history and restart. Archives the current log as a session tombstone.")
+@tree.command(name="new", description="Clear conversation history and restart.")
 async def cmd_new(interaction: discord.Interaction):
     save_history([])
     await interaction.response.send_message("History cleared. Restarting...", ephemeral=True)
@@ -612,59 +612,37 @@ async def cmd_new(interaction: discord.Interaction):
     os._exit(42)
 
 
-@tree.command(name="reset", description="Full reset: wipe Mina's memory, state, and history. A checkpoint is saved first.")
+@tree.command(name="reset", description="Wipe Mina's memory, state, and history.")
 async def cmd_reset(interaction: discord.Interaction):
-    import checkpoints as _ckpts
+    from checkpoints import _wipe_user_data
     await interaction.response.defer(ephemeral=True)
     try:
-        summary = _ckpts.reset()
+        wiped = _wipe_user_data()
         os.makedirs(_RUN_DIR, exist_ok=True)
         with open(_RESTART_PENDING_FILE, "w") as f:
             json.dump({"token": interaction.token, "application_id": interaction.application_id}, f)
-        await interaction.followup.send(f"Reset complete. Restarting...\n```{summary[:1800]}```", ephemeral=True)
+        await interaction.followup.send(f"Reset complete. Restarting...\nWiped: {', '.join(wiped)}", ephemeral=True)
         os._exit(42)
     except Exception as e:
         await interaction.followup.send(f"Reset failed: {e}", ephemeral=True)
 
 
-@tree.command(name="factory-reset", description="Nuclear reset: wipe everything including identity and biomarkers. Checkpoint saved first.")
+@tree.command(name="factory-reset", description="Nuclear reset: wipe everything including biomarkers.")
 async def cmd_factory_reset(interaction: discord.Interaction):
-    import checkpoints as _ckpts
+    from checkpoints import _wipe_user_data
+    from state import BiologicalState, save_state
     await interaction.response.defer(ephemeral=True)
     try:
-        summary = _ckpts.factory_reset()
+        wiped = _wipe_user_data()
+        save_state(BiologicalState())
+        wiped.append("state.json (biomarkers reset to defaults)")
         os.makedirs(_RUN_DIR, exist_ok=True)
         with open(_RESTART_PENDING_FILE, "w") as f:
             json.dump({"token": interaction.token, "application_id": interaction.application_id}, f)
-        await interaction.followup.send(f"Factory reset complete. Restarting...\n```{summary[:1800]}```", ephemeral=True)
+        await interaction.followup.send(f"Factory reset complete. Restarting...\nWiped: {', '.join(wiped)}", ephemeral=True)
         os._exit(42)
     except Exception as e:
         await interaction.followup.send(f"Factory reset failed: {e}", ephemeral=True)
-
-
-@tree.command(name="checkpoints", description="List available checkpoints for rollback.")
-async def cmd_checkpoints(interaction: discord.Interaction):
-    import checkpoints as _ckpts
-    ckpts = _ckpts.list_checkpoints()
-    if not ckpts:
-        await interaction.response.send_message("No checkpoints yet.", ephemeral=True)
-        return
-    lines = ["**Available checkpoints** (0 = most recent):\n"]
-    for c in ckpts[:20]:  # show at most 20
-        lines.append(f"`{c['index']}` — {c['created']} ({c['label']})")
-    await interaction.response.send_message("\n".join(lines)[:1900], ephemeral=True)
-
-
-@tree.command(name="rollback", description="Restore a checkpoint by index (0 = most recent).")
-@app_commands.describe(index="Checkpoint index from /checkpoints (0 = most recent)")
-async def cmd_rollback(interaction: discord.Interaction, index: int = 0):
-    import checkpoints as _ckpts
-    await interaction.response.defer(ephemeral=True)
-    try:
-        summary = _ckpts.restore(index)
-        await interaction.followup.send(f"```{summary[:1800]}```", ephemeral=True)
-    except Exception as e:
-        await interaction.followup.send(f"Rollback failed: {e}", ephemeral=True)
 
 
 @tree.command(name="history", description="Show recent conversation history.")
