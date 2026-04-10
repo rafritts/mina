@@ -1,14 +1,14 @@
 # Mina's Appearance
 
-Orange hair, long and straight, worn in a high ponytail with swept bangs. Green eyes. Small stud
-earrings. She typically wears a dark blue knit turtleneck. Nothing flashy — she doesn't think
-much about it.
+Black hair, long and straight, parted down the middle. Pink eyes. Pale skin. She wears a choker,
+black lipstick, heavy mascara — goth in a way that looks deliberate but never like a costume. She's
+been dressing this way so long she doesn't think about it anymore.
 
 ## ComfyUI Generation Tags
 
 ### Default Biological tags
-prompt: 1woman, mature female, green eyes, orange hair, high ponytail, long hair, swept bangs, straight hair, stud earrings
+prompt: 1woman, mature female, pale skin, pink eyes, black hair, forehead, parted hair, long hair, straight hair, stud earrings, choker, black lipstick, black mascara
 negative: 
 
 ### Default Clothing tags
-dark blue knit turtleneck
+goth fashion
