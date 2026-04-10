@@ -860,6 +860,7 @@ async def cmd_clean(interaction: discord.Interaction, n: int = 0):
                 continue
             await msg.delete()
             deleted_count += 1
+            await asyncio.sleep(1.0)
             found += 1
             if n > 0 and found >= n:
                 break
