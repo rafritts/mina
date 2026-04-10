@@ -63,6 +63,7 @@
     { href: '/state',        label: 'State' },
     { href: '/monologue',    label: 'Monologue' },
     { href: '/admin',        label: 'Admin' },
+    { href: '/substances',   label: 'Substances' },
     { href: '/relationship', label: 'Relationship' },
   ];
 

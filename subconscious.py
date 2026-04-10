@@ -90,12 +90,15 @@ def _call_delta_tool(messages: list[dict], label: str = "delta") -> dict:
 # Soft and hard saturation ceilings per marker.
 # Above soft: delta scaled linearly toward 0. Above hard: delta clamped to 0.
 _SATURATION_CEILINGS: dict[str, tuple[float, float]] = {
-    "oxytocin":      (45, 75),
-    "dopamine":      (68, 88),
-    "serotonin":     (68, 88),
-    "acetylcholine": (72, 92),
-    "endorphins":    (52, 78),
-    "norepinephrine":(60, 85),
+    # (soft_ceiling, hard_ceiling)
+    # Soft: scaling begins. Hard: deltas clamped to 0 (true natural cap).
+    # These represent what biology alone can achieve — substances bypass these entirely.
+    "oxytocin":       (40, 65),   # deep trust takes time; 65 = maximum natural bond
+    "dopamine":       (60, 78),   # strong motivation/seeking; 78 = manic edge
+    "serotonin":      (60, 78),   # very stable/content; 78 = unnaturally flat affect
+    "acetylcholine":  (65, 82),   # sharp focus; 82 = peak flow state
+    "endorphins":     (22, 42),   # real warmth/laughter; 42 = hard exercise ceiling
+    "norepinephrine": (55, 78),   # heightened; 78 = acute alarm response
 }
 
 
@@ -113,10 +116,13 @@ def _apply_saturation(deltas: dict, state: BiologicalState) -> dict:
         elif current > soft:
             scale = 1.0 - (current - soft) / (hard - soft)
             scaled = round(delta * scale, 2)
+            # Enforce hard ceiling: cap so current + scaled never exceeds hard
+            scaled = min(scaled, hard - current)
             if scaled != 0:
                 result[field] = scaled
         else:
-            result[field] = delta
+            # Below soft ceiling: still cap at hard so a giant delta can't overshoot
+            result[field] = min(delta, hard - current)
     return result
 
 
