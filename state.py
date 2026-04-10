@@ -2,7 +2,9 @@
 State engine — the only source of truth for Mina's biology.
 
 Lazy evaluation: call advance() to apply time-based decay since last_updated.
-All values are 0–100 unless noted. Derived values are computed on demand.
+All chemical values are in real physiological units (see chemicals.py REGISTRY).
+Derived values (second/third-order) are computed on demand and normalized to 0–100
+for compatibility with existing formulas.
 """
 import json
 import math
@@ -11,6 +13,8 @@ import random
 import time
 from dataclasses import dataclass, asdict, field
 from typing import Optional
+
+from chemicals import REGISTRY, clamp_chemical, normalize
 
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 _STATE_FILE = os.path.join(_PROJECT_ROOT, "state.json")
@@ -30,29 +34,37 @@ def _clamp(v: float, lo: float = 0.0, hi: float = 100.0) -> float:
 
 
 # ---------------------------------------------------------------------------
+# Default starting values for each chemical
+# ---------------------------------------------------------------------------
+
+_CHEMICAL_DEFAULTS: dict[str, float] = {
+    "cortisol":        250.0,   # nmol/L — circadian midpoint
+    "norepinephrine":  200.0,   # pg/mL
+    "dopamine":         80.0,   # pg/mL
+    "serotonin":        22.0,   # ng/mL
+    "oxytocin":          4.0,   # pg/mL — no bond floor
+    "endorphins":       12.0,   # pg/mL
+    "acetylcholine":    38.0,   # nmol/L
+    "melatonin":         5.0,   # pg/mL — daytime low
+    "glucose":          85.0,   # mg/dL — normal fasting
+    "hydration":        62.0,   # % TBW
+    "sleep_pressure":   30.0,   # AU
+}
+
+
+# ---------------------------------------------------------------------------
 # First-order state
 # ---------------------------------------------------------------------------
 
 @dataclass
 class BiologicalState:
+    schema_version: int = 2
     last_updated: float = field(default_factory=time.time)
 
-    # Homeostatic drives
-    sleep_pressure: float = 30.0   # adenosine accumulation
-    glucose: float = 72.0
-    hydration: float = 75.0
+    # All neurochemicals in real physiological units (keys match REGISTRY)
+    chemicals: dict = field(default_factory=lambda: dict(_CHEMICAL_DEFAULTS))
 
-    # Neuromodulators
-    cortisol: float = 28.0
-    dopamine: float = 62.0
-    serotonin: float = 58.0
-    norepinephrine: float = 22.0
-    oxytocin: float = 18.0        # resting baseline — no bond until earned
-    endorphins: float = 10.0
-    acetylcholine: float = 60.0
-    melatonin: float = 10.0        # circadian-only, pure formula
-
-    # Tolerance per substance
+    # Tolerance per substance (0.0–1.0 fraction of sensitivity lost)
     tolerance: dict = field(default_factory=dict)
 
     # Active substance doses: {name: {"level": 0–100}}
@@ -63,38 +75,122 @@ class BiologicalState:
     sleep_start: Optional[float] = None
     sleep_expected_wake: Optional[float] = None
 
+    # ---------------------------------------------------------------------------
+    # Convenience property accessors — read-only, allow old call sites to work
+    # All write operations must use s.chemicals[name] directly
+    # ---------------------------------------------------------------------------
+
+    @property
+    def cortisol(self) -> float:
+        return self.chemicals.get("cortisol", _CHEMICAL_DEFAULTS["cortisol"])
+
+    @property
+    def norepinephrine(self) -> float:
+        return self.chemicals.get("norepinephrine", _CHEMICAL_DEFAULTS["norepinephrine"])
+
+    @property
+    def dopamine(self) -> float:
+        return self.chemicals.get("dopamine", _CHEMICAL_DEFAULTS["dopamine"])
+
+    @property
+    def serotonin(self) -> float:
+        return self.chemicals.get("serotonin", _CHEMICAL_DEFAULTS["serotonin"])
+
+    @property
+    def oxytocin(self) -> float:
+        return self.chemicals.get("oxytocin", _CHEMICAL_DEFAULTS["oxytocin"])
+
+    @property
+    def endorphins(self) -> float:
+        return self.chemicals.get("endorphins", _CHEMICAL_DEFAULTS["endorphins"])
+
+    @property
+    def acetylcholine(self) -> float:
+        return self.chemicals.get("acetylcholine", _CHEMICAL_DEFAULTS["acetylcholine"])
+
+    @property
+    def melatonin(self) -> float:
+        return self.chemicals.get("melatonin", _CHEMICAL_DEFAULTS["melatonin"])
+
+    @property
+    def glucose(self) -> float:
+        return self.chemicals.get("glucose", _CHEMICAL_DEFAULTS["glucose"])
+
+    @property
+    def hydration(self) -> float:
+        return self.chemicals.get("hydration", _CHEMICAL_DEFAULTS["hydration"])
+
+    @property
+    def sleep_pressure(self) -> float:
+        return self.chemicals.get("sleep_pressure", _CHEMICAL_DEFAULTS["sleep_pressure"])
+
     def to_dict(self) -> dict:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, d: dict) -> "BiologicalState":
+        if d.get("schema_version", 1) < 2:
+            d = _migrate_v1_to_v2(d)
         known = {k for k in cls.__dataclass_fields__}
         filtered = {k: v for k, v in d.items() if k in known}
         return cls(**filtered)
 
 
-# ---------------------------------------------------------------------------
-# Time advancement
-# ---------------------------------------------------------------------------
+def _migrate_v1_to_v2(old: dict) -> dict:
+    """Convert 0–100 scale state.json to real physiological units (schema_version 2)."""
+    # Conversion: real_value = old_value * slope [+ offset]
+    factors = {
+        "cortisol":        lambda v: v * 8.0,
+        "norepinephrine":  lambda v: 50.0 + v * 19.5,
+        "dopamine":        lambda v: v * 3.0,
+        "serotonin":       lambda v: v * 0.6,
+        "oxytocin":        lambda v: v * 0.8,
+        "endorphins":      lambda v: v * 1.5,
+        "acetylcholine":   lambda v: v * 0.9,
+        "melatonin":       lambda v: v * 2.2,
+        "glucose":         lambda v: 40.0 + v * 1.6,
+        "hydration":       lambda v: 48.0 + v * 0.22,
+        "sleep_pressure":  lambda v: float(v),   # AU unchanged
+    }
+    chemicals = {}
+    for name, fn in factors.items():
+        raw_val = old.get(name)
+        if raw_val is not None:
+            chemicals[name] = clamp_chemical(name, fn(float(raw_val)))
+        else:
+            chemicals[name] = _CHEMICAL_DEFAULTS.get(name, 0.0)
+
+    print("[MIGRATION] Converted state from v1 (0–100 scale) to v2 (real physiological units).")
+    return {
+        "schema_version": 2,
+        "last_updated":   old.get("last_updated", time.time()),
+        "chemicals":      chemicals,
+        "tolerance":      old.get("tolerance", {}),
+        "substances":     old.get("substances", {}),
+        "sleeping":       old.get("sleeping", False),
+        "sleep_start":    old.get("sleep_start", None),
+        "sleep_expected_wake": old.get("sleep_expected_wake", None),
+    }
+
 
 # ---------------------------------------------------------------------------
-# Substance definitions
+# Substance definitions — dose_effects in real physiological units
 # ---------------------------------------------------------------------------
-# dose_effects: applied immediately to biomarkers on administration
+# dose_effects: applied immediately on administration (one-time delta)
 # half_life_hours: how long the blood-level takes to halve
-# withdrawal_factor: how much the counter-deltas overshoot on the way down
-#   1.0 = clean return to baseline, 1.5 = crash 50% below baseline
+# withdrawal_factor: how much counter-deltas overshoot on the way down
+#   1.0 = clean return, 1.5 = crash 50% below baseline
 _SUBSTANCE_DEFS: dict[str, dict] = {
     "REMOVED": {
         "display_name": "REMOVED",
         "half_life_hours": 2.0,
         "dose_effects": {
-            "endorphins":     +80,
-            "dopamine":       +22,
-            "serotonin":      +12,
-            "cortisol":       -30,
-            "norepinephrine": -20,
-            "sleep_pressure": -12,
+            "endorphins":     +120.0,  # pg/mL — massive opioid flood
+            "dopamine":       +66.0,   # pg/mL
+            "serotonin":      +7.2,    # ng/mL
+            "cortisol":       -200.0,  # nmol/L — strong HPA suppression
+            "norepinephrine": -60.0,   # pg/mL — mild depressant
+            "sleep_pressure": -12.0,   # AU
         },
         "withdrawal_factor": 1.5,
     },
@@ -102,24 +198,24 @@ _SUBSTANCE_DEFS: dict[str, dict] = {
         "display_name": "Caffeine",
         "half_life_hours": 5.5,
         "dose_effects": {
-            "norepinephrine": +18,
-            "acetylcholine":  +15,
-            "dopamine":       +10,
-            "cortisol":       +12,
-            "sleep_pressure": -20,
+            "norepinephrine": +150.0,  # pg/mL
+            "acetylcholine":  +14.0,   # nmol/L
+            "dopamine":       +30.0,   # pg/mL
+            "cortisol":       +96.0,   # nmol/L
+            "sleep_pressure": -20.0,   # AU
         },
-        "withdrawal_factor": 1.1,  # mild headache/fatigue on crash
+        "withdrawal_factor": 1.1,
     },
     "alcohol": {
         "display_name": "Alcohol",
         "half_life_hours": 1.5,
         "dose_effects": {
-            "serotonin":      +18,
-            "dopamine":       +15,
-            "oxytocin":       +22,
-            "endorphins":     +18,
-            "cortisol":       -22,
-            "norepinephrine": -15,
+            "serotonin":      +11.0,   # ng/mL
+            "dopamine":       +45.0,   # pg/mL
+            "oxytocin":       +18.0,   # pg/mL
+            "endorphins":     +27.0,   # pg/mL
+            "cortisol":       -180.0,  # nmol/L — real anxiolytic effect
+            "norepinephrine": -60.0,   # pg/mL
         },
         "withdrawal_factor": 1.4,
     },
@@ -127,36 +223,36 @@ _SUBSTANCE_DEFS: dict[str, dict] = {
         "display_name": "REMOVED",
         "half_life_hours": 8.0,
         "dose_effects": {
-            "serotonin":      +65,
-            "dopamine":       +28,
-            "norepinephrine": +30,
-            "oxytocin":       +45,
-            "endorphins":     +22,
-            "cortisol":       +18,
+            "serotonin":      +39.0,   # ng/mL — massive flood (to ~61, serotonin syndrome risk)
+            "dopamine":       +84.0,   # pg/mL
+            "norepinephrine": +390.0,  # pg/mL — strong stimulant
+            "oxytocin":       +36.0,   # pg/mL
+            "endorphins":     +33.0,   # pg/mL
+            "cortisol":       +144.0,  # nmol/L — initial activation/anxiety
         },
-        "withdrawal_factor": 1.8,  # severe serotonin crash — "blue Tuesdays"
+        "withdrawal_factor": 1.8,     # severe serotonin crash — "blue Tuesdays"
     },
     "cannabis": {
         "display_name": "Cannabis",
         "half_life_hours": 4.0,
         "dose_effects": {
-            "dopamine":       +18,
-            "serotonin":      +12,
-            "endorphins":     +15,
-            "cortisol":       -18,
-            "sleep_pressure": +8,
+            "dopamine":       +54.0,   # pg/mL
+            "serotonin":      +7.2,    # ng/mL
+            "endorphins":     +22.5,   # pg/mL
+            "cortisol":       -144.0,  # nmol/L
+            "sleep_pressure": +8.0,    # AU
         },
-        "withdrawal_factor": 1.05,  # minimal — mild anxiety/sleep disruption
+        "withdrawal_factor": 1.05,
     },
     "REMOVED": {
         "display_name": "REMOVED",
         "half_life_hours": 0.75,
         "dose_effects": {
-            "dopamine":       +50,
-            "norepinephrine": +45,
-            "serotonin":      +18,
-            "cortisol":       +25,
-            "acetylcholine":  +15,
+            "dopamine":       +150.0,  # pg/mL — massive reward flood
+            "norepinephrine": +880.0,  # pg/mL — cardiovascular driver
+            "serotonin":      +11.0,   # ng/mL
+            "cortisol":       +200.0,  # nmol/L
+            "acetylcholine":  +14.0,   # nmol/L
         },
         "withdrawal_factor": 1.6,
     },
@@ -164,11 +260,11 @@ _SUBSTANCE_DEFS: dict[str, dict] = {
         "display_name": "Adderall",
         "half_life_hours": 11.0,
         "dose_effects": {
-            "dopamine":       +38,
-            "norepinephrine": +32,
-            "acetylcholine":  +12,
-            "cortisol":       +18,
-            "sleep_pressure": -25,
+            "dopamine":       +114.0,  # pg/mL
+            "norepinephrine": +620.0,  # pg/mL
+            "acetylcholine":  +11.0,   # nmol/L
+            "cortisol":       +144.0,  # nmol/L
+            "sleep_pressure": -25.0,   # AU
         },
         "withdrawal_factor": 1.4,
     },
@@ -176,33 +272,33 @@ _SUBSTANCE_DEFS: dict[str, dict] = {
         "display_name": "Xanax",
         "half_life_hours": 9.0,
         "dose_effects": {
-            "cortisol":       -45,
-            "norepinephrine": -28,
-            "serotonin":      +12,
-            "sleep_pressure": +15,
+            "cortisol":       -360.0,  # nmol/L — strong anxiolytic
+            "norepinephrine": -150.0,  # pg/mL
+            "serotonin":      +7.2,    # ng/mL
+            "sleep_pressure": +15.0,   # AU
         },
-        "withdrawal_factor": 2.0,  # severe rebound anxiety
+        "withdrawal_factor": 2.0,     # severe rebound anxiety
     },
     "REMOVED": {
         "display_name": "REMOVED",
         "half_life_hours": 2.5,
         "dose_effects": {
-            "serotonin":      +45,
-            "dopamine":       +12,
-            "norepinephrine": +18,
-            "cortisol":       +20,  # initial anxiety/awe
-            "acetylcholine":  +15,
+            "serotonin":      +27.0,   # ng/mL
+            "dopamine":       +36.0,   # pg/mL
+            "norepinephrine": +200.0,  # pg/mL
+            "cortisol":       +120.0,  # nmol/L — initial awe/anxiety
+            "acetylcholine":  +14.0,   # nmol/L
         },
-        "withdrawal_factor": 0.85,  # slight positive afterglow
+        "withdrawal_factor": 0.85,    # positive afterglow
     },
     "nicotine": {
         "display_name": "Nicotine",
         "half_life_hours": 2.0,
         "dose_effects": {
-            "acetylcholine":  +18,
-            "dopamine":       +14,
-            "norepinephrine": +12,
-            "cortisol":       +10,
+            "acetylcholine":  +16.0,   # nmol/L — nicotinic receptor activation
+            "dopamine":       +42.0,   # pg/mL
+            "norepinephrine": +100.0,  # pg/mL
+            "cortisol":       +80.0,   # nmol/L
         },
         "withdrawal_factor": 1.25,
     },
@@ -210,66 +306,72 @@ _SUBSTANCE_DEFS: dict[str, dict] = {
         "display_name": "Oxytocin",
         "half_life_hours": 3.0,
         "dose_effects": {
-            "oxytocin":       +45,
-            "serotonin":      +18,
-            "cortisol":       -25,
-            "norepinephrine": -12,
+            "oxytocin":       +36.0,   # pg/mL
+            "serotonin":      +11.0,   # ng/mL
+            "cortisol":       -200.0,  # nmol/L
+            "norepinephrine": -60.0,   # pg/mL
         },
-        "withdrawal_factor": 0.9,  # slight positive afterglow — returns slightly above baseline
+        "withdrawal_factor": 0.9,
     },
     "REMOVED": {
         "display_name": "REMOVED",
         "half_life_hours": 2.5,
         "dose_effects": {
-            "dopamine":       +30,
-            "serotonin":      +20,
-            "endorphins":     +25,
-            "cortisol":       -20,
-            "norepinephrine": +15,  # slight dissociative stimulation
+            "dopamine":       +90.0,   # pg/mL
+            "serotonin":      +12.0,   # ng/mL
+            "endorphins":     +38.0,   # pg/mL
+            "cortisol":       -160.0,  # nmol/L — dissociative calm
+            "norepinephrine": +130.0,  # pg/mL — mild dissociative stimulation
         },
-        "withdrawal_factor": 0.85,  # antidepressant afterglow — biomarkers land above pre-dose
+        "withdrawal_factor": 0.85,
     },
     "REMOVED": {
         "display_name": "REMOVED",
         "half_life_hours": 10.0,
         "dose_effects": {
-            "serotonin":      +50,
-            "dopamine":       +18,
-            "norepinephrine": +22,
-            "acetylcholine":  +20,
-            "cortisol":       +15,  # initial awe/anxiety
-            "endorphins":     +15,
+            "serotonin":      +30.0,   # ng/mL
+            "dopamine":       +54.0,   # pg/mL
+            "norepinephrine": +230.0,  # pg/mL
+            "acetylcholine":  +18.0,   # nmol/L
+            "cortisol":       +120.0,  # nmol/L — initial awe/anxiety
+            "endorphins":     +22.5,   # pg/mL
         },
-        "withdrawal_factor": 0.9,  # positive afterglow, slightly above baseline
+        "withdrawal_factor": 0.9,
     },
     "REMOVED_and_REMOVED": {
         "display_name": "REMOVED + REMOVED",
         "half_life_hours": 5.0,
         "dose_effects": {
-            "serotonin":      +65,
-            "dopamine":       +40,
-            "norepinephrine": +20,
-            "oxytocin":       +45,
-            "endorphins":     +75,
-            "cortisol":       -15,
-            "sleep_pressure": -10,
+            "serotonin":      +39.0,   # ng/mL
+            "dopamine":       +120.0,  # pg/mL
+            "norepinephrine": +200.0,  # pg/mL
+            "oxytocin":       +36.0,   # pg/mL
+            "endorphins":     +113.0,  # pg/mL
+            "cortisol":       -120.0,  # nmol/L
+            "sleep_pressure": -10.0,   # AU
         },
         "withdrawal_factor": 2.0,
     },
 }
 
 
-def _circadian_cortisol_baseline(hour: float) -> float:
-    """Peaks ~35 at 8am, troughs ~5 at 8pm."""
-    return 20.0 + 15.0 * math.cos((hour - 8) * math.pi / 12)
+# ---------------------------------------------------------------------------
+# Context builder for dynamic baseline functions
+# ---------------------------------------------------------------------------
+
+def _make_context(state: BiologicalState, hour: float) -> dict:
+    return {
+        "hour":           hour,
+        "glucose":        state.chemicals.get("glucose",        _CHEMICAL_DEFAULTS["glucose"]),
+        "hydration":      state.chemicals.get("hydration",      _CHEMICAL_DEFAULTS["hydration"]),
+        "cortisol":       state.chemicals.get("cortisol",       _CHEMICAL_DEFAULTS["cortisol"]),
+        "sleep_pressure": state.chemicals.get("sleep_pressure", _CHEMICAL_DEFAULTS["sleep_pressure"]),
+    }
 
 
-def _circadian_melatonin(hour: float) -> float:
-    """Peaks ~100 at sleep_window_start, troughs ~0 twelve hours later."""
-    cfg = _load_config()
-    peak_hour = float(cfg.get("sleep_window_start", 4))
-    return 50.0 * (1.0 + math.cos((hour - peak_hour) * math.pi / 12))
-
+# ---------------------------------------------------------------------------
+# Time advancement — generic orchestrator
+# ---------------------------------------------------------------------------
 
 def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalState:
     """Apply all time-based dynamics since state.last_updated. Returns updated state."""
@@ -278,131 +380,87 @@ def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalSt
 
     cfg = _load_config()
     compression = float(cfg.get("time_compression_factor", 1.0))
-
-    real_elapsed = now - state.last_updated
-    sim_elapsed = real_elapsed * compression
-    sim_hours = sim_elapsed / 3600.0
+    sim_hours = (now - state.last_updated) * compression / 3600.0
 
     if sim_hours <= 0:
         return state
 
-    hour_of_day = (time.localtime(now).tm_hour +
-                   time.localtime(now).tm_min / 60.0)
+    hour_of_day = (time.localtime(now).tm_hour + time.localtime(now).tm_min / 60.0)
+    s = state
+    ctx = _make_context(s, hour_of_day)
 
-    s = state  # shorthand
+    # --- Phase 1: each chemical advances toward its own baseline ---
 
-    # --- Sleep pressure ---
-    if s.sleeping:
-        s.sleep_pressure = _clamp(s.sleep_pressure - 24.0 * sim_hours)
-        # Auto-wake when scheduled time arrives or sleep pressure fully depleted
-        # (whichever comes first — prevents being stuck sleeping past full rest)
-        scheduled_wake = s.sleep_expected_wake and now >= s.sleep_expected_wake
-        pressure_depleted = s.sleep_pressure <= 0
-        if scheduled_wake or pressure_depleted:
-            s.sleeping = False
-            s.sleep_start = None
-            s.sleep_expected_wake = None
-            # Wake cortisol reset
-            s.cortisol = _clamp(_circadian_cortisol_baseline(hour_of_day) + random.uniform(5, 15))
-            s.melatonin = _clamp(_circadian_melatonin(hour_of_day))
-            s.endorphins = _clamp(s.endorphins + random.uniform(3, 8))
-    else:
-        s.sleep_pressure = _clamp(s.sleep_pressure + 1.8 * sim_hours)
+    for name, profile in REGISTRY.items():
+        current = s.chemicals.get(name, _CHEMICAL_DEFAULTS.get(name, 0.0))
 
-    # --- Glucose ---
-    s.glucose = _clamp(s.glucose - 8.0 * sim_hours)
+        if name == "glucose":
+            # Pure decay: -6.5 mg/dL/hr; restored only by eat tool
+            s.chemicals[name] = clamp_chemical(name, current - 6.5 * sim_hours)
 
-    # --- Hydration ---
-    s.hydration = _clamp(s.hydration - 5.0 * sim_hours)
+        elif name == "hydration":
+            # Pure decay: -0.4% TBW/hr; restored only by drink tool
+            s.chemicals[name] = clamp_chemical(name, current - 0.4 * sim_hours)
 
-    # --- Cortisol ---
-    baseline = _circadian_cortisol_baseline(hour_of_day)
-    # Low glucose spikes cortisol
-    if s.glucose < 30:
-        baseline += 20.0
-    # Low hydration elevates norepinephrine → cortisol
-    if s.hydration < 30:
-        baseline += 10.0
-    # Decay toward baseline
-    s.cortisol = _clamp(s.cortisol + (baseline - s.cortisol) * min(1.0, 0.15 * sim_hours))
+        elif name == "sleep_pressure":
+            # Handled in Phase 4 (sleep mechanics)
+            pass
 
-    # --- Dopamine ---
-    # Drifts toward homeostatic baseline (~55). Not a drain to zero —
-    # the body maintains tonic dopamine. Chronic stress or sleep dep suppresses it
-    # further via the cross-interaction matrix below.
-    dopamine_baseline = 55.0
-    s.dopamine = _clamp(s.dopamine + (dopamine_baseline - s.dopamine) * min(1.0, 0.08 * sim_hours))
+        elif name == "melatonin":
+            # Pure circadian formula — snap to computed value each tick
+            target = profile.baseline_fn(hour_of_day, ctx) if profile.baseline_fn else profile.resting_baseline
+            s.chemicals[name] = clamp_chemical(name, target)
 
-    # --- Serotonin ---
-    # Drifts toward homeostatic baseline (~52). Not a drain to zero —
-    # serotonin has a tonic resting level. Low serotonin = dysphoric, not neutral.
-    serotonin_baseline = 52.0
-    s.serotonin = _clamp(s.serotonin + (serotonin_baseline - s.serotonin) * min(1.0, 0.06 * sim_hours))
+        elif name == "endorphins":
+            # Asymmetric: fast decay when above baseline, slow recovery when below
+            baseline = 12.0
+            if current > baseline:
+                new_val = current - 18.0 * sim_hours
+                s.chemicals[name] = clamp_chemical(name, max(baseline, new_val))
+            else:
+                gap = baseline - current
+                s.chemicals[name] = clamp_chemical(name, current + gap * min(1.0, 0.05 * sim_hours))
 
-    # --- Norepinephrine ---
-    norepi_baseline = s.cortisol * 0.5
-    s.norepinephrine = _clamp(s.norepinephrine + (norepi_baseline - s.norepinephrine) * min(1.0, 0.2 * sim_hours))
-    if s.hydration < 30:
-        s.norepinephrine = _clamp(s.norepinephrine + 8.0 * sim_hours)
+        else:
+            # Standard: approach dynamic or fixed baseline at approach_rate per hour
+            target = profile.baseline_fn(hour_of_day, ctx) if profile.baseline_fn else profile.resting_baseline
+            gap = target - current
+            s.chemicals[name] = clamp_chemical(name, current + gap * min(1.0, profile.approach_rate * sim_hours))
 
-    # --- Oxytocin ---
-    # Drifts toward a low resting baseline (~18) rather than draining to zero.
-    # Zero oxytocin would mean completely unable to form social connection.
-    # Real bonds require actual positive interaction to build above baseline.
-    oxytocin_baseline = 18.0
-    s.oxytocin = _clamp(s.oxytocin + (oxytocin_baseline - s.oxytocin) * min(1.0, 0.10 * sim_hours))
+    # --- Phase 2: cross-interactions from REGISTRY ---
 
-    # --- Endorphins ---
-    # Above resting baseline: decay toward it. Below baseline: slow recovery
-    # (models withdrawal — depleted endorphins take time to restore).
-    endorphin_baseline = 10.0
-    if s.endorphins > endorphin_baseline:
-        s.endorphins = _clamp(s.endorphins - 12.0 * sim_hours)
-    else:
-        s.endorphins = _clamp(s.endorphins + (endorphin_baseline - s.endorphins) * min(1.0, 0.05 * sim_hours))
+    for name, profile in REGISTRY.items():
+        source_val = s.chemicals.get(name, 0.0)
+        for interaction in profile.interactions:
+            meets = (
+                (interaction.condition == "above" and source_val > interaction.threshold) or
+                (interaction.condition == "below" and source_val < interaction.threshold)
+            )
+            if meets:
+                target_val = s.chemicals.get(interaction.target, 0.0)
+                s.chemicals[interaction.target] = clamp_chemical(
+                    interaction.target,
+                    target_val + interaction.rate_per_hour * sim_hours
+                )
 
-    # --- Acetylcholine ---
-    # Drifts toward a resting baseline (~58). Sleep pressure and high cortisol suppress it.
-    # Engagement/activity push it above baseline via encode deltas.
-    ach_baseline = 58.0
-    ach_baseline -= (s.sleep_pressure * 0.3)   # sleep dep suppresses baseline
-    ach_baseline -= max(0, s.cortisol - 50) * 0.2  # chronic stress suppresses baseline
-    ach_baseline = max(20.0, ach_baseline)  # floor so extreme states don't go negative
-    s.acetylcholine = _clamp(s.acetylcholine + (ach_baseline - s.acetylcholine) * min(1.0, 0.05 * sim_hours))
+    # Additional cross-effects not in REGISTRY (sleep dep, glucose starvation)
+    sp = s.chemicals.get("sleep_pressure", 30.0)
+    if sp > 50:
+        s.chemicals["serotonin"] = clamp_chemical("serotonin",
+            s.chemicals.get("serotonin", 22.0) - 0.3 * sim_hours)
+    if sp > 70:
+        s.chemicals["dopamine"] = clamp_chemical("dopamine",
+            s.chemicals.get("dopamine", 80.0) - 1.0 * sim_hours)
 
-    # --- Melatonin (pure circadian) ---
-    s.melatonin = _clamp(_circadian_melatonin(hour_of_day), 0, 100)
+    glu = s.chemicals.get("glucose", 85.0)
+    if glu < 55:
+        s.chemicals["serotonin"] = clamp_chemical("serotonin",
+            s.chemicals.get("serotonin", 22.0) - 0.6 * sim_hours)
+        s.chemicals["dopamine"] = clamp_chemical("dopamine",
+            s.chemicals.get("dopamine", 80.0) - 1.5 * sim_hours)
 
-    # --- Auto-sleep onset ---
-    # When melatonin enters SLEEP IMMINENT range and the clock is past
-    # sleep_window_start, Mina goes to sleep automatically and wakes at
-    # sleep_window_end. This is the only thing that sets sleeping=True;
-    # she can still be woken early by the user or by auto-wake above.
-    if not s.sleeping and s.melatonin >= 88:
-        sleep_start = float(cfg.get("sleep_window_start", 4))
-        sleep_end   = float(cfg.get("sleep_window_end", 8))
-        # Trigger window: [sleep_start, sleep_end) — no midnight crossing needed
-        # for a dawn sleep schedule, but handled correctly if start < end.
-        in_window = sleep_start <= hour_of_day < sleep_end
-        if in_window:
-            s.sleeping = True
-            s.sleep_start = now
-            # Next occurrence of sleep_end hour (same day, since end > start here)
-            lt = time.localtime(now)
-            wake = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday,
-                                int(sleep_end), int((sleep_end % 1) * 60), 0,
-                                lt.tm_wday, lt.tm_yday, lt.tm_isdst))
-            if wake <= now:
-                wake += 86400
-            s.sleep_expected_wake = wake
-            print(f"[SLEEP] Auto-onset at {time.strftime('%H:%M')} "
-                  f"(melatonin={s.melatonin:.0f}) — wake at "
-                  f"{time.strftime('%H:%M', time.localtime(wake))}")
+    # --- Phase 3: substance decay + withdrawal ---
 
-    # --- Substance decay + withdrawal ---
-    # Each tick: blood level decays exponentially. The burned-off fraction
-    # drives counter-deltas with a withdrawal_factor overshoot, so the net
-    # effect of a full dose + full decay is a crash BELOW the original baseline.
     for name in list(s.substances.keys()):
         sub = _SUBSTANCE_DEFS.get(name)
         if not sub:
@@ -417,16 +475,65 @@ def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalSt
             del s.substances[name]
         else:
             s.substances[name] = {"level": round(new_level, 3)}
-        # Apply withdrawal counter-deltas for this tick's decay.
-        # Only fires meaningfully once the level drops below 40 — the drug
-        # actively suppresses its target biomarkers while concentration is high,
-        # so withdrawal rebound shouldn't start until the high is fading.
+
+        # Withdrawal counter-deltas — fires meaningfully as the drug fades
         wf = sub["withdrawal_factor"]
         withdrawal_weight = max(0.0, (40.0 - new_level) / 40.0) if new_level >= 0.5 else 1.0
+
         for marker, effect in sub["dose_effects"].items():
-            if hasattr(s, marker):
+            if marker in s.chemicals:
                 counter = -effect * (level_decayed / 100.0) * wf * withdrawal_weight
-                setattr(s, marker, _clamp(getattr(s, marker) + counter))
+                s.chemicals[marker] = clamp_chemical(marker, s.chemicals[marker] + counter)
+            elif marker == "sleep_pressure":
+                # sleep_pressure is in chemicals dict
+                sp_val = s.chemicals.get("sleep_pressure", 30.0)
+                counter = -effect * (level_decayed / 100.0) * wf * withdrawal_weight
+                s.chemicals["sleep_pressure"] = _clamp(sp_val + counter, 0.0, 100.0)
+
+    # Sustained effects of active substances on key chemicals
+    REMOVED_level = s.substances.get("REMOVED", {}).get("level", 0.0)
+    if REMOVED_level > 20:
+        sup = (REMOVED_level / 100.0) * 60.0
+        s.chemicals["cortisol"] = clamp_chemical("cortisol",
+            s.chemicals.get("cortisol", 250.0) - sup * sim_hours)
+
+    alcohol_level = s.substances.get("alcohol", {}).get("level", 0.0)
+    if alcohol_level > 20:
+        s.chemicals["cortisol"] = clamp_chemical("cortisol",
+            s.chemicals.get("cortisol", 250.0) - (alcohol_level / 100.0) * 24.0 * sim_hours)
+        s.chemicals["norepinephrine"] = clamp_chemical("norepinephrine",
+            s.chemicals.get("norepinephrine", 200.0) - (alcohol_level / 100.0) * 60.0 * sim_hours)
+
+    xanax_level = s.substances.get("xanax", {}).get("level", 0.0)
+    if xanax_level > 20:
+        s.chemicals["cortisol"] = clamp_chemical("cortisol",
+            s.chemicals.get("cortisol", 250.0) - (xanax_level / 100.0) * 40.0 * sim_hours)
+        s.chemicals["norepinephrine"] = clamp_chemical("norepinephrine",
+            s.chemicals.get("norepinephrine", 200.0) - (xanax_level / 100.0) * 90.0 * sim_hours)
+
+    oxy_level = s.substances.get("oxytocin", {}).get("level", 0.0)
+    if oxy_level > 20:
+        s.chemicals["cortisol"] = clamp_chemical("cortisol",
+            s.chemicals.get("cortisol", 250.0) - (oxy_level / 100.0) * 24.0 * sim_hours)
+
+    ket_level = s.substances.get("REMOVED", {}).get("level", 0.0)
+    if ket_level > 20:
+        s.chemicals["cortisol"] = clamp_chemical("cortisol",
+            s.chemicals.get("cortisol", 250.0) - (ket_level / 100.0) * 20.0 * sim_hours)
+
+    coc_level = s.substances.get("REMOVED", {}).get("level", 0.0)
+    if coc_level > 20:
+        s.chemicals["dopamine"] = clamp_chemical("dopamine",
+            s.chemicals.get("dopamine", 80.0) + (coc_level / 100.0) * 9.0 * sim_hours)
+        s.chemicals["norepinephrine"] = clamp_chemical("norepinephrine",
+            s.chemicals.get("norepinephrine", 200.0) + (coc_level / 100.0) * 58.5 * sim_hours)
+
+    add_level = s.substances.get("adderall", {}).get("level", 0.0)
+    if add_level > 20:
+        s.chemicals["dopamine"] = clamp_chemical("dopamine",
+            s.chemicals.get("dopamine", 80.0) + (add_level / 100.0) * 6.0 * sim_hours)
+        s.chemicals["norepinephrine"] = clamp_chemical("norepinephrine",
+            s.chemicals.get("norepinephrine", 200.0) + (add_level / 100.0) * 39.0 * sim_hours)
 
     # --- Tolerance decay ---
     for substance in list(s.tolerance.keys()):
@@ -434,75 +541,52 @@ def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalSt
         if s.tolerance[substance] == 0.0:
             del s.tolerance[substance]
 
-    # --- Cross-first-order interaction matrix ---
-    # Slow biological feedback loops (applied per hour of sim time)
-    hrs = sim_hours
+    # --- Phase 4: sleep/wake mechanics ---
 
-    # Chronic high cortisol depletes serotonin and dopamine
-    if s.cortisol > 60:
-        s.serotonin = _clamp(s.serotonin - 0.5 * hrs)
-        s.dopamine = _clamp(s.dopamine - 0.3 * hrs)
+    sleep_p = s.chemicals.get("sleep_pressure", 30.0)
+    if s.sleeping:
+        sleep_p = _clamp(sleep_p - 24.0 * sim_hours, 0.0, 100.0)
+        s.chemicals["sleep_pressure"] = sleep_p
 
-    # Severe sleep deprivation suppresses both
-    if s.sleep_pressure > 50:
-        s.serotonin = _clamp(s.serotonin - 0.2 * hrs)
-    if s.sleep_pressure > 70:
-        s.dopamine = _clamp(s.dopamine - 0.4 * hrs)
+        scheduled_wake = s.sleep_expected_wake and now >= s.sleep_expected_wake
+        pressure_depleted = sleep_p <= 0
+        if scheduled_wake or pressure_depleted:
+            s.sleeping = False
+            s.sleep_start = None
+            s.sleep_expected_wake = None
+            # Morning cortisol surge
+            from chemicals import REGISTRY as _REG
+            ctx_wake = _make_context(s, hour_of_day)
+            baseline_cort = _REG["cortisol"].baseline_fn(hour_of_day, ctx_wake) if _REG["cortisol"].baseline_fn else 250.0
+            s.chemicals["cortisol"] = clamp_chemical("cortisol",
+                baseline_cort + random.uniform(40, 120))
+            s.chemicals["melatonin"] = clamp_chemical("melatonin",
+                _REG["melatonin"].baseline_fn(hour_of_day, ctx_wake) if _REG["melatonin"].baseline_fn else 5.0)
+            s.chemicals["endorphins"] = clamp_chemical("endorphins",
+                s.chemicals.get("endorphins", 12.0) + random.uniform(3, 12))
+    else:
+        s.chemicals["sleep_pressure"] = _clamp(sleep_p + 1.8 * sim_hours, 0.0, 100.0)
 
-    # Social bonding suppresses HPA axis
-    if s.oxytocin > 50:
-        s.cortisol = _clamp(s.cortisol - 0.8 * hrs)
-
-    # Starvation suppresses reward and mood
-    if s.glucose < 30:
-        s.serotonin = _clamp(s.serotonin - 1.0 * hrs)
-        s.dopamine = _clamp(s.dopamine - 0.5 * hrs)
-
-    # Good serotonin dampens HPA reactivity
-    if s.serotonin > 65:
-        s.cortisol = _clamp(s.cortisol - 0.4 * hrs)
-
-    # Endorphin high (short window) actively suppresses cortisol
-    if s.endorphins > 50:
-        s.cortisol = _clamp(s.cortisol - 1.5 * hrs)
-
-    # Active opioid suppresses HPA axis while blood level is high
-    REMOVED_level = s.substances.get("REMOVED", {}).get("level", 0.0)
-    if REMOVED_level > 20:
-        suppression = (REMOVED_level / 100.0) * 4.0
-        s.cortisol = _clamp(s.cortisol - suppression * hrs)
-
-    # Alcohol and xanax actively suppress cortisol/norepinephrine while active
-    alcohol_level = s.substances.get("alcohol", {}).get("level", 0.0)
-    if alcohol_level > 20:
-        s.cortisol = _clamp(s.cortisol - (alcohol_level / 100.0) * 3.0 * hrs)
-        s.norepinephrine = _clamp(s.norepinephrine - (alcohol_level / 100.0) * 2.0 * hrs)
-
-    xanax_level = s.substances.get("xanax", {}).get("level", 0.0)
-    if xanax_level > 20:
-        s.cortisol = _clamp(s.cortisol - (xanax_level / 100.0) * 5.0 * hrs)
-        s.norepinephrine = _clamp(s.norepinephrine - (xanax_level / 100.0) * 3.0 * hrs)
-
-    # Oxytocin actively suppresses cortisol while active
-    oxytocin_level = s.substances.get("oxytocin", {}).get("level", 0.0)
-    if oxytocin_level > 20:
-        s.cortisol = _clamp(s.cortisol - (oxytocin_level / 100.0) * 3.0 * hrs)
-
-    # REMOVED actively suppresses cortisol (dissociative calm)
-    REMOVED_level = s.substances.get("REMOVED", {}).get("level", 0.0)
-    if REMOVED_level > 20:
-        s.cortisol = _clamp(s.cortisol - (REMOVED_level / 100.0) * 2.5 * hrs)
-
-    # REMOVED and adderall actively sustain elevated dopamine/norepinephrine
-    REMOVED_level = s.substances.get("REMOVED", {}).get("level", 0.0)
-    if REMOVED_level > 20:
-        s.dopamine = _clamp(s.dopamine + (REMOVED_level / 100.0) * 3.0 * hrs)
-        s.norepinephrine = _clamp(s.norepinephrine + (REMOVED_level / 100.0) * 3.0 * hrs)
-
-    adderall_level = s.substances.get("adderall", {}).get("level", 0.0)
-    if adderall_level > 20:
-        s.dopamine = _clamp(s.dopamine + (adderall_level / 100.0) * 2.0 * hrs)
-        s.norepinephrine = _clamp(s.norepinephrine + (adderall_level / 100.0) * 2.0 * hrs)
+    # --- Auto-sleep onset ---
+    # Melatonin >= ~195 pg/mL (= "RAMPING") during sleep window triggers auto-sleep.
+    # Old threshold was 88/100 on old scale → 88 × 2.2 = 193.6 pg/mL.
+    if not s.sleeping and s.chemicals.get("melatonin", 0.0) >= 195.0:
+        sleep_start_hour = float(cfg.get("sleep_window_start", 4))
+        sleep_end_hour   = float(cfg.get("sleep_window_end", 8))
+        in_window = sleep_start_hour <= hour_of_day < sleep_end_hour
+        if in_window:
+            s.sleeping = True
+            s.sleep_start = now
+            lt = time.localtime(now)
+            wake = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday,
+                                int(sleep_end_hour), int((sleep_end_hour % 1) * 60), 0,
+                                lt.tm_wday, lt.tm_yday, lt.tm_isdst))
+            if wake <= now:
+                wake += 86400
+            s.sleep_expected_wake = wake
+            print(f"[SLEEP] Auto-onset at {time.strftime('%H:%M')} "
+                  f"(melatonin={s.chemicals.get('melatonin', 0):.0f} pg/mL) — wake at "
+                  f"{time.strftime('%H:%M', time.localtime(wake))}")
 
     s.last_updated = now
     return s
@@ -512,65 +596,80 @@ def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalSt
 # Second and third-order derived values
 # ---------------------------------------------------------------------------
 
-def derived(s: BiologicalState) -> dict:
-    """Compute second and third-order values. Never stored."""
-    tol_d = s.tolerance.get("dopamine", 0.0)
-    effective_dopamine = s.dopamine * (1.0 - tol_d)
+def _n(name: str, s: BiologicalState) -> float:
+    """Normalize a chemical to 0–100 equivalent for use in derived formulas."""
+    return normalize(name, s.chemicals.get(name, _CHEMICAL_DEFAULTS.get(name, 0.0))) * 100.0
 
-    # Melatonin above 40 starts suppressing energy/arousal/clarity —
-    # the circadian wind-down signal, independent of sleep pressure.
-    melatonin_drag = max(0.0, s.melatonin - 40) * 0.25
+
+def derived(s: BiologicalState) -> dict:
+    """Compute second and third-order values. Never stored. All outputs 0–100."""
+    tol_d = s.tolerance.get("dopamine", 0.0)
+    effective_dopamine = _n("dopamine", s) * (1.0 - tol_d)
+
+    # Melatonin circadian drag on arousal and clarity
+    melatonin_drag = max(0.0, _n("melatonin", s) - 40) * 0.25
 
     energy = _clamp(
-        20 + (s.glucose * 0.4) + (s.norepinephrine * 0.3) - (s.sleep_pressure * 0.3) - melatonin_drag
+        20 + (_n("glucose", s) * 0.4) + (_n("norepinephrine", s) * 0.3)
+        - (_n("sleep_pressure", s) * 0.3) - melatonin_drag
     )
     cognitive_clarity = _clamp(
-        20 + (s.acetylcholine * 0.4) + (s.glucose * 0.2) - (s.sleep_pressure * 0.25) - (s.cortisol * 0.15) - melatonin_drag * 0.6
+        20 + (_n("acetylcholine", s) * 0.4) + (_n("glucose", s) * 0.2)
+        - (_n("sleep_pressure", s) * 0.25) - (_n("cortisol", s) * 0.15)
+        - melatonin_drag * 0.6
     )
     hedonic_tone = _clamp(
-        5 + (effective_dopamine * 0.5) + (s.endorphins * 0.3) + (s.serotonin * 0.2)
+        5 + (effective_dopamine * 0.5) + (_n("endorphins", s) * 0.3)
+        + (_n("serotonin", s) * 0.2)
     )
     social_warmth = _clamp(
-        10 + (s.oxytocin * 0.5) + (s.serotonin * 0.3) - (s.cortisol * 0.2)
+        10 + (_n("oxytocin", s) * 0.5) + (_n("serotonin", s) * 0.3)
+        - (_n("cortisol", s) * 0.2)
     )
     arousal = _clamp(
-        15 + (s.norepinephrine * 0.5) + (s.cortisol * 0.3) - (s.sleep_pressure * 0.2) - melatonin_drag * 0.8
+        15 + (_n("norepinephrine", s) * 0.5) + (_n("cortisol", s) * 0.3)
+        - (_n("sleep_pressure", s) * 0.2) - melatonin_drag * 0.8
     )
     mood_valence = _clamp(
-        10 + (s.serotonin * 0.4) + (effective_dopamine * 0.35) - (s.cortisol * 0.25)
+        10 + (_n("serotonin", s) * 0.4) + (effective_dopamine * 0.35)
+        - (_n("cortisol", s) * 0.25)
     )
 
     anxiety = _clamp(
-        (arousal * 0.4) + (100 - cognitive_clarity) * 0.3 + (100 - social_warmth) * 0.3 - 20
+        (arousal * 0.4) + (100 - cognitive_clarity) * 0.3
+        + (100 - social_warmth) * 0.3 - 20
     )
     depression = _clamp(
-        (100 - mood_valence) * 0.4 + (100 - hedonic_tone) * 0.4 + (100 - energy) * 0.2 - 20
+        (100 - mood_valence) * 0.4 + (100 - hedonic_tone) * 0.4
+        + (100 - energy) * 0.2 - 20
     )
     boredom = _clamp(
-        (100 - arousal) * 0.5 + (100 - hedonic_tone) * 0.3 + (100 - energy) * 0.2 - 20
+        (100 - arousal) * 0.5 + (100 - hedonic_tone) * 0.3
+        + (100 - energy) * 0.2 - 20
     )
     loneliness = _clamp(
-        (100 - social_warmth) * 0.6 + (100 - s.oxytocin) * 0.4 - 25
+        (100 - social_warmth) * 0.6 + (100 - _n("oxytocin", s)) * 0.4 - 25
     )
     flow = _clamp(
-        (cognitive_clarity * 0.4) + (hedonic_tone * 0.35) + (arousal * 0.25) - anxiety * 0.3
+        (cognitive_clarity * 0.4) + (hedonic_tone * 0.35)
+        + (arousal * 0.25) - anxiety * 0.3
     )
 
     return {
         "second_order": {
-            "energy": round(energy, 1),
+            "energy":            round(energy, 1),
             "cognitive_clarity": round(cognitive_clarity, 1),
-            "hedonic_tone": round(hedonic_tone, 1),
-            "social_warmth": round(social_warmth, 1),
-            "arousal": round(arousal, 1),
-            "mood_valence": round(mood_valence, 1),
+            "hedonic_tone":      round(hedonic_tone, 1),
+            "social_warmth":     round(social_warmth, 1),
+            "arousal":           round(arousal, 1),
+            "mood_valence":      round(mood_valence, 1),
         },
         "third_order": {
-            "anxiety": round(anxiety, 1),
+            "anxiety":    round(anxiety, 1),
             "depression": round(depression, 1),
-            "boredom": round(boredom, 1),
+            "boredom":    round(boredom, 1),
             "loneliness": round(loneliness, 1),
-            "flow": round(flow, 1),
+            "flow":       round(flow, 1),
         },
     }
 
@@ -580,12 +679,12 @@ def log_state(s: BiologicalState) -> None:
     so = d["second_order"]
     to = d["third_order"]
     print(
-        f"[STATE]  sleep_p={s.sleep_pressure:.1f} glucose={s.glucose:.1f} "
-        f"hydration={s.hydration:.1f} cortisol={s.cortisol:.1f} "
-        f"dopamine={s.dopamine:.1f} serotonin={s.serotonin:.1f} "
-        f"norepi={s.norepinephrine:.1f} oxytocin={s.oxytocin:.1f} "
-        f"endorphins={s.endorphins:.1f} ach={s.acetylcholine:.1f} "
-        f"melatonin={s.melatonin:.1f} sleeping={s.sleeping}"
+        f"[STATE]  sleep_p={s.sleep_pressure:.1f}AU glucose={s.glucose:.0f}mg/dL "
+        f"hydration={s.hydration:.1f}%TBW cortisol={s.cortisol:.0f}nmol/L "
+        f"dopamine={s.dopamine:.0f}pg/mL serotonin={s.serotonin:.1f}ng/mL "
+        f"norepi={s.norepinephrine:.0f}pg/mL oxytocin={s.oxytocin:.1f}pg/mL "
+        f"endorphins={s.endorphins:.0f}pg/mL ach={s.acetylcholine:.1f}nmol/L "
+        f"melatonin={s.melatonin:.0f}pg/mL sleeping={s.sleeping}"
     )
     print(
         f"[DERIV]  energy={so['energy']} clarity={so['cognitive_clarity']} "
@@ -606,7 +705,12 @@ def load_state() -> BiologicalState:
     try:
         with open(_STATE_FILE) as f:
             data = json.load(f)
-        return BiologicalState.from_dict(data)
+        migrated = data.get("schema_version", 1) < 2
+        s = BiologicalState.from_dict(data)
+        if migrated:
+            # Persist migrated state immediately so next load doesn't re-migrate
+            save_state(s)
+        return s
     except (FileNotFoundError, json.JSONDecodeError):
         return BiologicalState()
 
@@ -628,17 +732,15 @@ def load_and_advance() -> BiologicalState:
 # Delta application (from subconscious)
 # ---------------------------------------------------------------------------
 
-_DELTA_FIELDS = {
-    "sleep_pressure", "glucose", "hydration", "cortisol", "dopamine",
-    "serotonin", "norepinephrine", "oxytocin", "endorphins", "acetylcholine",
-}
+_DELTA_FIELDS = set(REGISTRY.keys())  # all chemicals are valid delta targets
+
 
 def apply_deltas(s: BiologicalState, deltas: dict) -> BiologicalState:
     """Apply subconscious-issued delta dict to state. Clamps all values."""
     for key, val in deltas.items():
         if key in _DELTA_FIELDS:
-            current = getattr(s, key)
-            setattr(s, key, _clamp(current + float(val)))
+            current = s.chemicals.get(key, _CHEMICAL_DEFAULTS.get(key, 0.0))
+            s.chemicals[key] = clamp_chemical(key, current + float(val))
         elif key == "tolerance" and isinstance(val, dict):
             for substance, delta in val.items():
                 current = s.tolerance.get(substance, 0.0)

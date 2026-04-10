@@ -1,16 +1,33 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { apiFetch } from '$lib/api';
-  import { getLabel, COLOR_CLASSES, RANGES, DERIVED_RANGES } from '$lib/labels';
+  import { getLabel, COLOR_CLASSES, RANGES, DERIVED_RANGES, DISPLAY_RANGES } from '$lib/labels';
 
   // ---------------------------------------------------------------------------
   // Types
   // ---------------------------------------------------------------------------
 
+  interface ChemicalEntry {
+    value: number;
+    unit: string;
+    label: string;
+    normalized: number;  // 0.0–1.0
+  }
+
+  interface VitalEntry {
+    value?: number;
+    systolic?: number;
+    diastolic?: number;
+    unit: string;
+    label: string;
+  }
+
   interface StateData {
-    first_order: Record<string, number | boolean>;
+    chemicals: Record<string, ChemicalEntry>;
+    sleeping: boolean;
     second_order: Record<string, number>;
     third_order: Record<string, number>;
+    vital_signs: Record<string, VitalEntry>;
   }
 
   interface TokenStats {
@@ -31,21 +48,20 @@
   let error = $state('');
   let lastUpdated = $state('');
 
-  // Local slider values — separate from API so we don't fight the user mid-drag
+  // Local slider values in REAL units — separate from API to avoid fighting mid-drag
   let localValues = $state<Record<string, number>>({});
-  let editing = $state(new Set<string>());  // fields currently being dragged
+  let editing = $state(new Set<string>());
   let patchTimers: Record<string, ReturnType<typeof setTimeout>> = {};
-  let saving = $state(new Set<string>());  // fields mid-PATCH
+  let saving = $state(new Set<string>());
 
   let refreshInterval: ReturnType<typeof setInterval>;
 
   // ---------------------------------------------------------------------------
-  // Slider field definitions
+  // Field definitions
   // ---------------------------------------------------------------------------
 
   const HOMEOSTATIC = ['sleep_pressure', 'glucose', 'hydration'];
-  const NEURO = ['cortisol', 'dopamine', 'serotonin', 'norepinephrine', 'oxytocin', 'endorphins', 'acetylcholine'];
-  // Melatonin is purely circadian — advance() overwrites it every tick, slider is useless
+  const NEURO       = ['cortisol', 'dopamine', 'serotonin', 'norepinephrine', 'oxytocin', 'endorphins', 'acetylcholine'];
   const NEURO_READONLY = ['melatonin'];
 
   const FIELD_LABELS: Record<string, string> = {
@@ -66,7 +82,7 @@
   const THIRD_ORDER_FIELDS  = ['anxiety', 'depression', 'boredom', 'loneliness', 'flow'];
 
   // ---------------------------------------------------------------------------
-  // Presets
+  // Presets (values in real physiological units)
   // ---------------------------------------------------------------------------
 
   interface Preset {
@@ -81,73 +97,73 @@
       name: 'Baseline',
       description: 'Healthy resting state — her defaults',
       btnClass: 'btn-neutral',
-      values: { sleep_pressure: 30, glucose: 72, hydration: 75, cortisol: 28, dopamine: 62, serotonin: 58, norepinephrine: 22, oxytocin: 18, endorphins: 10, acetylcholine: 60 },
+      values: { sleep_pressure: 30, glucose: 85, hydration: 62, cortisol: 250, dopamine: 80, serotonin: 22, norepinephrine: 200, oxytocin: 4, endorphins: 12, acetylcholine: 38 },
     },
     {
       name: 'Euphoria',
       description: 'Peak mood, high energy, deeply bonded',
       btnClass: 'btn-success',
-      values: { cortisol: 18, dopamine: 78, serotonin: 74, norepinephrine: 52, oxytocin: 68, endorphins: 76, acetylcholine: 72, sleep_pressure: 22, glucose: 75, hydration: 78 },
+      values: { cortisol: 144, dopamine: 160, serotonin: 40, norepinephrine: 260, oxytocin: 48, endorphins: 70, acetylcholine: 68, sleep_pressure: 22, glucose: 85, hydration: 64 },
     },
     {
       name: 'Flow',
       description: 'Deep focus, sharp, effortlessly engaged',
       btnClass: 'btn-info',
-      values: { acetylcholine: 80, dopamine: 67, norepinephrine: 55, cortisol: 24, serotonin: 65, endorphins: 38, glucose: 74, sleep_pressure: 25 },
+      values: { acetylcholine: 76, dopamine: 110, norepinephrine: 310, cortisol: 192, serotonin: 34, endorphins: 30, glucose: 80, sleep_pressure: 22 },
     },
     {
       name: 'Loved',
       description: 'Warm, safe, fully trusted',
       btnClass: 'btn-success',
-      values: { oxytocin: 82, serotonin: 76, cortisol: 17, endorphins: 60, dopamine: 64, norepinephrine: 30 },
+      values: { oxytocin: 58, serotonin: 38, cortisol: 136, endorphins: 56, dopamine: 96, norepinephrine: 220 },
     },
     {
       name: 'Anxious',
       description: 'On edge, socially guarded, narrowed thinking',
       btnClass: 'btn-warning',
-      values: { cortisol: 74, norepinephrine: 77, serotonin: 30, dopamine: 42, acetylcholine: 44, endorphins: 8, oxytocin: 14 },
+      values: { cortisol: 590, norepinephrine: 990, serotonin: 14, dopamine: 72, acetylcholine: 30, endorphins: 7, oxytocin: 6 },
     },
     {
       name: 'Despair',
       description: 'No drive, hollow, disconnected',
       btnClass: 'btn-error',
-      values: { cortisol: 65, dopamine: 20, serotonin: 16, norepinephrine: 18, oxytocin: 10, endorphins: 5, acetylcholine: 32, sleep_pressure: 72, glucose: 45 },
+      values: { cortisol: 520, dopamine: 30, serotonin: 8, norepinephrine: 100, oxytocin: 3, endorphins: 5, acetylcholine: 20, sleep_pressure: 72, glucose: 55 },
     },
     {
       name: 'Lonely',
       description: 'Aching for contact, low warmth',
       btnClass: 'btn-warning',
-      values: { oxytocin: 12, serotonin: 36, cortisol: 54, dopamine: 36, endorphins: 10, norepinephrine: 40 },
+      values: { oxytocin: 6, serotonin: 20, cortisol: 432, dopamine: 56, endorphins: 10, norepinephrine: 290 },
     },
     {
       name: 'Rage',
       description: 'Acute stress, impulse control gone',
       btnClass: 'btn-error',
-      values: { cortisol: 88, norepinephrine: 84, serotonin: 20, dopamine: 48, acetylcholine: 36, endorphins: 6, oxytocin: 14 },
+      values: { cortisol: 704, norepinephrine: 1300, serotonin: 8, dopamine: 84, acetylcholine: 20, endorphins: 5, oxytocin: 6 },
     },
     {
       name: 'Crash',
       description: 'Post-high collapse — seeking but hollow',
       btnClass: 'btn-warning',
-      values: { dopamine: 21, endorphins: 4, serotonin: 33, cortisol: 60, acetylcholine: 28, sleep_pressure: 68, norepinephrine: 15 },
+      values: { dopamine: 22, endorphins: 3, serotonin: 17, cortisol: 480, acetylcholine: 18, sleep_pressure: 68, norepinephrine: 85 },
     },
     {
       name: 'Manic',
       description: 'Compulsive seeking, flooded, can\'t stop',
       btnClass: 'btn-warning',
-      values: { dopamine: 92, norepinephrine: 82, cortisol: 55, endorphins: 30, serotonin: 40, acetylcholine: 65, sleep_pressure: 55 },
+      values: { dopamine: 246, norepinephrine: 1080, cortisol: 440, endorphins: 30, serotonin: 28, acetylcholine: 62, sleep_pressure: 55 },
     },
     {
       name: 'Drunk',
       description: 'Cortisol off, social warmth, cognition softening',
       btnClass: 'btn-info',
-      values: { cortisol: 14, serotonin: 70, oxytocin: 55, acetylcholine: 28, norepinephrine: 18, dopamine: 55, endorphins: 42 },
+      values: { cortisol: 112, serotonin: 38, oxytocin: 26, acetylcholine: 18, norepinephrine: 120, dopamine: 100, endorphins: 42 },
     },
     {
       name: 'Sleepy',
       description: 'Melatonin peak, heavy, drifting',
       btnClass: 'btn-neutral',
-      values: { melatonin: 88, sleep_pressure: 78, acetylcholine: 30, norepinephrine: 16, cortisol: 14, dopamine: 40 },
+      values: { melatonin: 196, sleep_pressure: 78, acetylcholine: 18, norepinephrine: 100, cortisol: 112, dopamine: 56 },
     },
   ];
 
@@ -156,7 +172,6 @@
 
   async function applyPreset(preset: Preset) {
     applyingPreset = preset.name;
-    // Snapshot current values before overwriting
     presetSnapshot = { ...localValues };
     try {
       await apiFetch('/api/state', {
@@ -167,7 +182,6 @@
         localValues[k] = v;
       }
       await load();
-      // Undo stays until manually clicked or another preset is applied
     } catch (e) {
       error = String(e);
       presetSnapshot = null;
@@ -218,10 +232,10 @@
       data = d;
       lastUpdated = new Date().toLocaleTimeString();
 
-      // Sync local values for fields not currently being edited
-      for (const [k, v] of Object.entries(d.first_order)) {
-        if (typeof v === 'number' && !editing.has(k)) {
-          localValues[k] = v;
+      // Sync local slider values (real units) for fields not being edited
+      for (const [k, chem] of Object.entries(d.chemicals)) {
+        if (!editing.has(k)) {
+          localValues[k] = chem.value;
         }
       }
       error = '';
@@ -229,7 +243,6 @@
       error = String(e);
     }
 
-    // Token stats — best-effort, don't block state display
     try {
       tokens = await apiFetch<TokenStats>('/api/tokens');
     } catch (_) {}
@@ -269,7 +282,7 @@
   });
 
   // ---------------------------------------------------------------------------
-  // Slider handlers
+  // Slider handlers — real units
   // ---------------------------------------------------------------------------
 
   function onSliderInput(field: string, event: Event) {
@@ -277,14 +290,12 @@
     localValues[field] = value;
     editing = new Set([...editing, field]);
 
-    // Debounce PATCH
     if (patchTimers[field]) clearTimeout(patchTimers[field]);
     patchTimers[field] = setTimeout(() => patchField(field, value), 400);
   }
 
   function onSliderRelease(field: string) {
     editing = new Set([...editing].filter(f => f !== field));
-    // Cancel debounce and commit immediately on release
     if (patchTimers[field]) {
       clearTimeout(patchTimers[field]);
       delete patchTimers[field];
@@ -295,8 +306,6 @@
   }
 
   async function patchField(field: string, value: number) {
-    // Keep field in editing until PATCH completes — prevents the 5s refresh
-    // from snapping the slider back to the old server value mid-flight.
     editing = new Set([...editing, field]);
     saving = new Set([...saving, field]);
     try {
@@ -329,18 +338,31 @@
   }
 
   function derivedProgressColor(field: string, value: number): string {
-    // For "bad" metrics (anxiety, depression, boredom, loneliness) — higher is worse
-    const invertedFields = new Set(['anxiety', 'depression', 'boredom', 'loneliness']);
-    const v = invertedFields.has(field) ? value : value;
-    const entry = getLabel(field, v);
+    const entry = getLabel(field, value);
     if (!entry) return 'progress-primary';
-    const cls = COLOR_CLASSES[entry.color];
-    return cls?.progress ?? 'progress-primary';
+    return COLOR_CLASSES[entry.color]?.progress ?? 'progress-primary';
   }
 
   function derivedBadgeColor(field: string, value: number): string {
     const entry = getLabel(field, value) ?? { color: 'neutral' as const };
     return COLOR_CLASSES[entry.color]?.badge ?? 'badge-neutral';
+  }
+
+  function vitalLabelColor(label: string): string {
+    const dangerous = new Set(['BRADYCARDIA', 'DANGEROUS', 'CRITICALLY DEPRESSED', 'CRITICAL', 'HYPERTENSIVE', 'HYPOTENSIVE']);
+    const elevated  = new Set(['ELEVATED', 'HIGH', 'VERY HIGH', 'DEPRESSED', 'LOW', 'HYPERVENTILATING']);
+    if (dangerous.has(label)) return 'text-error';
+    if (elevated.has(label))  return 'text-warning';
+    return 'text-success';
+  }
+
+  function fmtVal(field: string, value: number): string {
+    const range = DISPLAY_RANGES[field];
+    if (!range) return value.toFixed(1);
+    // Use appropriate precision by unit
+    if (range.unit === 'ng/mL' || range.unit === '% TBW') return value.toFixed(1);
+    if (range.unit === 'AU') return value.toFixed(1);
+    return value.toFixed(0);
   }
 </script>
 
@@ -396,7 +418,7 @@
         <!-- Sleeping badge -->
         <div class="flex items-center gap-2">
           <span class="text-sm opacity-60">Status:</span>
-          {#if data.first_order['sleeping']}
+          {#if data.sleeping}
             <span class="badge badge-info gap-1">😴 Sleeping</span>
           {:else}
             <span class="badge badge-success gap-1">👁 Awake</span>
@@ -408,7 +430,8 @@
           <h2 class="text-sm font-semibold opacity-60 uppercase tracking-wider mb-3">Homeostatic</h2>
           <div class="flex flex-col gap-4">
             {#each HOMEOSTATIC as field}
-              {@const val = localValues[field] ?? 50}
+              {@const range = DISPLAY_RANGES[field]}
+              {@const val = localValues[field] ?? (range ? (range.min + range.max) / 2 : 50)}
               {@const label = getLabel(field, val)}
               <div>
                 <div class="flex justify-between items-center mb-1">
@@ -420,14 +443,15 @@
                     {#if label}
                       <span class="badge badge-xs {COLOR_CLASSES[label.color]?.badge}">{label.name}</span>
                     {/if}
-                    <span class="text-sm font-mono w-10 text-right">{val.toFixed(1)}</span>
+                    <span class="text-xs font-mono opacity-60">{range?.unit ?? ''}</span>
+                    <span class="text-sm font-mono w-14 text-right">{fmtVal(field, val)}</span>
                   </div>
                 </div>
                 <input
                   type="range"
-                  min="0"
-                  max="100"
-                  step="0.5"
+                  min={range?.min ?? 0}
+                  max={range?.max ?? 100}
+                  step={range ? (range.max - range.min) / 200 : 0.5}
                   value={val}
                   class="range range-sm w-full {sliderColor(field, val)}"
                   oninput={(e) => onSliderInput(field, e)}
@@ -444,7 +468,8 @@
           <h2 class="text-sm font-semibold opacity-60 uppercase tracking-wider mb-3">Neuromodulators</h2>
           <div class="flex flex-col gap-4">
             {#each NEURO as field}
-              {@const val = localValues[field] ?? 50}
+              {@const range = DISPLAY_RANGES[field]}
+              {@const val = localValues[field] ?? (range ? (range.min + range.max) / 2 : 50)}
               {@const label = getLabel(field, val)}
               <div>
                 <div class="flex justify-between items-center mb-1">
@@ -456,14 +481,15 @@
                     {#if label}
                       <span class="badge badge-xs {COLOR_CLASSES[label.color]?.badge}">{label.name}</span>
                     {/if}
-                    <span class="text-sm font-mono w-10 text-right">{val.toFixed(1)}</span>
+                    <span class="text-xs font-mono opacity-60">{range?.unit ?? ''}</span>
+                    <span class="text-sm font-mono w-14 text-right">{fmtVal(field, val)}</span>
                   </div>
                 </div>
                 <input
                   type="range"
-                  min="0"
-                  max="100"
-                  step="0.5"
+                  min={range?.min ?? 0}
+                  max={range?.max ?? 100}
+                  step={range ? (range.max - range.min) / 200 : 0.5}
                   value={val}
                   class="range range-sm w-full {sliderColor(field, val)}"
                   oninput={(e) => onSliderInput(field, e)}
@@ -476,7 +502,9 @@
 
           <!-- Read-only circadian fields -->
           {#each NEURO_READONLY as field}
-            {@const val = localValues[field] ?? 0}
+            {@const range = DISPLAY_RANGES[field]}
+            {@const chem = data.chemicals[field]}
+            {@const val = chem?.value ?? 0}
             {@const label = getLabel(field, val)}
             <div class="mt-4 pt-4 border-t border-base-300">
               <div class="flex justify-between items-center mb-1">
@@ -485,14 +513,76 @@
                   {#if label}
                     <span class="badge badge-xs {COLOR_CLASSES[label.color]?.badge}">{label.name}</span>
                   {/if}
-                  <span class="text-sm font-mono w-10 text-right opacity-60">{val.toFixed(1)}</span>
+                  <span class="text-xs font-mono opacity-60">{range?.unit ?? ''}</span>
+                  <span class="text-sm font-mono w-14 text-right opacity-60">{fmtVal(field, val)}</span>
                 </div>
               </div>
-              <progress class="progress progress-neutral w-full" value={val} max="100"></progress>
+              <progress
+                class="progress progress-neutral w-full"
+                value={chem?.normalized ?? 0}
+                max="1"
+              ></progress>
               <p class="text-xs opacity-30 mt-1">Circadian formula — read-only</p>
             </div>
           {/each}
         </div>
+
+        <!-- Vital Signs card -->
+        {#if data.vital_signs && Object.keys(data.vital_signs).length > 0}
+          {@const vs = data.vital_signs}
+          <div class="card bg-base-200 p-4">
+            <h2 class="text-sm font-semibold opacity-60 uppercase tracking-wider mb-3">Vital Signs</h2>
+            <div class="grid grid-cols-2 gap-3">
+
+              {#if vs.heart_rate}
+                <div class="flex flex-col">
+                  <span class="text-xs opacity-50 mb-0.5">Heart Rate</span>
+                  <span class="text-2xl font-mono font-bold {vitalLabelColor(vs.heart_rate.label)}">
+                    {vs.heart_rate.value?.toFixed(0)}
+                    <span class="text-sm font-normal opacity-60">BPM</span>
+                  </span>
+                  <span class="text-xs {vitalLabelColor(vs.heart_rate.label)}">{vs.heart_rate.label}</span>
+                </div>
+              {/if}
+
+              {#if vs.blood_pressure}
+                <div class="flex flex-col">
+                  <span class="text-xs opacity-50 mb-0.5">Blood Pressure</span>
+                  <span class="text-2xl font-mono font-bold {vitalLabelColor(vs.blood_pressure.label)}">
+                    {vs.blood_pressure.systolic?.toFixed(0)}/{vs.blood_pressure.diastolic?.toFixed(0)}
+                    <span class="text-sm font-normal opacity-60">mmHg</span>
+                  </span>
+                  <span class="text-xs {vitalLabelColor(vs.blood_pressure.label)}">{vs.blood_pressure.label}</span>
+                </div>
+              {/if}
+
+              {#if vs.respiration_rate}
+                <div class="flex flex-col">
+                  <span class="text-xs opacity-50 mb-0.5">Respiration</span>
+                  <span class="text-2xl font-mono font-bold {vitalLabelColor(vs.respiration_rate.label)}">
+                    {vs.respiration_rate.value?.toFixed(1)}
+                    <span class="text-sm font-normal opacity-60">br/min</span>
+                  </span>
+                  <span class="text-xs {vitalLabelColor(vs.respiration_rate.label)}">{vs.respiration_rate.label}</span>
+                </div>
+              {/if}
+
+              {#if vs.spo2}
+                {@const o2color = vs.spo2.label === 'NORMAL' ? 'text-success' : vs.spo2.label === 'LOW' ? 'text-warning' : 'text-error'}
+                <div class="flex flex-col">
+                  <span class="text-xs opacity-50 mb-0.5">SpO₂</span>
+                  <span class="text-2xl font-mono font-bold {o2color}">
+                    {vs.spo2.value?.toFixed(1)}
+                    <span class="text-sm font-normal opacity-60">%</span>
+                  </span>
+                  <span class="text-xs {o2color}">{vs.spo2.label}</span>
+                </div>
+              {/if}
+
+            </div>
+            <p class="text-xs opacity-30 mt-3">Derived from chemistry — read-only. Substance-gated danger only.</p>
+          </div>
+        {/if}
 
       </div>
 

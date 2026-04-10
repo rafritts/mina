@@ -71,29 +71,41 @@ def healthz():
 def get_state(request: Request):
     _check_auth(request)
     from state import load_state, derived
+    from chemicals import REGISTRY, normalize, get_label
     s = load_state()
     d = derived(s)
+
+    # Build per-chemical objects with real value + unit + label + normalized position
+    chemicals_out = {}
+    for name, profile in REGISTRY.items():
+        val = s.chemicals.get(name, 0.0)
+        lbl, _ = get_label(name, val)
+        chemicals_out[name] = {
+            "value":      round(val, 2),
+            "unit":       profile.unit,
+            "label":      lbl,
+            "normalized": round(normalize(name, val), 4),
+        }
+
+    # Vital signs
+    vs_out = {}
+    try:
+        from vital_signs import vital_signs as _vitals
+        vs_out = _vitals(s)
+    except Exception:
+        pass
+
     return {
-        "first_order": {
-            "sleep_pressure": round(s.sleep_pressure, 1),
-            "glucose":        round(s.glucose, 1),
-            "hydration":      round(s.hydration, 1),
-            "cortisol":       round(s.cortisol, 1),
-            "dopamine":       round(s.dopamine, 1),
-            "serotonin":      round(s.serotonin, 1),
-            "norepinephrine": round(s.norepinephrine, 1),
-            "oxytocin":       round(s.oxytocin, 1),
-            "endorphins":     round(s.endorphins, 1),
-            "acetylcholine":  round(s.acetylcholine, 1),
-            "melatonin":      round(s.melatonin, 1),
-            "sleeping":       s.sleeping,
-        },
+        "chemicals":    chemicals_out,
+        "sleeping":     s.sleeping,
         "second_order": d["second_order"],
         "third_order":  d["third_order"],
+        "vital_signs":  vs_out,
     }
 
 
 class StatePatch(BaseModel):
+    # Accepts real physiological units for each chemical
     sleep_pressure: float | None = None
     glucose:        float | None = None
     hydration:      float | None = None
@@ -110,15 +122,17 @@ class StatePatch(BaseModel):
 @app.patch("/api/state")
 def patch_state(body: StatePatch, request: Request):
     _check_auth(request)
-    from state import load_state, save_state, advance, _clamp
+    from state import load_state, save_state, advance
+    from chemicals import REGISTRY, clamp_chemical
 
-    s = advance(load_state())  # bring state current so last_updated is fresh
+    s = advance(load_state())
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=422, detail="No fields provided")
 
     for field, value in updates.items():
-        setattr(s, field, _clamp(float(value)))
+        if field in REGISTRY:
+            s.chemicals[field] = clamp_chemical(field, float(value))
 
     save_state(s)
     return {"ok": True, "updated": list(updates.keys())}
@@ -322,7 +336,7 @@ def get_substances(request: Request):
 @app.post("/api/substance/{name}/dose")
 def dose_substance(name: str, request: Request):
     _check_auth(request)
-    from state import load_state, save_state, advance, _clamp, _SUBSTANCE_DEFS
+    from state import load_state, save_state, advance, _SUBSTANCE_DEFS
 
     sub = _SUBSTANCE_DEFS.get(name)
     if not sub:
@@ -331,9 +345,10 @@ def dose_substance(name: str, request: Request):
     s = advance(load_state())  # advance first so decay is current
 
     # Apply immediate dose effects directly — bypasses saturation ceilings
+    from chemicals import REGISTRY, clamp_chemical
     for marker, delta in sub["dose_effects"].items():
-        if hasattr(s, marker):
-            setattr(s, marker, _clamp(getattr(s, marker) + float(delta)))
+        if marker in s.chemicals:
+            s.chemicals[marker] = clamp_chemical(marker, s.chemicals[marker] + float(delta))
 
     # Stack level (re-dose while active adds up, capped at 100)
     current_level = s.substances.get(name, {}).get("level", 0)

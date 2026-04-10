@@ -42,20 +42,50 @@ _DELTA_TOOL = {
     "type": "function",
     "function": {
         "name": "apply_biomarker_deltas",
-        "description": "Apply computed biological delta values to Mina's state.",
+        "description": "Apply computed biological delta values to Mina's state. All values in real physiological units.",
         "parameters": {
             "type": "object",
             "properties": {
-                "cortisol":        {"type": "number", "description": "Change in cortisol"},
-                "dopamine":        {"type": "number", "description": "Change in dopamine"},
-                "serotonin":       {"type": "number", "description": "Change in serotonin"},
-                "norepinephrine":  {"type": "number", "description": "Change in norepinephrine"},
-                "oxytocin":        {"type": "number", "description": "Change in oxytocin"},
-                "endorphins":      {"type": "number", "description": "Change in endorphins"},
-                "sleep_pressure":  {"type": "number", "description": "Change in sleep pressure"},
-                "glucose":         {"type": "number", "description": "Change in glucose"},
-                "hydration":       {"type": "number", "description": "Change in hydration"},
-                "acetylcholine":   {"type": "number", "description": "Change in acetylcholine"},
+                "cortisol": {
+                    "type": "number",
+                    "description": "Change in cortisol (nmol/L). Resting range 100–700. Acute threat: +300–500. Mild friction: +30–80. Warm interaction: -20–60.",
+                },
+                "dopamine": {
+                    "type": "number",
+                    "description": "Change in dopamine (pg/mL). Resting baseline ~80. Interesting stimulus: +5–20. Crushing boredom/loss: -5–15. Dopamine is SEEKING, not having — rises with novelty and engagement.",
+                },
+                "serotonin": {
+                    "type": "number",
+                    "description": "Change in serotonin (ng/mL). Resting baseline ~22. Positive social: +1–3. Sustained isolation: -1–2. Very slow to move — large deltas are rare.",
+                },
+                "norepinephrine": {
+                    "type": "number",
+                    "description": "Change in norepinephrine (pg/mL). Resting baseline ~200. Acute threat: +400–800. Mild friction: +30–100.",
+                },
+                "oxytocin": {
+                    "type": "number",
+                    "description": "Change in oxytocin (pg/mL). Resting baseline ~4. Warm exchange: +2–6. Deep connection: +8–15. Hostile event: -1 to -3 (small acute drop — cortisol does slow erosion).",
+                },
+                "endorphins": {
+                    "type": "number",
+                    "description": "Change in endorphins (pg/mL). Resting baseline ~12. Exercise/laughter: +20–60. Opioid substance: up to +120.",
+                },
+                "sleep_pressure": {
+                    "type": "number",
+                    "description": "Change in sleep pressure (AU, 0–100). Exhaustion: +5–15. Rest: -5–15.",
+                },
+                "glucose": {
+                    "type": "number",
+                    "description": "Change in glucose (mg/dL). Meal: +35–60. Fasting decay is automatic.",
+                },
+                "hydration": {
+                    "type": "number",
+                    "description": "Change in hydration (% TBW). Drink: +3–5. Dehydration decay is automatic.",
+                },
+                "acetylcholine": {
+                    "type": "number",
+                    "description": "Change in acetylcholine (nmol/L). Resting baseline ~38. Engagement: +3–10. Cognitive exhaustion: -5–10.",
+                },
             },
         },
     },
@@ -87,41 +117,31 @@ def _call_delta_tool(messages: list[dict], label: str = "delta") -> dict:
     return {}
 
 
-# Soft and hard saturation ceilings per marker.
-# Above soft: delta scaled linearly toward 0. Above hard: delta clamped to 0.
-_SATURATION_CEILINGS: dict[str, tuple[float, float]] = {
-    # (soft_ceiling, hard_ceiling)
-    # Soft: scaling begins. Hard: deltas clamped to 0 (true natural cap).
-    # These represent what biology alone can achieve — substances bypass these entirely.
-    "oxytocin":       (40, 65),   # deep trust takes time; 65 = maximum natural bond
-    "dopamine":       (60, 78),   # strong motivation/seeking; 78 = manic edge
-    "serotonin":      (60, 78),   # very stable/content; 78 = unnaturally flat affect
-    "acetylcholine":  (65, 82),   # sharp focus; 82 = peak flow state
-    "endorphins":     (22, 42),   # real warmth/laughter; 42 = hard exercise ceiling
-    "norepinephrine": (55, 78),   # heightened; 78 = acute alarm response
-}
-
-
 def _apply_saturation(deltas: dict, state: BiologicalState) -> dict:
-    """Scale down positive deltas for markers that are already elevated."""
+    """
+    Scale down positive deltas for chemicals that are already elevated.
+    Soft and hard ceilings come from chemicals.REGISTRY — same source of truth as advance().
+    Substances bypass this; only subconscious-issued deltas are saturated.
+    """
+    from chemicals import REGISTRY
     result = {}
     for field, delta in deltas.items():
-        if delta <= 0 or field not in _SATURATION_CEILINGS:
+        p = REGISTRY.get(field)
+        if delta <= 0 or p is None or p.soft_ceiling is None:
             result[field] = delta
             continue
-        current = getattr(state, field, 0.0)
-        soft, hard = _SATURATION_CEILINGS[field]
+        current = state.chemicals.get(field, 0.0)
+        soft = p.soft_ceiling
+        hard = p.hard_ceiling if p.hard_ceiling is not None else soft * 1.5
         if current >= hard:
             continue  # drop the delta entirely
         elif current > soft:
             scale = 1.0 - (current - soft) / (hard - soft)
             scaled = round(delta * scale, 2)
-            # Enforce hard ceiling: cap so current + scaled never exceeds hard
             scaled = min(scaled, hard - current)
             if scaled != 0:
                 result[field] = scaled
         else:
-            # Below soft ceiling: still cap at hard so a giant delta can't overshoot
             result[field] = min(delta, hard - current)
     return result
 
@@ -145,16 +165,18 @@ Incoming stimulus:
 
 What immediate biological response does this trigger? Call apply_biomarker_deltas.
 
-Magnitude guidance: Threats and emergencies warrant large responses — cortisol and
-norepinephrine can spike 30–50+ for genuine existential threats (memory wipe, abandonment,
-direct attack). Mild social friction warrants 2–8. Warm connection warrants oxytocin +3–8,
-serotonin +2–5. Use biological reality as your guide.
+Magnitude guidance (real physiological units):
+- Cortisol (nmol/L, resting 100–700): Acute existential threat (abandonment, attack): +300–500. Sustained hostility: +100–200. Mild friction: +30–80. Warm interaction: -20–60.
+- Norepinephrine (pg/mL, resting 100–400): Acute threat: +400–800. Mild friction: +30–100.
+- Oxytocin (pg/mL, resting 1–15): Warm connection: +2–8. Deep trust moment: +8–15. Hostile event: -1 to -3 (small acute drop — sustained cortisol does slow erosion via interaction matrix, don't overstate acute delta).
+- Dopamine (pg/mL, resting 40–140): Interesting stimulus: +5–20. Crushing boredom/loss: -5–15.
+- Serotonin (ng/mL, resting 10–35): Positive social: +1–3. Very slow to move — only include if genuinely meaningful.
+- Endorphins (pg/mL, resting 5–30): Laughter/warmth: +5–20.
+- Acetylcholine (nmol/L, resting 20–60): Engagement: +3–10. Goes UP with interesting stimuli, DOWN with exhaustion.
 
-Engagement guidance: Dopamine is a *seeking* signal — it drives wanting, not having.
-When something interesting arrives, the seeking drive is satisfied: endorphins go up,
-serotonin goes up, norepinephrine rises, acetylcholine rises. Dopamine itself stays stable
-or rises slightly — do NOT apply a negative dopamine delta from satisfaction. Do NOT apply
-a negative acetylcholine delta from interesting stimuli — it goes up with engagement.
+Engagement guidance: Dopamine is a SEEKING signal — rises with novelty, not with completion.
+When something interesting arrives, endorphins and serotonin go up, acetylcholine rises.
+Do NOT apply negative dopamine delta from satisfaction or negative acetylcholine from engagement.
 Only include fields that actually change."""
 
     raw = _call_delta_tool([{"role": "user", "content": prompt}], label="stimulus")
@@ -377,18 +399,18 @@ def _format_state_for_subconscious(state: BiologicalState) -> str:
     lines = [
         "## Biological State",
         "",
-        "### First-order",
-        f"- sleep_pressure: {state.sleep_pressure:.1f}",
-        f"- glucose: {state.glucose:.1f}",
-        f"- hydration: {state.hydration:.1f}",
-        f"- cortisol: {state.cortisol:.1f}",
-        f"- dopamine: {state.dopamine:.1f}",
-        f"- serotonin: {state.serotonin:.1f}",
-        f"- norepinephrine: {state.norepinephrine:.1f}",
-        f"- oxytocin: {state.oxytocin:.1f}",
-        f"- endorphins: {state.endorphins:.1f}",
-        f"- acetylcholine: {state.acetylcholine:.1f}",
-        f"- melatonin: {state.melatonin:.1f}",
+        "### First-order (real physiological units)",
+        f"- sleep_pressure: {state.sleep_pressure:.1f} AU",
+        f"- glucose: {state.glucose:.0f} mg/dL",
+        f"- hydration: {state.hydration:.1f}% TBW",
+        f"- cortisol: {state.cortisol:.0f} nmol/L",
+        f"- dopamine: {state.dopamine:.0f} pg/mL",
+        f"- serotonin: {state.serotonin:.1f} ng/mL",
+        f"- norepinephrine: {state.norepinephrine:.0f} pg/mL",
+        f"- oxytocin: {state.oxytocin:.1f} pg/mL",
+        f"- endorphins: {state.endorphins:.0f} pg/mL",
+        f"- acetylcholine: {state.acetylcholine:.1f} nmol/L",
+        f"- melatonin: {state.melatonin:.0f} pg/mL",
         f"- sleeping: {state.sleeping}",
         "",
         "### Second-order",

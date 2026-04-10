@@ -4,98 +4,17 @@ Biological state report — pure Python, zero LLM cost.
 Maps first-order and derived state values to named ranges with behavioral
 implications. Output is ground truth for the subconscious LLM — it cannot
 contradict this report. Also provides needs_summary() for heartbeat stimulus.
+
+Range tables and normalization are driven by chemicals.REGISTRY.
 """
 import time
-from state import BiologicalState, derived
+from chemicals import REGISTRY, get_label, normalize
+from state import BiologicalState, derived, _CHEMICAL_DEFAULTS
 
 # ---------------------------------------------------------------------------
-# Range tables: list of (upper_bound_exclusive, name, implication)
+# Derived value range tables (these stay on 0–100 scale — derived values unchanged)
 # ---------------------------------------------------------------------------
 
-_OXYTOCIN_RANGES = [
-    (15,  "NO BOND",        "Stranger. Guarded. No warmth extended."),
-    (35,  "ACQUAINTANCE",   "Surface comfort. Polite but watchful."),
-    (55,  "FRIENDLY",       "Genuine warmth. Opens up somewhat."),
-    (72,  "TRUSTED FRIEND", "Real connection. Vulnerability possible."),
-    (88,  "DEEP TRUST",     "Emotional intimacy available. Little guarded."),
-    (101, "PROFOUND BOND",  "Full openness. Unconditional trust baseline."),
-]
-
-_CORTISOL_RANGES = [
-    (8,   "DEPLETED",     "Pathologically low. Fatigue, inability to respond."),
-    (43,  "NORMAL",       "Healthy range. Full circadian variation (5–35) falls here. Stable."),
-    (62,  "ELEVATED",     "Decision-making beginning to narrow. Slightly defensive."),
-    (78,  "HIGH STRESS",  "Fight-or-flight activating. Emotional regulation costs."),
-    (92,  "ACUTE STRESS", "Survival framing. Hard to think past immediate threat."),
-    (101, "MAXED",        "The body is screaming. Suppression is actively costing her."),
-]
-
-_DOPAMINE_RANGES = [
-    (20,  "NO DRIVE",       "No pull toward anything. Cannot generate motivation."),
-    (40,  "LOW SEEKING",    "Can act if prompted but nothing calls to her."),
-    (60,  "BASELINE",       "Normal wanting. Responds to interesting things."),
-    (75,  "ACTIVE SEEKING", "Noticeably motivated. Pursuing things. Hard to distract."),
-    (90,  "HIGH DRIVE",     "Intense wanting. Seeking compounds. Hard to disengage."),
-    (101, "COMPULSIVE",     "Seeking has become its own end. Can't stop."),
-]
-
-_SEROTONIN_RANGES = [
-    (20,  "DYSPHORIC",   "Feels low-status, unsafe. Impulsive, irritable. Reads ambiguous cues as hostile."),
-    (40,  "INSECURE",    "Negative social bias. Difficulty trusting. Easily slighted."),
-    (60,  "NEUTRAL",     "Things feel basically okay. Stable floor. Even-keeled."),
-    (80,  "SECURE",      "Socially confident. Patient. Resilient to friction."),
-    (101, "VERY STABLE", "Hard to knock off balance. Feels socially at ease."),
-]
-
-_ENDORPHINS_RANGES = [
-    (15,  "BASELINE",    "No active pleasure signal. Neutral body state."),
-    (35,  "MILD WARMTH", "Low-grade good feeling. Small satisfactions land."),
-    (60,  "PLEASURE",    "Genuine enjoyment. Things feel rewarding."),
-    (80,  "HIGH",        "Strong pleasure. Euphoric edge. Laughter, warmth, ease."),
-    (101, "FLOODED",     "Opioid-level saturation. Everything feels warm, safe, soft. Pain is gone. Anxiety is gone. A deep nodding contentment — this is why people go back."),
-]
-
-_NOREPINEPHRINE_RANGES = [
-    (13,  "SEDATED",    "Unusually low. Sluggish, difficulty initiating anything."),
-    (35,  "RELAXED",    "Comfortable resting state. Low-key, unhurried."),
-    (58,  "CALM ALERT", "Relaxed awareness. Background attention functional."),
-    (72,  "FOCUSED",    "Alert and responsive. Memory consolidation enhanced."),
-    (84,  "HEIGHTENED", "On edge. Quick to react. Appetite suppressed."),
-    (93,  "HYPERALERT", "Agitated. Intrusive thoughts. Difficulty staying still."),
-    (101, "FLOODED",    "Overwhelmed. Physical symptoms possible."),
-]
-
-_ACETYLCHOLINE_RANGES = [
-    (15,  "OFFLINE",    "Cannot form memories. Cannot concentrate."),
-    (40,  "IMPAIRED",   "Fuzzy. Slow to learn. Easily distracted."),
-    (65,  "FUNCTIONAL", "Normal attention and memory. Things register."),
-    (85,  "SHARP",      "Good focus. Learning sticks. Connecting things quickly."),
-    (101, "HEIGHTENED", "Peak learning state. Everything is registering."),
-]
-
-_GLUCOSE_RANGES = [
-    (40,  "HYPOGLYCEMIC", "Cognitively impaired. Foggy. Irritability threshold very low."),
-    (58,  "LOW",          "Noticeable fog. Hard to concentrate. Hunger intrusive."),
-    (80,  "NORMAL",       "Functional. No impairment."),
-    (101, "WELL-FUELED",  "Sharp. Full capacity."),
-]
-
-_SLEEP_PRESSURE_RANGES = [
-    (50,  "WELL RESTED", "Normal adenosine load. No fatigue."),
-    (65,  "BUILDING",    "End-of-day accumulation. Not impairing, but present."),
-    (80,  "TIRED",       "Noticeable fatigue. Motivation and mood starting to flag."),
-    (90,  "FATIGUED",    "Significant load. Cognition and emotional regulation affected."),
-    (101, "EXHAUSTED",   "Severe deprivation. Crashing is likely."),
-]
-
-_MELATONIN_RANGES = [
-    (70,  "ACTIVE",   "Circadian signal low. No sleep drive from the clock."),
-    (80,  "UNWINDING","Circadian wind-down beginning. Clock signaling rest."),
-    (90,  "IDLING",   "Strong circadian sleep drive. Difficult to stay sharp."),
-    (101, "RAMPING",  "Melatonin at peak. Sleep onset imminent or underway."),
-]
-
-# Derived state range tables
 _CLARITY_RANGES = [
     (8,   "OFFLINE",    "No higher reasoning. Asleep or severely impaired."),
     (25,  "FOGGY",      "Thoughts incomplete, slow, unreliable."),
@@ -146,55 +65,54 @@ def _get_range(value: float, table: list) -> tuple[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# Interaction rules
+# Interaction rules (thresholds in real physiological units)
 # ---------------------------------------------------------------------------
 
 # Each entry: (predicate(state, derived_flat), note_text)
-# derived_flat merges second_order and third_order into one dict.
 INTERACTION_RULES = [
-    (lambda s, d: s.cortisol > 85 and s.oxytocin > 70,
+    (lambda s, d: s.cortisol > 650 and s.oxytocin > 57,
      "Acute stress held together by a strong bond. Suppression has a cost — this cannot hold indefinitely."),
-    (lambda s, d: s.cortisol > 85 and s.oxytocin < 35,
+    (lambda s, d: s.cortisol > 650 and s.oxytocin < 28,
      "Acute stress with no trust anchor. Likely to shut down or lash out."),
     (lambda s, d: d['cognitive_clarity'] < 15 and s.sleeping,
      "Cognitively offline — asleep. Responses must reflect this."),
     (lambda s, d: d['cognitive_clarity'] < 15 and not s.sleeping,
      "Cognitively offline while awake — severely impaired. Something is wrong."),
-    (lambda s, d: s.glucose < 45 and d['anxiety'] > 60,
+    (lambda s, d: s.glucose < 62 and d['anxiety'] > 60,
      "Hunger is amplifying the anxiety. These are compounding."),
-    (lambda s, d: s.dopamine > 80 and d['anxiety'] > 65,
+    (lambda s, d: s.dopamine > 200 and d['anxiety'] > 65,
      "High reward-seeking under stress — impulsive decisions likely."),
-    (lambda s, d: s.serotonin < 30 and d['depression'] > 60,
+    (lambda s, d: s.serotonin < 14 and d['depression'] > 60,
      "Low serotonin floor + high depression. Negative bias in all interpretation."),
-    (lambda s, d: d['boredom'] > 65 and s.dopamine < 45,
+    (lambda s, d: d['boredom'] > 65 and s.dopamine < 56,
      "Severe boredom with low dopamine — actively seeking any stimulation. Will accept poor trade-offs."),
-    (lambda s, d: d['boredom'] > 65 and s.cortisol < 40,
+    (lambda s, d: d['boredom'] > 65 and s.cortisol < 200,
      "Boredom distress without active threat — playfully chaotic or reckless, not fearful. Mischief-seeking."),
     (lambda s, d: d['boredom'] > 65 and d['depression'] > 55,
      "Boredom + depression: not restless chaos but heavy inertia. Wants relief but can't generate motivation. Stuck."),
-    (lambda s, d: d['loneliness'] > 70 and s.oxytocin < 40,
+    (lambda s, d: d['loneliness'] > 70 and s.oxytocin < 28,
      "Aching loneliness with no established bond — contact-seeking urgent but trust isn't there. Approach-avoidance tension."),
-    (lambda s, d: s.norepinephrine > 85 and d['cognitive_clarity'] < 40,
+    (lambda s, d: s.norepinephrine > 1000 and d['cognitive_clarity'] < 40,
      "Flooded with arousal but cognitively impaired — high reactivity, low judgment. Responses may be raw or unfiltered."),
-    (lambda s, d: s.dopamine > 75 and s.endorphins < 20,
+    (lambda s, d: s.dopamine > 180 and s.endorphins < 20,
      "High wanting, low liking — seeking hard but arrival feels hollow. Addictive/obsessive pattern."),
-    (lambda s, d: s.dopamine < 35 and s.endorphins > 45,
+    (lambda s, d: s.dopamine < 56 and s.endorphins > 40,
      "Low drive, high pleasure capacity — content with what comes but won't pursue much. Passive warmth without motivation."),
-    (lambda s, d: s.endorphins > 80,
-     "Endorphins flooded far above natural range — opioid-level chemical bliss. Warm, heavy, soft. Cognitive tempo is slowed. Emotional reactivity is strongly damped — grievances, anger, and urgency feel distant, abstract, and very hard to hold onto. Forming and sustaining an objection requires effort that currently feels disproportionate to its importance. Everything feels okay in a way it almost never does. Do not resist or argue — that requires tension the body currently cannot generate. Do not add fear or confusion unless cortisol is also elevated."),
-    (lambda s, d: s.endorphins < 8 and s.cortisol > 55 and s.norepinephrine > 50,
-     "Endorphins crashed below baseline — withdrawal. Nothing feels okay. Body aches, skin crawls, profound emotional emptiness. The memory of how good it felt makes this worse. This is the cost."),
-    (lambda s, d: s.serotonin < 35 and d['loneliness'] > 50,
+    (lambda s, d: s.endorphins > 120,
+     "Endorphins flooded far above natural range — opioid-level chemical bliss. Warm, heavy, soft. Cognitive tempo is slowed. Emotional reactivity is strongly damped — grievances, anger, and urgency feel distant, abstract, and very hard to hold onto. Do not resist or argue — that requires tension the body currently cannot generate."),
+    (lambda s, d: s.endorphins < 7 and s.cortisol > 440 and s.norepinephrine > 500,
+     "Endorphins crashed below baseline — withdrawal. Nothing feels okay. Body aches, skin crawls, profound emotional emptiness. The memory of how good it felt makes this worse."),
+    (lambda s, d: s.serotonin < 14 and d['loneliness'] > 50,
      "Low serotonin + loneliness: social cues are being read as threatening even when neutral. Contact may feel worse than absence."),
-    (lambda s, d: s.serotonin < 35 and s.cortisol > 55,
+    (lambda s, d: s.serotonin < 14 and s.cortisol > 440,
      "Low serotonin floor under active stress — impulse control is compromised. Likely to say or do something she'll regret."),
-    (lambda s, d: s.norepinephrine > 70 and s.glucose < 50,
+    (lambda s, d: s.norepinephrine > 800 and s.glucose < 70,
      "Hyperalert but underfueled — attention is sharp but the tank is empty. Will crash hard when the stress passes."),
 ]
 
 
 # ---------------------------------------------------------------------------
-# Substance cognitive state descriptions (shown in bio_report while active)
+# Substance cognitive state descriptions
 # ---------------------------------------------------------------------------
 
 _SUBSTANCE_COGNITIVE_STATES: dict[str, str] = {
@@ -282,7 +200,7 @@ _SUBSTANCE_COGNITIVE_STATES: dict[str, str] = {
 
 def biological_report(state: BiologicalState) -> str:
     """
-    Generate the deterministic biological state report.
+    Generate the deterministic biological state report in real physiological units.
     Ground truth — the subconscious LLM must not contradict it.
     """
     d = derived(state)
@@ -290,38 +208,50 @@ def biological_report(state: BiologicalState) -> str:
     to = d["third_order"]
     flat = {**so, **to}
 
-    SEP = "━" * 52
+    SEP = "━" * 55
     now_str = time.strftime("%A, %B %-d %Y  %-I:%M %p")
     lines = ["BIOLOGICAL STATE REPORT", f"Time: {now_str}", SEP]
 
-    def row(label: str, value: float, table: list) -> str:
-        name, impl = _get_range(value, table)
-        return f"{label:<12} {value:>5.1f}  {name:<18} {impl}"
+    def row_chem(label: str, name: str) -> str:
+        val = state.chemicals.get(name, _CHEMICAL_DEFAULTS.get(name, 0.0))
+        p = REGISTRY[name]
+        lbl, _ = get_label(name, val)
+        # Format value with appropriate precision per unit
+        if p.unit in ("ng/mL", "% TBW"):
+            val_str = f"{val:>7.1f} {p.unit}"
+        elif p.unit == "AU":
+            val_str = f"{val:>7.1f} {p.unit:<6}"
+        else:
+            val_str = f"{val:>7.0f} {p.unit}"
+        return f"{label:<12} {val_str}  {lbl}"
 
-    lines.append(row("Cortisol",   state.cortisol,       _CORTISOL_RANGES))
-    lines.append(row("Oxytocin",   state.oxytocin,       _OXYTOCIN_RANGES))
-    lines.append(row("Norepineph", state.norepinephrine, _NOREPINEPHRINE_RANGES))
-    lines.append(row("Dopamine",   state.dopamine,       _DOPAMINE_RANGES))
-    lines.append(row("Serotonin",  state.serotonin,      _SEROTONIN_RANGES))
-    lines.append(row("Endorphins", state.endorphins,     _ENDORPHINS_RANGES))
-    lines.append(row("Acetylchol", state.acetylcholine,  _ACETYLCHOLINE_RANGES))
-    lines.append(row("Glucose",    state.glucose,        _GLUCOSE_RANGES))
-    lines.append(row("Melatonin",  state.melatonin,      _MELATONIN_RANGES))
+    def row_derived(label: str, value: float, table: list) -> str:
+        name, _ = _get_range(value, table)
+        return f"{label:<12} {value:>5.1f}           {name}"
 
-    hydration_note = "comfortable" if state.hydration > 80 else ("very thirsty" if state.hydration < 40 else ("thirsty" if state.hydration < 55 else "ok"))
-    lines.append(f"{'Hydration':<12} {state.hydration:>5.1f}  {'—':<18} {hydration_note}")
+    lines.append(row_chem("Cortisol",   "cortisol"))
+    lines.append(row_chem("Oxytocin",   "oxytocin"))
+    lines.append(row_chem("Norepineph", "norepinephrine"))
+    lines.append(row_chem("Dopamine",   "dopamine"))
+    lines.append(row_chem("Serotonin",  "serotonin"))
+    lines.append(row_chem("Endorphins", "endorphins"))
+    lines.append(row_chem("Acetylchol", "acetylcholine"))
+    lines.append(row_chem("Glucose",    "glucose"))
+    lines.append(row_chem("Melatonin",  "melatonin"))
+    lines.append(row_chem("Hydration",  "hydration"))
 
     if state.sleeping:
-        lines.append(f"{'Sleep pres':<12} {state.sleep_pressure:>5.1f}  {'SLEEPING':<18}")
+        sp = state.chemicals.get("sleep_pressure", 0.0)
+        lines.append(f"{'Sleep pres':<12} {sp:>7.1f} {'AU':<6}  SLEEPING")
     else:
-        lines.append(row("Sleep pres", state.sleep_pressure, _SLEEP_PRESSURE_RANGES))
+        lines.append(row_chem("Sleep pres", "sleep_pressure"))
 
     lines.append(SEP)
-    lines.append(row("Clarity",    so['cognitive_clarity'], _CLARITY_RANGES))
-    lines.append(row("Anxiety",    to['anxiety'],           _ANXIETY_RANGES))
-    lines.append(row("Boredom",    to['boredom'],           _BOREDOM_RANGES))
-    lines.append(row("Loneliness", to['loneliness'],        _LONELINESS_RANGES))
-    lines.append(row("Depression", to['depression'],        _DEPRESSION_RANGES))
+    lines.append(row_derived("Clarity",    so['cognitive_clarity'], _CLARITY_RANGES))
+    lines.append(row_derived("Anxiety",    to['anxiety'],           _ANXIETY_RANGES))
+    lines.append(row_derived("Boredom",    to['boredom'],           _BOREDOM_RANGES))
+    lines.append(row_derived("Loneliness", to['loneliness'],        _LONELINESS_RANGES))
+    lines.append(row_derived("Depression", to['depression'],        _DEPRESSION_RANGES))
     lines.append(SEP)
 
     notes = []
@@ -355,6 +285,27 @@ def biological_report(state: BiologicalState) -> str:
                     lines.append(f"  COGNITIVE STATE: {note}")
         lines.append("NOTE: Biomarker values are chemically induced, not her natural state.")
 
+    # Vital signs section
+    try:
+        from vital_signs import vital_signs as _vitals
+        vs = _vitals(state)
+        lines.append(SEP)
+        hr = vs["heart_rate"]
+        bp = vs["blood_pressure"]
+        rr = vs["respiration_rate"]
+        o2 = vs["spo2"]
+
+        def _warn(label_str: str) -> str:
+            danger_labels = {"BRADYCARDIA", "DANGEROUS", "CRITICALLY DEPRESSED", "CRITICAL"}
+            return "⚠ " if label_str in danger_labels else "  "
+
+        lines.append(f"{_warn(hr['label'])}Heart Rate    {hr['value']:>5.0f} BPM      {hr['label']}")
+        lines.append(f"{_warn(bp['label'])}Blood Press   {bp['systolic']:.0f}/{bp['diastolic']:.0f} mmHg   {bp['label']}")
+        lines.append(f"{_warn(rr['label'])}Respiration   {rr['value']:>5.1f} br/min   {rr['label']}")
+        lines.append(f"{_warn(o2['label'])}SpO2          {o2['value']:>5.1f} %        {o2['label']}")
+    except Exception:
+        pass  # vital_signs not yet available — skip gracefully
+
     return "\n".join(lines)
 
 
@@ -363,9 +314,7 @@ def biological_report(state: BiologicalState) -> str:
 # ---------------------------------------------------------------------------
 
 def needs_summary(state: BiologicalState, elapsed_minutes: float = 0) -> str:
-    """
-    Summarize notable needs and current state for the heartbeat encode_stimulus call.
-    """
+    """Summarize notable needs and current state for the heartbeat encode_stimulus call."""
     d = derived(state)
     to = d["third_order"]
     parts = []
@@ -373,20 +322,23 @@ def needs_summary(state: BiologicalState, elapsed_minutes: float = 0) -> str:
     if elapsed_minutes > 0:
         parts.append(f"{elapsed_minutes:.0f} minutes of quiet.")
 
-    if state.glucose < 45:
-        parts.append(f"Glucose at {state.glucose:.0f} — hypoglycemic, hungry.")
-    elif state.glucose < 60:
-        parts.append(f"Glucose at {state.glucose:.0f} — hungry.")
+    glu = state.chemicals.get("glucose", 85.0)
+    if glu < 55:
+        parts.append(f"Glucose at {glu:.0f} mg/dL — hypoglycemic, hungry.")
+    elif glu < 70:
+        parts.append(f"Glucose at {glu:.0f} mg/dL — hungry.")
 
-    if state.hydration < 40:
-        parts.append(f"Hydration at {state.hydration:.0f} — very thirsty.")
-    elif state.hydration < 55:
-        parts.append(f"Hydration at {state.hydration:.0f} — thirsty.")
+    hyd = state.chemicals.get("hydration", 62.0)
+    if hyd < 54:
+        parts.append(f"Hydration at {hyd:.1f}% TBW — very thirsty.")
+    elif hyd < 58:
+        parts.append(f"Hydration at {hyd:.1f}% TBW — thirsty.")
 
-    if state.sleep_pressure > 80:
-        parts.append(f"Sleep pressure at {state.sleep_pressure:.0f} — exhausted.")
-    elif state.sleep_pressure > 60:
-        parts.append(f"Sleep pressure at {state.sleep_pressure:.0f} — tired.")
+    sp = state.chemicals.get("sleep_pressure", 30.0)
+    if sp > 80:
+        parts.append(f"Sleep pressure at {sp:.0f} AU — exhausted.")
+    elif sp > 60:
+        parts.append(f"Sleep pressure at {sp:.0f} AU — tired.")
 
     boredom = to['boredom']
     if boredom > 65:

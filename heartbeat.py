@@ -255,6 +255,21 @@ async def run_heartbeat(force: bool = False) -> None:
     # Re-advance state in case time passed during Mode 2
     state = load_and_advance()
 
+    # --- Danger detection (SPEC-11) ---
+    try:
+        from vital_signs import vital_signs, process_danger
+        _INJECT_FILE = os.path.join(_PROJECT_ROOT, "run", "subconscious_inject.md")
+        vs = vital_signs(state)
+        danger_text = process_danger(state, vs)
+        if danger_text:
+            _log(f"DANGER DETECTED: {danger_text[:120]}...")
+            # Write to inject file — picked up by run_mode1 system prompt
+            os.makedirs(os.path.dirname(_INJECT_FILE), exist_ok=True)
+            with open(_INJECT_FILE, "w") as _f:
+                _f.write(danger_text)
+    except Exception as _e:
+        _log(f"Danger detection error (non-fatal): {_e}")
+
     # [1] encode_stimulus — biological response to elapsed time + current needs
     elapsed_minutes = (time.time() - (state.last_updated or time.time())) / 60.0
     stimulus_text = needs_summary(state, elapsed_minutes)
