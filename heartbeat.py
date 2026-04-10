@@ -197,8 +197,8 @@ async def _run_mina_free_time(
 # Main heartbeat entry point
 # ---------------------------------------------------------------------------
 
-async def run_heartbeat() -> None:
-    if _user_recently_active():
+async def run_heartbeat(force: bool = False) -> None:
+    if not force and _user_recently_active():
         _log("User recently active — skipping heartbeat.")
         return
 

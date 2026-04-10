@@ -133,9 +133,11 @@ def _free_port(port: int) -> None:
         pass  # fuser not available — skip
 
 
-def _run_dashboard(uv: str, log_f, tee_out) -> None:
+def _run_dashboard(uv: str, tee_out) -> None:
     """
     Run dashboard_server.py in a background thread with simple restart-on-crash.
+    Uses tee_out._log (not a captured log_f) so it always writes to the current
+    log file even after a gateway restart rotates the log.
     Stops when the supervisor exits (daemon thread).
     """
     global _dashboard_proc
@@ -145,7 +147,7 @@ def _run_dashboard(uv: str, log_f, tee_out) -> None:
         _free_port(_DASHBOARD_PORT)
         try:
             _log("[DASHBOARD] Starting dashboard server.", tee_out)
-            _dashboard_proc = subprocess.Popen(cmd, cwd=_PROJECT_ROOT, stdout=log_f, stderr=log_f)
+            _dashboard_proc = subprocess.Popen(cmd, cwd=_PROJECT_ROOT, stdout=tee_out._log, stderr=tee_out._log)
             rc = _dashboard_proc.wait()
             _dashboard_proc = None
             _log(f"[DASHBOARD] Exited with code {rc} — restarting in {backoff}s.", tee_out)
@@ -172,7 +174,7 @@ def main():
 
     # Start dashboard server as a daemon thread — auto-restarts on crash
     dashboard_thread = threading.Thread(
-        target=_run_dashboard, args=(uv, log_f, tee_out), daemon=True
+        target=_run_dashboard, args=(uv, tee_out), daemon=True
     )
     dashboard_thread.start()
 

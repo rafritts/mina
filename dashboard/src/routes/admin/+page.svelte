@@ -29,6 +29,26 @@
   let revealConfirm = $state(false);
 
   // ---------------------------------------------------------------------------
+  // Heartbeat / reflection trigger
+  // ---------------------------------------------------------------------------
+
+  let heartbeatRunning = $state(false);
+  let heartbeatMsg = $state('');
+
+  async function triggerHeartbeat() {
+    heartbeatRunning = true;
+    heartbeatMsg = 'Running reflection… this may take 30–60s.';
+    try {
+      await apiFetch('/api/heartbeat', { method: 'POST' });
+      heartbeatMsg = '✓ Reflection complete — RELATIONSHIP.md and RAG updated.';
+    } catch (e) {
+      heartbeatMsg = `Error: ${e}`;
+    } finally {
+      heartbeatRunning = false;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Load pending state
   // ---------------------------------------------------------------------------
 
@@ -217,6 +237,34 @@
       {/if}
       {#if injectMsg}
         <span class="text-sm opacity-70">{injectMsg}</span>
+      {/if}
+    </div>
+  </div>
+
+  <!-- Trigger Reflection -->
+  <div class="card bg-base-200 p-6">
+    <h2 class="text-lg font-semibold mb-1">Trigger Reflection</h2>
+    <p class="text-sm opacity-60 mb-4">
+      Manually runs the heartbeat (Mode 2) — consolidates conversation history into
+      RELATIONSHIP.md, RAG memories, and KAG knowledge files. Normally runs every 30 minutes.
+    </p>
+    <div class="flex items-center gap-4">
+      <button
+        class="btn btn-secondary"
+        onclick={triggerHeartbeat}
+        disabled={heartbeatRunning}
+      >
+        {#if heartbeatRunning}
+          <span class="loading loading-spinner loading-sm"></span>
+          Running…
+        {:else}
+          Run Reflection Now
+        {/if}
+      </button>
+      {#if heartbeatMsg}
+        <span class="text-sm {heartbeatMsg.startsWith('✓') ? 'text-success' : heartbeatMsg.startsWith('Running') ? 'opacity-60' : 'text-error'}">
+          {heartbeatMsg}
+        </span>
       {/if}
     </div>
   </div>

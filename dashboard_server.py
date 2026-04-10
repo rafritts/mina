@@ -226,6 +226,36 @@ def delete_inject(request: Request):
 
 
 # ---------------------------------------------------------------------------
+# Heartbeat / reflection trigger
+# ---------------------------------------------------------------------------
+
+_heartbeat_running = False
+
+
+@app.post("/api/heartbeat")
+async def trigger_heartbeat(request: Request):
+    _check_auth(request)
+    global _heartbeat_running
+    if _heartbeat_running:
+        raise HTTPException(status_code=409, detail="Heartbeat already running")
+    _heartbeat_running = True
+    try:
+        from heartbeat import run_heartbeat
+        await run_heartbeat(force=True)
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        _heartbeat_running = False
+
+
+@app.get("/api/heartbeat/status")
+def heartbeat_status(request: Request):
+    _check_auth(request)
+    return {"running": _heartbeat_running}
+
+
+# ---------------------------------------------------------------------------
 # Token usage
 # ---------------------------------------------------------------------------
 
