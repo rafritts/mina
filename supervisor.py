@@ -34,29 +34,29 @@ LOG_ARCHIVE_KEEP = 10  # keep last N session tombstones
 # ---------------------------------------------------------------------------
 
 def _tombstone_log() -> None:
-    """Archive mina.log and conversation.json as timestamped session files. No-op if absent/empty."""
+    """Archive mina.log as a timestamped session file. No-op if absent/empty.
+    conversation.json is intentionally NOT archived — it persists across restarts
+    so Mode 2 (heartbeat reflection) always has access to recent history.
+    It is bounded by HISTORY_MAX in main.py."""
     ts = time.strftime("%Y%m%dT%H%M%S")
     if os.path.exists(_LOG_FILE) and os.path.getsize(_LOG_FILE) > 0:
         os.rename(_LOG_FILE, os.path.join(_LOG_DIR, f"mina-{ts}.log"))
-    if os.path.exists(_CONV_FILE) and os.path.getsize(_CONV_FILE) > 2:
-        os.rename(_CONV_FILE, os.path.join(_LOG_DIR, f"conversation-{ts}.json"))
     _prune_tombstones()
 
 
 def _prune_tombstones() -> None:
-    """Remove oldest session tombstones beyond LOG_ARCHIVE_KEEP."""
+    """Remove oldest log tombstones beyond LOG_ARCHIVE_KEEP."""
     if not os.path.exists(_LOG_DIR):
         return
-    for prefix, suffix in [("mina-", ".log"), ("conversation-", ".json")]:
-        archives = sorted(
-            f for f in os.listdir(_LOG_DIR)
-            if f.startswith(prefix) and f.endswith(suffix)
-        )
-        for old in archives[:-LOG_ARCHIVE_KEEP] if len(archives) > LOG_ARCHIVE_KEEP else []:
-            try:
-                os.remove(os.path.join(_LOG_DIR, old))
-            except OSError:
-                pass
+    archives = sorted(
+        f for f in os.listdir(_LOG_DIR)
+        if f.startswith("mina-") and f.endswith(".log")
+    )
+    for old in archives[:-LOG_ARCHIVE_KEEP] if len(archives) > LOG_ARCHIVE_KEEP else []:
+        try:
+            os.remove(os.path.join(_LOG_DIR, old))
+        except OSError:
+            pass
 
 
 def _open_log():
