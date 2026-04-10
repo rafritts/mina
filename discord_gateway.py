@@ -871,18 +871,32 @@ async def cmd_restart(interaction: discord.Interaction):
 @app_commands.describe(n="Number of messages to delete (default: all)")
 async def cmd_clean(interaction: discord.Interaction, n: int = 0):
     await interaction.response.defer(ephemeral=True)
-    deleted = 0
     channel = interaction.channel or await client.fetch_channel(interaction.channel_id)
-    async for message in channel.history(limit=None):
-        if message.author == client.user:
-            try:
-                await message.delete()
-                deleted += 1
-            except discord.HTTPException:
-                pass
-            if n > 0 and deleted >= n:
-                break
-    await interaction.followup.send(f"Deleted {deleted} message(s).", ephemeral=True)
+
+    deleted_count = 0
+    limit_remaining = n if n > 0 else None
+
+    def _is_mine(m: discord.Message) -> bool:
+        nonlocal limit_remaining
+        if m.author != client.user:
+            return False
+        if limit_remaining is not None:
+            if limit_remaining <= 0:
+                return False
+            limit_remaining -= 1
+        return True
+
+    # channel.purge() batches into bulk-delete (up to 100/call) for recent messages,
+    # falling back to individual deletes for messages older than 14 days.
+    # It also respects rate limits automatically.
+    try:
+        deleted = await channel.purge(limit=None, check=_is_mine, bulk=True)
+        deleted_count = len(deleted)
+    except discord.HTTPException as e:
+        await interaction.followup.send(f"Error during purge: {e}", ephemeral=True)
+        return
+
+    await interaction.followup.send(f"Deleted {deleted_count} message(s).", ephemeral=True)
 
 
 @tree.command(name="context", description="Show Mina's context window, bio state, and config.")

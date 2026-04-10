@@ -4,5 +4,5 @@
   "comfyui_host": "localhost",
   "sleep_window_start": 4,
   "sleep_window_end": 8,
-  "naps_enabled": true
+  "naps_enabled": false
 }
