@@ -111,20 +111,46 @@ def _log(msg: str, tee) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
+_DASHBOARD_PORT = 7843
+_dashboard_proc: subprocess.Popen | None = None
+
+
+def _free_port(port: int) -> None:
+    """Kill any process holding the given TCP port (best-effort)."""
+    try:
+        result = subprocess.run(
+            ["fuser", f"{port}/tcp"],
+            capture_output=True, text=True
+        )
+        for pid_str in result.stdout.split():
+            try:
+                os.kill(int(pid_str), signal.SIGTERM)
+            except (ProcessLookupError, ValueError):
+                pass
+        if result.stdout.strip():
+            time.sleep(0.5)  # give the old process a moment to release the port
+    except FileNotFoundError:
+        pass  # fuser not available — skip
+
+
 def _run_dashboard(uv: str, log_f, tee_out) -> None:
     """
     Run dashboard_server.py in a background thread with simple restart-on-crash.
     Stops when the supervisor exits (daemon thread).
     """
+    global _dashboard_proc
     cmd = [uv, "run", "python", "-u", "dashboard_server.py"]
     backoff = 5
     while True:
+        _free_port(_DASHBOARD_PORT)
         try:
             _log("[DASHBOARD] Starting dashboard server.", tee_out)
-            proc = subprocess.Popen(cmd, cwd=_PROJECT_ROOT, stdout=log_f, stderr=log_f)
-            rc = proc.wait()
+            _dashboard_proc = subprocess.Popen(cmd, cwd=_PROJECT_ROOT, stdout=log_f, stderr=log_f)
+            rc = _dashboard_proc.wait()
+            _dashboard_proc = None
             _log(f"[DASHBOARD] Exited with code {rc} — restarting in {backoff}s.", tee_out)
         except Exception as e:
+            _dashboard_proc = None
             _log(f"[DASHBOARD] Launch error: {e} — retrying in {backoff}s.", tee_out)
         time.sleep(backoff)
 
@@ -156,6 +182,13 @@ def main():
 
     def _handle_sigterm(signum, frame):
         """Kill the child and exit cleanly when systemd stops the service."""
+        # Kill dashboard first so the port is free if supervisor immediately restarts
+        if _dashboard_proc and _dashboard_proc.poll() is None:
+            _dashboard_proc.terminate()
+            try:
+                _dashboard_proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                _dashboard_proc.kill()
         if current_proc and current_proc.poll() is None:
             _log("[SUPERVISOR] SIGTERM received — killing child.", tee_out)
             current_proc.terminate()
