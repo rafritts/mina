@@ -37,19 +37,36 @@ def _clamp(v: float, lo: float = 0.0, hi: float = 100.0) -> float:
 # Default starting values for each chemical
 # ---------------------------------------------------------------------------
 
-_CHEMICAL_DEFAULTS: dict[str, float] = {
-    "cortisol":        250.0,   # nmol/L — circadian midpoint
-    "norepinephrine":  200.0,   # pg/mL
-    "dopamine":         80.0,   # pg/mL
-    "serotonin":        22.0,   # ng/mL
-    "oxytocin":          4.0,   # pg/mL — no bond floor
-    "endorphins":       12.0,   # pg/mL
-    "acetylcholine":    38.0,   # nmol/L
-    "melatonin":         5.0,   # pg/mL — daytime low
-    "glucose":          85.0,   # mg/dL — normal fasting
-    "hydration":        62.0,   # % TBW
-    "sleep_pressure":   30.0,   # AU
-}
+def _load_chemical_defaults() -> dict[str, float]:
+    """Base defaults, overrideable by personality.json neurochemical_baselines."""
+    defaults = {
+        "cortisol":        250.0,   # nmol/L — circadian midpoint
+        "norepinephrine":  200.0,   # pg/mL
+        "dopamine":         80.0,   # pg/mL
+        "serotonin":        22.0,   # ng/mL
+        "oxytocin":          4.0,   # pg/mL — no bond floor
+        "endorphins":       12.0,   # pg/mL
+        "acetylcholine":    38.0,   # nmol/L
+        "melatonin":         5.0,   # pg/mL — daytime low
+        "glucose":          85.0,   # mg/dL — normal fasting
+        "hydration":        62.0,   # % TBW
+        "sleep_pressure":   30.0,   # AU
+    }
+    try:
+        _pf = os.path.join(_PROJECT_ROOT, "personality.json")
+        with open(_pf) as _f:
+            p = json.load(_f)
+        nb = p.get("neurochemical_baselines", {})
+        if "oxytocin_resting" in nb:
+            defaults["oxytocin"] = float(nb["oxytocin_resting"])
+        if "serotonin_resting" in nb:
+            defaults["serotonin"] = float(nb["serotonin_resting"])
+    except (FileNotFoundError, Exception):
+        pass
+    return defaults
+
+
+_CHEMICAL_DEFAULTS: dict[str, float] = _load_chemical_defaults()
 
 
 # ---------------------------------------------------------------------------

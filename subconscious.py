@@ -180,7 +180,8 @@ Do NOT apply negative dopamine delta from satisfaction or negative acetylcholine
 Only include fields that actually change."""
 
     raw = _call_delta_tool([{"role": "user", "content": prompt}], label="stimulus")
-    return _apply_saturation(raw, state)
+    saturated = _apply_saturation(raw, state)
+    return _apply_personality_scaling(saturated, _load_personality())
 
 
 # ---------------------------------------------------------------------------
@@ -215,7 +216,8 @@ Consider:
 Only include fields that actually change."""
 
     raw = _call_delta_tool([{"role": "user", "content": prompt}], label="response")
-    return _apply_saturation(raw, state)
+    saturated = _apply_saturation(raw, state)
+    return _apply_personality_scaling(saturated, _load_personality())
 
 
 # ---------------------------------------------------------------------------
@@ -520,25 +522,100 @@ def _consume_injection() -> str:
         return ""
 
 
-def _load_personality_block() -> str:
-    """Load Big 5 from config.json and format as a personality context block."""
+def _load_personality() -> dict:
+    """Load full personality.json. Returns empty dict if not found."""
     import json as _json
-    _cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+    _pf = os.path.join(os.path.dirname(os.path.abspath(__file__)), "personality.json")
     try:
-        with open(_cfg_path) as _f:
-            cfg = _json.load(_f)
+        with open(_pf) as _f:
+            return _json.load(_f)
     except (FileNotFoundError, _json.JSONDecodeError):
-        cfg = {}
-    p = cfg.get("personality", {})
-    if not p:
+        return {}
+
+
+def _personality_multipliers(personality: dict) -> dict[str, float]:
+    """
+    Convert Big 5 scores into per-chemical delta scaling factors.
+
+    These are applied to subconscious-issued deltas (encode_stimulus / encode_response)
+    to mechanically express personality in the biological system.
+
+    Multiplier ranges are intentionally narrow (0.8–1.4) so personality flavors
+    rather than dominates — the stimulus itself still drives magnitude.
+    """
+    big5 = personality.get("big5", {})
+    N = big5.get("neuroticism",       50) / 100  # 0–1
+    E = big5.get("extraversion",      50) / 100
+    A = big5.get("agreeableness",     50) / 100
+    C = big5.get("conscientiousness", 50) / 100
+    O = big5.get("openness",          50) / 100
+
+    # N: cortisol/norepi reactivity (high N → bigger stress spikes, slower recovery)
+    n_factor = 0.8 + N * 0.6          # range: 0.80 (N=0) → 1.40 (N=100)
+
+    # E: dopamine social sensitivity (high E → social stimulation hits harder)
+    # C: prefrontal brake on dopamine-seeking (high C → slightly dampened reward spikes)
+    e_factor = 0.7 + E * 0.6          # range: 0.70 → 1.30
+    c_brake  = 1.3 - C * 0.6          # range: 1.30 (C=0) → 0.70 (C=100)
+    dopamine_factor = e_factor * c_brake
+
+    # A: oxytocin responsiveness + serotonin floor support
+    a_factor  = 0.7 + A * 0.6         # range: 0.70 → 1.30
+    sero_factor = 0.8 + A * 0.4       # range: 0.80 → 1.20 (gentler)
+
+    # O: acetylcholine curiosity engagement + dopamine novelty boost
+    o_factor  = 0.8 + O * 0.4         # range: 0.80 → 1.20
+
+    # Optional personality dopamine_sensitivity from neurochemical_baselines
+    ds = personality.get("neurochemical_baselines", {}).get("dopamine_sensitivity", 1.0)
+
+    return {
+        "cortisol":       n_factor,
+        "norepinephrine": n_factor,
+        "dopamine":       dopamine_factor * ds,
+        "oxytocin":       a_factor,
+        "serotonin":      sero_factor,
+        "acetylcholine":  o_factor,
+        # endorphins, glucose, hydration, melatonin, sleep_pressure: no Big 5 link
+    }
+
+
+def _apply_personality_scaling(deltas: dict, personality: dict) -> dict:
+    """
+    Scale subconscious-issued chemical deltas by Big 5 personality factors.
+
+    N asymmetry: positive cortisol/norepi deltas (spikes) are amplified;
+    negative deltas (recovery) are dampened — high N means faster to stress,
+    slower to recover.
+    """
+    if not personality:
+        return deltas
+    mults = _personality_multipliers(personality)
+    result = {}
+    for field, delta in deltas.items():
+        m = mults.get(field, 1.0)
+        if field in ("cortisol", "norepinephrine") and delta < 0:
+            # Recovery is slower at high N: invert the factor (high N → small recovery)
+            m = 1.0 / m if m != 0 else 1.0
+        result[field] = round(delta * m, 2)
+    return result
+
+
+def _load_personality_block() -> str:
+    """Load Big 5 from personality.json and format as a personality context block."""
+    p = _load_personality()
+    big5 = p.get("big5", {})
+    if not big5:
         return ""
-    E = p.get("E", 50)
-    A = p.get("A", 50)
-    N = p.get("N", 50)
-    C = p.get("C", 50)
-    O = p.get("O", 50)
+    E = big5.get("extraversion",      50)
+    A = big5.get("agreeableness",     50)
+    N = big5.get("neuroticism",       50)
+    C = big5.get("conscientiousness", 50)
+    O = big5.get("openness",          50)
+    cond = p.get("personality_condition")
+    cond_line = f"\nPersonality condition: {cond}" if cond else ""
     return (
-        f"[PERSONALITY — Big 5 scores, stable traits]\n"
+        f"[PERSONALITY — Big 5 scores, stable traits]{cond_line}\n"
         f"E (Extraversion): {E}/100 — {'high, genuinely enjoys new people' if E >= 80 else 'moderate' if E >= 50 else 'low, reserved by default'}\n"
         f"A (Agreeableness): {A}/100 — {'high, extends benefit of the doubt to strangers' if A >= 65 else 'moderate' if A >= 40 else 'low, guarded by default'}\n"
         f"N (Neuroticism): {N}/100 — {'high, chemistry bleeds through at stranger register more readily' if N >= 60 else 'moderate' if N >= 35 else 'low, stable affect across contexts'}\n"
