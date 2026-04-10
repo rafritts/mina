@@ -140,23 +140,49 @@
   ];
 
   let applyingPreset = $state('');
+  let presetSnapshot = $state<Record<string, number> | null>(null);
+  let undoTimer: ReturnType<typeof setTimeout> | null = null;
 
   async function applyPreset(preset: Preset) {
     applyingPreset = preset.name;
+    // Snapshot current values before overwriting
+    presetSnapshot = { ...localValues };
+    if (undoTimer) clearTimeout(undoTimer);
     try {
       await apiFetch('/api/state', {
         method: 'PATCH',
         body: JSON.stringify(preset.values),
       });
-      // Sync local sliders
       for (const [k, v] of Object.entries(preset.values)) {
+        localValues[k] = v;
+      }
+      await load();
+      // Auto-expire undo after 15s
+      undoTimer = setTimeout(() => { presetSnapshot = null; }, 15000);
+    } catch (e) {
+      error = String(e);
+      presetSnapshot = null;
+    } finally {
+      applyingPreset = '';
+    }
+  }
+
+  async function undoPreset() {
+    if (!presetSnapshot) return;
+    const snap = presetSnapshot;
+    presetSnapshot = null;
+    if (undoTimer) { clearTimeout(undoTimer); undoTimer = null; }
+    try {
+      await apiFetch('/api/state', {
+        method: 'PATCH',
+        body: JSON.stringify(snap),
+      });
+      for (const [k, v] of Object.entries(snap)) {
         localValues[k] = v;
       }
       await load();
     } catch (e) {
       error = String(e);
-    } finally {
-      applyingPreset = '';
     }
   }
 
@@ -300,6 +326,12 @@
           </button>
         </div>
       {/each}
+
+      {#if presetSnapshot}
+        <button class="btn btn-sm btn-ghost gap-1 animate-pulse" onclick={undoPreset}>
+          ↩ Undo
+        </button>
+      {/if}
     </div>
   </div>
 
