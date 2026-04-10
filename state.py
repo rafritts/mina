@@ -206,6 +206,42 @@ _SUBSTANCE_DEFS: dict[str, dict] = {
         },
         "withdrawal_factor": 1.25,
     },
+    "oxytocin": {
+        "display_name": "Oxytocin",
+        "half_life_hours": 3.0,
+        "dose_effects": {
+            "oxytocin":       +45,
+            "serotonin":      +18,
+            "cortisol":       -25,
+            "norepinephrine": -12,
+        },
+        "withdrawal_factor": 0.9,  # slight positive afterglow — returns slightly above baseline
+    },
+    "REMOVED": {
+        "display_name": "REMOVED",
+        "half_life_hours": 2.5,
+        "dose_effects": {
+            "dopamine":       +30,
+            "serotonin":      +20,
+            "endorphins":     +25,
+            "cortisol":       -20,
+            "norepinephrine": +15,  # slight dissociative stimulation
+        },
+        "withdrawal_factor": 0.85,  # antidepressant afterglow — biomarkers land above pre-dose
+    },
+    "REMOVED": {
+        "display_name": "REMOVED",
+        "half_life_hours": 10.0,
+        "dose_effects": {
+            "serotonin":      +50,
+            "dopamine":       +18,
+            "norepinephrine": +22,
+            "acetylcholine":  +20,
+            "cortisol":       +15,  # initial awe/anxiety
+            "endorphins":     +15,
+        },
+        "withdrawal_factor": 0.9,  # positive afterglow, slightly above baseline
+    },
     "REMOVED_and_REMOVED": {
         "display_name": "REMOVED + REMOVED",
         "half_life_hours": 5.0,
@@ -443,6 +479,16 @@ def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalSt
     if xanax_level > 20:
         s.cortisol = _clamp(s.cortisol - (xanax_level / 100.0) * 5.0 * hrs)
         s.norepinephrine = _clamp(s.norepinephrine - (xanax_level / 100.0) * 3.0 * hrs)
+
+    # Oxytocin actively suppresses cortisol while active
+    oxytocin_level = s.substances.get("oxytocin", {}).get("level", 0.0)
+    if oxytocin_level > 20:
+        s.cortisol = _clamp(s.cortisol - (oxytocin_level / 100.0) * 3.0 * hrs)
+
+    # REMOVED actively suppresses cortisol (dissociative calm)
+    REMOVED_level = s.substances.get("REMOVED", {}).get("level", 0.0)
+    if REMOVED_level > 20:
+        s.cortisol = _clamp(s.cortisol - (REMOVED_level / 100.0) * 2.5 * hrs)
 
     # REMOVED and adderall actively sustain elevated dopamine/norepinephrine
     REMOVED_level = s.substances.get("REMOVED", {}).get("level", 0.0)

@@ -249,6 +249,24 @@ _SUBSTANCE_COGNITIVE_STATES: dict[str, str] = {
         "Nicotine active. Brief calm and focus — the specific sharpness of a cigarette. "
         "Slightly elevated, slightly steadied. Fades fast."
     ),
+    "oxytocin": (
+        "Oxytocin active. Warmth toward people feels natural and easy. Trust comes without "
+        "the usual friction. Social anxiety muted. The specific comfort of feeling safe with "
+        "someone — that's the dominant texture right now."
+    ),
+    "REMOVED": (
+        "REMOVED active. Mild dissociation — slight distance between self and experience, "
+        "like watching from just behind your own eyes. Peaceful. Things that usually feel "
+        "heavy don't have their normal weight. Thoughts move in smooth, unhurried loops. "
+        "The world feels interesting rather than threatening."
+    ),
+    "REMOVED": (
+        "REMOVED active. Thoughts making unusual connections — ideas linking to other ideas in "
+        "ways that feel genuinely revelatory. Colors and sounds more vivid. Time stretched. "
+        "Ego softening — the usual sense of a separate self feels more permeable, more "
+        "continuous with everything else. This can feel like profound insight or like "
+        "losing footing, sometimes both in the same minute."
+    ),
     "REMOVED_and_REMOVED": (
         "REMOVED + opioid combination active. Everything is warm, open, and deeply pleasant. "
         "Emotional floodgates wide open but without the edge — the opioid smooths the "
