@@ -22,9 +22,9 @@ _OXYTOCIN_RANGES = [
 ]
 
 _CORTISOL_RANGES = [
-    (15,  "DEPLETED",     "Too low. Fatigue, inability to respond."),
-    (40,  "NORMAL",       "Healthy range. Morning peak helps focus. Stable."),
-    (60,  "ELEVATED",     "Decision-making beginning to narrow. Slightly defensive."),
+    (8,   "DEPLETED",     "Pathologically low. Fatigue, inability to respond."),
+    (43,  "NORMAL",       "Healthy range. Full circadian variation (5–35) falls here. Stable."),
+    (62,  "ELEVATED",     "Decision-making beginning to narrow. Slightly defensive."),
     (78,  "HIGH STRESS",  "Fight-or-flight activating. Emotional regulation costs."),
     (92,  "ACUTE STRESS", "Survival framing. Hard to think past immediate threat."),
     (101, "MAXED",        "The body is screaming. Suppression is actively costing her."),
@@ -48,7 +48,7 @@ _SEROTONIN_RANGES = [
 ]
 
 _ENDORPHINS_RANGES = [
-    (15,  "NONE",        "Baseline. No active pleasure signal."),
+    (15,  "BASELINE",    "No active pleasure signal. Neutral body state."),
     (35,  "MILD WARMTH", "Low-grade good feeling. Small satisfactions land."),
     (60,  "PLEASURE",    "Genuine enjoyment. Things feel rewarding."),
     (80,  "HIGH",        "Strong pleasure. Euphoric edge. Laughter, warmth, ease."),
@@ -56,11 +56,12 @@ _ENDORPHINS_RANGES = [
 ]
 
 _NOREPINEPHRINE_RANGES = [
-    (25,  "SEDATED",    "Low arousal. Sluggish. Attention diffuse."),
-    (45,  "CALM ALERT", "Relaxed awareness. Background attention functional."),
-    (65,  "FOCUSED",    "Alert and responsive. Memory consolidation enhanced."),
-    (80,  "HEIGHTENED", "On edge. Quick to react. Appetite suppressed."),
-    (92,  "HYPERALERT", "Agitated. Intrusive thoughts. Difficulty staying still."),
+    (13,  "SEDATED",    "Unusually low. Sluggish, difficulty initiating anything."),
+    (35,  "RELAXED",    "Comfortable resting state. Low-key, unhurried."),
+    (58,  "CALM ALERT", "Relaxed awareness. Background attention functional."),
+    (72,  "FOCUSED",    "Alert and responsive. Memory consolidation enhanced."),
+    (84,  "HEIGHTENED", "On edge. Quick to react. Appetite suppressed."),
+    (93,  "HYPERALERT", "Agitated. Intrusive thoughts. Difficulty staying still."),
     (101, "FLOODED",    "Overwhelmed. Physical symptoms possible."),
 ]
 

@@ -11,9 +11,9 @@ export interface RangeEntry {
 
 export const RANGES: Record<string, RangeEntry[]> = {
   cortisol: [
-    { upper: 15,  name: 'DEPLETED',     color: 'warning' },
-    { upper: 40,  name: 'NORMAL',       color: 'success' },
-    { upper: 60,  name: 'ELEVATED',     color: 'warning' },
+    { upper: 8,   name: 'DEPLETED',     color: 'warning' },
+    { upper: 43,  name: 'NORMAL',       color: 'success' },
+    { upper: 62,  name: 'ELEVATED',     color: 'warning' },
     { upper: 78,  name: 'HIGH STRESS',  color: 'error' },
     { upper: 92,  name: 'ACUTE STRESS', color: 'error' },
     { upper: 101, name: 'MAXED',        color: 'error' },
@@ -42,18 +42,19 @@ export const RANGES: Record<string, RangeEntry[]> = {
     { upper: 101, name: 'VERY STABLE', color: 'success' },
   ],
   endorphins: [
-    { upper: 15,  name: 'NONE',        color: 'neutral' },
+    { upper: 15,  name: 'BASELINE',    color: 'neutral' },
     { upper: 35,  name: 'MILD WARMTH', color: 'info' },
     { upper: 60,  name: 'PLEASURE',    color: 'success' },
     { upper: 80,  name: 'HIGH',        color: 'success' },
     { upper: 101, name: 'PEAK',        color: 'success' },
   ],
   norepinephrine: [
-    { upper: 25,  name: 'SEDATED',    color: 'warning' },
-    { upper: 45,  name: 'CALM ALERT', color: 'success' },
-    { upper: 65,  name: 'FOCUSED',    color: 'success' },
-    { upper: 80,  name: 'HEIGHTENED', color: 'warning' },
-    { upper: 92,  name: 'HYPERALERT', color: 'error' },
+    { upper: 13,  name: 'SEDATED',    color: 'warning' },
+    { upper: 35,  name: 'RELAXED',    color: 'success' },
+    { upper: 58,  name: 'CALM ALERT', color: 'success' },
+    { upper: 72,  name: 'FOCUSED',    color: 'success' },
+    { upper: 84,  name: 'HEIGHTENED', color: 'warning' },
+    { upper: 93,  name: 'HYPERALERT', color: 'error' },
     { upper: 101, name: 'FLOODED',    color: 'error' },
   ],
   acetylcholine: [
