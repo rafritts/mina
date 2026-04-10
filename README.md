@@ -103,6 +103,8 @@ The system is documented in detail across the spec files in `docs/`. Reading ord
 | `SPEC-10-chemical-architecture.md` | First-class chemical constructs, real physiological units, normalization layer |
 | `SPEC-11-vital-signs.md` | Heart rate, blood pressure, respiration, SpO2 — derived from chemistry |
 | `SPEC-12-psychiatric-states.md` | Episode modifiers, medications, blunting, drug interactions |
+| `SPEC-13-personality-architecture.md` | Big 5 as mechanical modifiers — end state where MINA.md collapses to ~200 words |
+| `SPEC-14-social-expression-register.md` | Familiarity-gated filter between internal state and expressed behavior |
 | `spec-2-subconscious.md` | The subconscious LLM — per-message synthesis and heartbeat reflection |
 | `spec-3-memory.md` | RAG + KAG memory architecture |
 | `spec-5-heartbeat.md` | Autonomous background cycle |
