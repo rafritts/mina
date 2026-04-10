@@ -60,7 +60,7 @@ app = FastAPI(title="Mina Dashboard", docs_url=None, redoc_url=None)
 
 @app.get("/healthz")
 def healthz():
-    return {"ok": True}
+    return {"ok": True, "auth_required": bool(DASHBOARD_TOKEN)}
 
 
 # ---------------------------------------------------------------------------

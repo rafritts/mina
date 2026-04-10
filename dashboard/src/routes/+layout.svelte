@@ -1,5 +1,6 @@
 <script lang="ts">
   import '../app.css';
+  import { onMount } from 'svelte';
   import { setToken } from '$lib/api';
   import { page } from '$app/stores';
 
@@ -18,8 +19,19 @@
   }
 
   let token = $state(typeof localStorage !== 'undefined' ? (localStorage.getItem('dashboard_token') ?? '') : '');
-  let showModal = $derived(!token);
+  let authRequired = $state(true);  // assume required until healthz says otherwise
+  let showModal = $derived(authRequired && !token);
   let modalInput = $state('');
+
+  onMount(async () => {
+    try {
+      const res = await fetch('/healthz');
+      const data = await res.json();
+      authRequired = data.auth_required ?? true;
+    } catch {
+      // If healthz fails, keep modal visible
+    }
+  });
 
   $effect(() => { setToken(token); });
 
