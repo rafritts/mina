@@ -5,5 +5,12 @@
   "sleep_window_start": 4,
   "sleep_window_end": 8,
   "naps_enabled": false,
-  "creator_name": "Ryan"
+  "creator_name": "Ryan",
+  "personality": {
+    "E": 85,
+    "A": 70,
+    "N": 65,
+    "C": 75,
+    "O": 80
+  }
 }
