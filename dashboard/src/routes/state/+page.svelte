@@ -34,7 +34,9 @@
   // ---------------------------------------------------------------------------
 
   const HOMEOSTATIC = ['sleep_pressure', 'glucose', 'hydration'];
-  const NEURO = ['cortisol', 'dopamine', 'serotonin', 'norepinephrine', 'oxytocin', 'endorphins', 'acetylcholine', 'melatonin'];
+  const NEURO = ['cortisol', 'dopamine', 'serotonin', 'norepinephrine', 'oxytocin', 'endorphins', 'acetylcholine'];
+  // Melatonin is purely circadian — advance() overwrites it every tick, slider is useless
+  const NEURO_READONLY = ['melatonin'];
 
   const FIELD_LABELS: Record<string, string> = {
     sleep_pressure:  'Sleep Pressure',
@@ -244,9 +246,20 @@
 
   function onSliderRelease(field: string) {
     editing = new Set([...editing].filter(f => f !== field));
+    // Cancel debounce and commit immediately on release
+    if (patchTimers[field]) {
+      clearTimeout(patchTimers[field]);
+      delete patchTimers[field];
+    }
+    if (localValues[field] !== undefined) {
+      patchField(field, localValues[field]);
+    }
   }
 
   async function patchField(field: string, value: number) {
+    // Keep field in editing until PATCH completes — prevents the 5s refresh
+    // from snapping the slider back to the old server value mid-flight.
+    editing = new Set([...editing, field]);
     saving = new Set([...saving, field]);
     try {
       await apiFetch('/api/state', {
@@ -256,7 +269,8 @@
     } catch (e) {
       error = String(e);
     } finally {
-      saving = new Set([...saving].filter(f => f !== field));
+      saving  = new Set([...saving].filter(f => f !== field));
+      editing = new Set([...editing].filter(f => f !== field));
     }
   }
 
@@ -421,7 +435,25 @@
               </div>
             {/each}
           </div>
-          <p class="text-xs opacity-40 mt-3">* Melatonin reverts to circadian formula on next tick</p>
+
+          <!-- Read-only circadian fields -->
+          {#each NEURO_READONLY as field}
+            {@const val = localValues[field] ?? 0}
+            {@const label = getLabel(field, val)}
+            <div class="mt-4 pt-4 border-t border-base-300">
+              <div class="flex justify-between items-center mb-1">
+                <span class="text-sm font-medium opacity-60">{FIELD_LABELS[field] ?? field}</span>
+                <div class="flex items-center gap-2">
+                  {#if label}
+                    <span class="badge badge-xs {COLOR_CLASSES[label.color]?.badge}">{label.name}</span>
+                  {/if}
+                  <span class="text-sm font-mono w-10 text-right opacity-60">{val.toFixed(1)}</span>
+                </div>
+              </div>
+              <progress class="progress progress-neutral w-full" value={val} max="100"></progress>
+              <p class="text-xs opacity-30 mt-1">Circadian formula — read-only</p>
+            </div>
+          {/each}
         </div>
 
       </div>
