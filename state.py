@@ -294,8 +294,11 @@ def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalSt
     # --- Sleep pressure ---
     if s.sleeping:
         s.sleep_pressure = _clamp(s.sleep_pressure - 24.0 * sim_hours)
-        # Auto-wake when sleep pressure clears
-        if s.sleep_expected_wake and now >= s.sleep_expected_wake:
+        # Auto-wake when scheduled time arrives or sleep pressure fully depleted
+        # (whichever comes first — prevents being stuck sleeping past full rest)
+        scheduled_wake = s.sleep_expected_wake and now >= s.sleep_expected_wake
+        pressure_depleted = s.sleep_pressure <= 0
+        if scheduled_wake or pressure_depleted:
             s.sleeping = False
             s.sleep_start = None
             s.sleep_expected_wake = None
