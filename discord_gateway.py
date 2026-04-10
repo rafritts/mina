@@ -566,7 +566,8 @@ async def on_message(message: discord.Message) -> None:
         return
     if message.author.bot:
         return
-    if not message.content:
+    # Allow image-only messages (no text content) — attachments are handled downstream
+    if not message.content and not message.attachments:
         return
 
     cfg = _load_config()
