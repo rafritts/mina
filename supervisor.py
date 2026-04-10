@@ -136,8 +136,8 @@ def _free_port(port: int) -> None:
 def _run_dashboard(uv: str, tee_out) -> None:
     """
     Run dashboard_server.py in a background thread with simple restart-on-crash.
-    Uses tee_out._log (not a captured log_f) so it always writes to the current
-    log file even after a gateway restart rotates the log.
+    Opens a fresh binary file handle to the log path on each launch so there is
+    never a stale/closed fd issue regardless of log rotation.
     Stops when the supervisor exits (daemon thread).
     """
     global _dashboard_proc
@@ -147,7 +147,11 @@ def _run_dashboard(uv: str, tee_out) -> None:
         _free_port(_DASHBOARD_PORT)
         try:
             _log("[DASHBOARD] Starting dashboard server.", tee_out)
-            _dashboard_proc = subprocess.Popen(cmd, cwd=_PROJECT_ROOT, stdout=tee_out._log, stderr=tee_out._log)
+            # Open a fresh binary handle each launch; close parent copy immediately
+            # after Popen — the child inherits its own copy via dup2.
+            dash_log = open(_LOG_FILE, "ab")
+            _dashboard_proc = subprocess.Popen(cmd, cwd=_PROJECT_ROOT, stdout=dash_log, stderr=dash_log)
+            dash_log.close()
             rc = _dashboard_proc.wait()
             _dashboard_proc = None
             _log(f"[DASHBOARD] Exited with code {rc} — restarting in {backoff}s.", tee_out)
