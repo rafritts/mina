@@ -77,17 +77,17 @@ export const RANGES: Record<string, RangeEntry[]> = {
     { upper: 101, name: 'HYDRATED',     color: 'success' },
   ],
   sleep_pressure: [
-    { upper: 25,  name: 'WELL RESTED',  color: 'success' },
-    { upper: 45,  name: 'ALERT',        color: 'success' },
-    { upper: 65,  name: 'TIRED',        color: 'warning' },
-    { upper: 80,  name: 'FATIGUED',     color: 'warning' },
-    { upper: 101, name: 'EXHAUSTED',    color: 'error' },
+    { upper: 50,  name: 'WELL RESTED', color: 'success' },
+    { upper: 65,  name: 'BUILDING',    color: 'neutral' },
+    { upper: 80,  name: 'TIRED',       color: 'warning' },
+    { upper: 90,  name: 'FATIGUED',    color: 'warning' },
+    { upper: 101, name: 'EXHAUSTED',   color: 'error' },
   ],
   melatonin: [
-    { upper: 70,  name: 'AWAKE',          color: 'success' },
-    { upper: 80,  name: 'DROWSY',         color: 'info' },
-    { upper: 90,  name: 'SLEEP PULL',     color: 'warning' },
-    { upper: 101, name: 'SLEEP IMMINENT', color: 'error' },
+    { upper: 70,  name: 'ACTIVE',    color: 'success' },
+    { upper: 80,  name: 'UNWINDING', color: 'info' },
+    { upper: 90,  name: 'IDLING',    color: 'warning' },
+    { upper: 101, name: 'RAMPING',   color: 'error' },
   ],
 };
 

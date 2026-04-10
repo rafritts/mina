@@ -80,8 +80,10 @@ def _circadian_cortisol_baseline(hour: float) -> float:
 
 
 def _circadian_melatonin(hour: float) -> float:
-    """Peaks ~100 at 2am, troughs ~0 at 2pm."""
-    return 50.0 * (1.0 + math.cos((hour - 2) * math.pi / 12))
+    """Peaks ~100 at sleep_window_start, troughs ~0 twelve hours later."""
+    cfg = _load_config()
+    peak_hour = float(cfg.get("sleep_window_start", 4))
+    return 50.0 * (1.0 + math.cos((hour - peak_hour) * math.pi / 12))
 
 
 def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalState:

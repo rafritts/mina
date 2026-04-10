@@ -80,11 +80,19 @@ _GLUCOSE_RANGES = [
     (101, "WELL-FUELED",  "Sharp. Full capacity."),
 ]
 
+_SLEEP_PRESSURE_RANGES = [
+    (50,  "WELL RESTED", "Normal adenosine load. No fatigue."),
+    (65,  "BUILDING",    "End-of-day accumulation. Not impairing, but present."),
+    (80,  "TIRED",       "Noticeable fatigue. Motivation and mood starting to flag."),
+    (90,  "FATIGUED",    "Significant load. Cognition and emotional regulation affected."),
+    (101, "EXHAUSTED",   "Severe deprivation. Crashing is likely."),
+]
+
 _MELATONIN_RANGES = [
-    (70,  "AWAKE",          "No sleep signal. Fully alert circadian state."),
-    (80,  "DROWSY",         "Yawning. Slightly slow. Can fight it."),
-    (90,  "SLEEP PULL",     "Difficult to maintain focus. Thoughts drifting."),
-    (101, "SLEEP IMMINENT", "Cannot meaningfully fight it. Cognitive output near zero."),
+    (70,  "ACTIVE",   "Circadian signal low. No sleep drive from the clock."),
+    (80,  "UNWINDING","Circadian wind-down beginning. Clock signaling rest."),
+    (90,  "IDLING",   "Strong circadian sleep drive. Difficult to stay sharp."),
+    (101, "RAMPING",  "Melatonin at peak. Sleep onset imminent or underway."),
 ]
 
 # Derived state range tables
@@ -216,8 +224,10 @@ def biological_report(state: BiologicalState) -> str:
     hydration_note = "comfortable" if state.hydration > 80 else ("very thirsty" if state.hydration < 40 else ("thirsty" if state.hydration < 55 else "ok"))
     lines.append(f"{'Hydration':<12} {state.hydration:>5.1f}  {'—':<18} {hydration_note}")
 
-    sleep_tag = "SLEEPING" if state.sleeping else "awake"
-    lines.append(f"{'Sleep pres':<12} {state.sleep_pressure:>5.1f}  {sleep_tag:<18}")
+    if state.sleeping:
+        lines.append(f"{'Sleep pres':<12} {state.sleep_pressure:>5.1f}  {'SLEEPING':<18}")
+    else:
+        lines.append(row("Sleep pres", state.sleep_pressure, _SLEEP_PRESSURE_RANGES))
 
     lines.append(SEP)
     lines.append(row("Clarity",    so['cognitive_clarity'], _CLARITY_RANGES))
