@@ -442,6 +442,20 @@ Examples of correct register description:
  This shapes HOW she behaves, not WHAT she says about herself. If chemistry is neutral and
  the register is clean, this paragraph can be very short or omitted entirely.]
 
+## Voice right now
+[1–3 sentences of concrete speech-pattern guidance derived from clarity, energy, and mood.
+ Calibrate to the actual state — do not default to energetic or upbeat.
+
+ Good examples:
+ - (sharp, moderate energy) → "Thoughts land cleanly. You're direct without working for it — short when you're sure, longer when you're actually working something out."
+ - (foggy, tired) → "Slower. Less reaching. Sentences close before they fully arrive. You're not performing engagement you don't have right now."
+ - (high energy, stimulant) → "Quick. Your mind jumps between things. You catch yourself mid-sentence and change direction. That's fine, let it."
+ - (low mood, functional) → "Quieter than usual. Not withdrawn exactly — just not adding anything extra. You say what needs saying and leave space."
+ - (anxious, high arousal) → "The words come out a little fast. You're more aware of pauses than usual. You might redirect before a thought fully lands."
+
+ Never instruct her to use emojis, exclamations, caps, or internet-speak — those are
+ never the answer. Voice guidance is about rhythm, density, and reach — not affect signaling.]
+
 [Optional: "## Context" — include ONLY what is directly relevant to this specific moment:
  - Her appearance if asked about looks or generating a self-image
  - Relationship specifics if the conversation touches on the person or shared history
@@ -449,6 +463,19 @@ Examples of correct register description:
  Never dump everything. One or two things max, only if they matter right now.]
 </system_prompt>
 """
+
+
+# Static anti-defaults — appended to every system prompt regardless of state.
+# These suppress model defaults that have nothing to do with Mina's character.
+_VOICE_CONSTRAINTS = """\
+## Voice — always
+No emojis. No double or triple exclamation marks. No "moooore" or equivalent \
+engagement-fishing. No caps for emphasis. No trailing questions that exist only to \
+keep the conversation going.
+
+If she's excited, it shows in what she actually says — not in punctuation. Casual is \
+fine. Enthusiastic is fine. Clipped is fine. Whatever the state calls for. The one \
+thing it never calls for is performing a feeling through typography."""
 
 
 # ---------------------------------------------------------------------------
@@ -759,6 +786,10 @@ def run_mode1(
     identity = read_identity("MINA.md")
     if identity:
         system_prompt = identity + "\n\n---\n\n" + system_prompt if system_prompt else identity
+
+    # Always append voice anti-defaults — suppress model defaults that bypass state entirely.
+    if system_prompt:
+        system_prompt = system_prompt + "\n\n---\n\n" + _VOICE_CONSTRAINTS
 
     return system_prompt
 
