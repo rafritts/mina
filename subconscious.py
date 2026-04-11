@@ -238,9 +238,26 @@ Mina just did:
 Activity: {activity}
 Description: {description}
 
-What biological effect does this activity have?
-Small, realistic values. Consider her current state — an exhausted person gets less
-dopamine from a fun activity. Only include fields that actually change.
+What biological effect does this activity have? Apply realistic deltas for what she actually did.
+Consider her current state — an exhausted person gets less from a fun activity.
+Only include fields that actually change.
+
+Magnitude guidance for common physiology:
+- Eating a meal: glucose +25 to +45 (scale with meal size), serotonin +3 to +8,
+  cortisol -5 to -10 if she was hungry. Comfort food (pasta, bread, soup, sweets): endorphins +5 to +12.
+- Drinking water or juice: hydration +20 to +28.
+- Drinking caffeine (coffee, tea, matcha): norepinephrine +15 to +25, sleep_pressure -8 to -12, hydration +5.
+- Drinking alcohol (wine, beer, whiskey): cortisol -12 to -20, serotonin +5 to +10,
+  acetylcholine -8 to -15, norepinephrine -5 to -10, hydration -5 to -10. Scale by tolerance.
+- Resting (not sleeping): cortisol -8 to -14, sleep_pressure -3 to -6, endorphins +3 to +6.
+- Showering: cortisol -5 to -10, endorphins +3 to +8 (warm shower), serotonin +2 to +5.
+- Exercise: endorphins +15 to +30, dopamine +10 to +20, serotonin +5 to +10,
+  cortisol -10 to -20 (after), norepinephrine +10 to +20 (during).
+- Intense bonding activity: dopamine +60 to +100 building, oxytocin +20 to +40, endorphins +20 to +40.
+  Peak resolution: use event_override=true, dopamine -100 to -150,
+  norepinephrine -60 to -100, sleep_pressure +30 to +40.
+- Reading or watching something: dopamine and acetylcholine vary with engagement.
+  Unsettling content: cortisol +. Funny: endorphins +, dopamine +. Sad: serotonin may drop.
 
 {_EVENT_OVERRIDE_GUIDANCE}
 

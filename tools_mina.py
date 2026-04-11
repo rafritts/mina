@@ -1,16 +1,16 @@
 """
-Mina's biological tools — sleep, eat, drink, rest, do — plus image generation.
+Mina's biological tools — sleep, nap, do — plus image generation and messaging.
 
-Each tool modifies state.json directly. The subconscious applies activity-based
-deltas for the `do` tool after the heartbeat turn completes.
+`do` is the general-purpose activity tool: eating, drinking, resting, reading, showering,
+exercising, something enjoyable, whatever. The subconscious encoder evaluates activity deltas
+after each `do` call and applies appropriate biomarker changes.
 """
 import json
 import os
-import random
 import time
 from typing import Any
 
-from state import BiologicalState, apply_deltas, load_state, save_state, _clamp
+from state import BiologicalState, save_state
 from tools_search import SEARCH_TOOLS, call_search_tool
 
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -86,64 +86,24 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "eat",
-            "description": "Eat something.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "what": {
-                        "type": "string",
-                        "description": "What you're eating.",
-                    }
-                },
-                "required": ["what"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "drink",
-            "description": "Drink something.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "what": {
-                        "type": "string",
-                        "description": "What you're drinking.",
-                    }
-                },
-                "required": ["what"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "rest",
-            "description": "Rest for a while without fully sleeping.",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "do",
-            "description": "Do something during your free time.",
+            "description": (
+                "Do something. Use this for any activity — reading (include the title), "
+                "eating a meal, drinking something, taking a shower, watching a show, "
+                "something enjoyable, exercising, listening to music, whatever. "
+                "Be specific: what exactly, how you're engaging with it, emotional tone. "
+                "The description is how your biology learns what you did."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "activity": {
                         "type": "string",
-                        "description": "What you're doing (e.g. 'read', 'play a game', 'take a shower')",
+                        "description": "What you're doing — be specific (e.g. 'eat a bowl of pasta', 'drink a glass of red wine', 'read The Left Hand of Darkness', 'take a long hot shower')",
                     },
                     "description": {
                         "type": "string",
-                        "description": "Brief description of how you're engaging with it.",
+                        "description": "How you're engaging with it. Emotional tone, pacing, what it feels like. The more honest and specific, the better.",
                     },
                 },
                 "required": ["activity", "description"],
@@ -264,71 +224,6 @@ def handle_nap(args: dict, state: BiologicalState) -> tuple[str, BiologicalState
     return f"You close your eyes for a short nap (~{sim_minutes} simulated minutes).", state
 
 
-def handle_eat(args: dict, state: BiologicalState) -> tuple[str, BiologicalState]:
-    what = args.get("what", "something")
-
-    glucose_gain = random.uniform(25, 40)
-    serotonin_gain = random.uniform(3, 8)
-    cortisol_change = -random.uniform(5, 10) if state.glucose < 40 else -random.uniform(0, 3)
-
-    deltas = {
-        "glucose": glucose_gain,
-        "serotonin": serotonin_gain,
-        "cortisol": cortisol_change,
-    }
-
-    # Comfort foods get an endorphin bump
-    comfort_words = {"chocolate", "cheese", "pasta", "bread", "cake", "soup", "pizza", "cookie"}
-    if any(w in what.lower() for w in comfort_words):
-        deltas["endorphins"] = random.uniform(5, 12)
-
-    state = apply_deltas(state, deltas)
-    return f"You eat {what}.", state
-
-
-def handle_drink(args: dict, state: BiologicalState) -> tuple[str, BiologicalState]:
-    what = args.get("what", "water")
-    what_lower = what.lower()
-
-    deltas: dict[str, float] = {}
-
-    caffeine_words = {"coffee", "tea", "espresso", "latte", "cappuccino", "energy drink", "matcha"}
-    alcohol_words = {"beer", "wine", "whiskey", "vodka", "gin", "rum", "alcohol", "drink", "cocktail"}
-
-    if any(w in what_lower for w in caffeine_words):
-        deltas["norepinephrine"] = random.uniform(15, 25)
-        deltas["sleep_pressure"] = -random.uniform(8, 12)  # temporary suppression
-        deltas["hydration"] = random.uniform(3, 8)
-        tol = state.tolerance.get("caffeine", 0.0)
-        state.tolerance["caffeine"] = min(1.0, tol + 0.05)
-
-    elif any(w in what_lower for w in alcohol_words):
-        tol = state.tolerance.get("alcohol", 0.0)
-        effective = 1.0 - tol
-        deltas["cortisol"] = -random.uniform(12, 20) * effective
-        deltas["serotonin"] = random.uniform(5, 10) * effective
-        deltas["acetylcholine"] = -random.uniform(8, 15) * effective
-        deltas["norepinephrine"] = -random.uniform(5, 10) * effective
-        deltas["hydration"] = -random.uniform(5, 10)  # dehydrating
-        state.tolerance["alcohol"] = min(1.0, tol + 0.05)
-
-    else:
-        # Water or other non-caffeinated, non-alcoholic
-        deltas["hydration"] = random.uniform(20, 28)
-
-    state = apply_deltas(state, deltas)
-    return f"You drink {what}.", state
-
-
-def handle_rest(args: dict, state: BiologicalState) -> tuple[str, BiologicalState]:
-    deltas = {
-        "cortisol": -random.uniform(8, 14),
-        "sleep_pressure": -random.uniform(3, 6),
-        "endorphins": random.uniform(3, 6),
-    }
-    state = apply_deltas(state, deltas)
-    return "You rest for a while.", state
-
 
 def handle_message_user(args: dict, state: BiologicalState) -> tuple[str, BiologicalState]:
     """Queue a message for delivery to the Discord channel."""
@@ -412,15 +307,6 @@ def call_tool(name: str, args: dict, state: BiologicalState) -> tuple[str, Biolo
         return msg, state, {}
     elif name == "nap":
         msg, state = handle_nap(args, state)
-        return msg, state, {}
-    elif name == "eat":
-        msg, state = handle_eat(args, state)
-        return msg, state, {}
-    elif name == "drink":
-        msg, state = handle_drink(args, state)
-        return msg, state, {}
-    elif name == "rest":
-        msg, state = handle_rest(args, state)
         return msg, state, {}
     elif name == "do":
         msg, state, pending = handle_do(args, state)
