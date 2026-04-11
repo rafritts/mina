@@ -46,9 +46,11 @@ _DELTA_FIELDS = {
 }
 
 _DELTA_FORMAT = """\
-Respond with a JSON object only. No explanation. Include only fields that actually change, plus the event_override flag.
+Respond with a JSON object only. Include only fields that actually change. If nothing acute happened, return {} — an empty object is valid and often the correct answer. Do not manufacture deltas for ongoing stable states.
 
+Required fields when you do post deltas:
 {
+  "reasoning": "<one sentence: what specifically triggered these deltas>",
   "cortisol": <number>,       // nmol/L delta
   "dopamine": <number>,       // pg/mL delta
   "serotonin": <number>,      // ng/mL delta
@@ -60,7 +62,10 @@ Respond with a JSON object only. No explanation. Include only fields that actual
   "hydration": <number>,      // % TBW delta
   "acetylcholine": <number>,  // nmol/L delta
   "event_override": false     // true only for discrete biological events (see below)
-}"""
+}
+
+Empty response example (nothing acute, ongoing state): {}
+The simulation auto-stabilizes all chemicals over time — you only encode acute events and activities."""
 
 _EVENT_OVERRIDE_GUIDANCE = """\
 event_override — set to true ONLY when a discrete biological event with a known sharp signature occurs.
@@ -98,10 +103,12 @@ def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, 
         content = re.sub(r"\s*```$", "", content)
         parsed = json.loads(content)
         event_override = bool(parsed.pop("event_override", False))
+        reasoning = parsed.pop("reasoning", "")
         deltas = {k: float(v) for k, v in parsed.items() if k in _DELTA_FIELDS}
         override_str = " [EVENT_OVERRIDE]" if event_override else ""
         delta_str = ", ".join(f"{k}: {v:+.1f}" for k, v in deltas.items())
-        print(f"[encoder/{label}]{override_str} {delta_str or '(no deltas)'}")
+        reason_str = f" — {reasoning}" if reasoning else ""
+        print(f"[encoder/{label}]{override_str} {delta_str or '(no deltas)'}{reason_str}")
         return deltas, event_override
     except Exception as e:
         print(f"[delta json error] {e}")
@@ -172,7 +179,7 @@ Magnitude guidance (real physiological units):
 Engagement guidance: Dopamine is a SEEKING signal — rises with novelty, not with completion.
 When something interesting arrives, endorphins and serotonin go up, acetylcholine rises.
 Do NOT apply negative dopamine delta from satisfaction or negative acetylcholine from engagement.
-Only include fields that actually change.
+Only include fields that actually change. If the stimulus is mild or nothing acute is happening, return {} — empty is correct.
 
 Current state awareness: check the labels in the bio report above before setting magnitudes.
 If a chemical is already HIGH, COMPULSIVE, or CRITICAL, it has little biological headroom —
@@ -218,7 +225,7 @@ Consider:
   apply a negative acetylcholine delta from normal conversation — only suppress it if she is
   cognitively exhausted or under extreme stress.
 - If response is empty or purely mechanical, deltas are near zero.
-Only include fields that actually change.
+Only include fields that actually change. If nothing acute happened — routine text, unremarkable exchange — return {} — empty is correct.
 
 Current state awareness: check the labels in the bio report above before setting magnitudes.
 If a chemical is already HIGH, COMPULSIVE, or CRITICAL, it has little biological headroom —
@@ -273,6 +280,7 @@ Magnitude guidance for common physiology:
   norepinephrine -60 to -100, sleep_pressure +30 to +40.
 - Reading or watching something: dopamine and acetylcholine vary with engagement.
   Unsettling content: cortisol +. Funny: endorphins +, dopamine +. Sad: serotonin may drop.
+- If the activity is mild and no strong biological response is warranted, return {} — empty is correct.
 
 Current state awareness: check the labels in the bio report above before setting magnitudes.
 If a chemical is already HIGH, COMPULSIVE, or CRITICAL, it has little biological headroom —

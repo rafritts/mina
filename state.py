@@ -413,8 +413,15 @@ def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalSt
         current = s.chemicals.get(name, _CHEMICAL_DEFAULTS.get(name, 0.0))
 
         if name == "glucose":
-            # Pure decay: -6.5 mg/dL/hr; restored only by eat tool
-            s.chemicals[name] = clamp_chemical(name, current - 6.5 * sim_hours)
+            # During sleep, liver glycogenolysis keeps blood sugar stable — minimal decay.
+            # Awake active rate: -6.5 mg/dL/hr. Sleeping rate: -0.8 mg/dL/hr.
+            decay_rate = 0.8 if s.sleeping else 6.5
+            new_glu = clamp_chemical(name, current - decay_rate * sim_hours)
+            s.chemicals[name] = new_glu
+            # Hypoglycemic awakening: glucose < 55 forces the body awake
+            if s.sleeping and new_glu < 55:
+                s.sleeping = False
+                print(f"[state] Hypoglycemic awakening: glucose={new_glu:.1f} mg/dL")
 
         elif name == "hydration":
             # Pure decay: -0.4% TBW/hr; restored only by drink tool
