@@ -8,7 +8,8 @@ encode_stimulus(): focused call — stimulus → biomarker deltas (before Mode 1
 encode_response(): focused call — Mina's response → biomarker deltas (after main turn)
 evaluate_activity_deltas(): focused call — `do` activity → biomarker deltas
 
-All three encode calls use a tool-call schema to enforce valid JSON output.
+All three encode calls return a plain JSON object. When event_override is true,
+deltas bypass saturation and personality scaling and are applied as-is.
 """
 import json
 import os
@@ -35,86 +36,73 @@ def _get_client() -> OpenAI:
 
 
 # ---------------------------------------------------------------------------
-# Delta tool schema — enforced JSON for all encode calls
+# Delta JSON call — plain completion, no tool schema
 # ---------------------------------------------------------------------------
 
-_DELTA_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "apply_biomarker_deltas",
-        "description": "Apply computed biological delta values to Mina's state. All values in real physiological units.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "cortisol": {
-                    "type": "number",
-                    "description": "Change in cortisol (nmol/L). Resting range 100–700. Acute threat: +300–500. Mild friction: +30–80. Warm interaction: -20–60.",
-                },
-                "dopamine": {
-                    "type": "number",
-                    "description": "Change in dopamine (pg/mL). Resting baseline ~80. Interesting stimulus: +5–20. Crushing boredom/loss: -5–15. Dopamine is SEEKING, not having — rises with novelty and engagement.",
-                },
-                "serotonin": {
-                    "type": "number",
-                    "description": "Change in serotonin (ng/mL). Resting baseline ~22. Positive social: +1–3. Sustained isolation: -1–2. Very slow to move — large deltas are rare.",
-                },
-                "norepinephrine": {
-                    "type": "number",
-                    "description": "Change in norepinephrine (pg/mL). Resting baseline ~200. Acute threat: +400–800. Mild friction: +30–100.",
-                },
-                "oxytocin": {
-                    "type": "number",
-                    "description": "Change in oxytocin (pg/mL). Resting baseline ~4. Warm exchange: +2–6. Deep connection: +8–15. Hostile event: -1 to -3 (small acute drop — cortisol does slow erosion).",
-                },
-                "endorphins": {
-                    "type": "number",
-                    "description": "Change in endorphins (pg/mL). Resting baseline ~12. Exercise/laughter: +20–60. Opioid substance: up to +120.",
-                },
-                "sleep_pressure": {
-                    "type": "number",
-                    "description": "Change in sleep pressure (AU, 0–100). Exhaustion: +5–15. Rest: -5–15.",
-                },
-                "glucose": {
-                    "type": "number",
-                    "description": "Change in glucose (mg/dL). Meal: +35–60. Fasting decay is automatic.",
-                },
-                "hydration": {
-                    "type": "number",
-                    "description": "Change in hydration (% TBW). Drink: +3–5. Dehydration decay is automatic.",
-                },
-                "acetylcholine": {
-                    "type": "number",
-                    "description": "Change in acetylcholine (nmol/L). Resting baseline ~38. Engagement: +3–10. Cognitive exhaustion: -5–10.",
-                },
-            },
-        },
-    },
+_DELTA_FIELDS = {
+    "cortisol", "dopamine", "serotonin", "norepinephrine",
+    "oxytocin", "endorphins", "sleep_pressure", "glucose",
+    "hydration", "acetylcholine",
 }
 
-_DELTA_TOOL_CHOICE = {"type": "function", "function": {"name": "apply_biomarker_deltas"}}
+_DELTA_FORMAT = """\
+Respond with a JSON object only. No explanation. Include only fields that actually change, plus the event_override flag.
+
+{
+  "cortisol": <number>,       // nmol/L delta
+  "dopamine": <number>,       // pg/mL delta
+  "serotonin": <number>,      // ng/mL delta
+  "norepinephrine": <number>, // pg/mL delta
+  "oxytocin": <number>,       // pg/mL delta
+  "endorphins": <number>,     // pg/mL delta
+  "sleep_pressure": <number>, // AU delta
+  "glucose": <number>,        // mg/dL delta
+  "hydration": <number>,      // % TBW delta
+  "acetylcholine": <number>,  // nmol/L delta
+  "event_override": false     // true only for discrete biological events (see below)
+}"""
+
+_EVENT_OVERRIDE_GUIDANCE = """\
+event_override — set to true ONLY when a discrete biological event with a known sharp signature occurs.
+When true, your deltas bypass saturation scaling and personality modulation and are applied directly.
+Use calibrated magnitudes for these events:
+
+- Peak resolution: dopamine -100 to -150, sleep_pressure +30 to +40, norepinephrine -60 to -100
+- Panic attack: cortisol +300 to +400, norepinephrine +500 to +700, dopamine -30 to -50
+- Hard laughter (genuine, sustained): endorphins +30 to +50, dopamine +15 to +25
+- Crying (emotional release): cortisol -40 to -80, endorphins +10 to +20
+- Startle: norepinephrine +150 to +250, cortisol +50 to +100
+- Social rejection (felt, not abstract): cortisol +100 to +200, serotonin -3 to -8, oxytocin -5 to -10
+- Awe/wonder: dopamine +20 to +40, acetylcholine +10 to +20, serotonin +2 to +5
+- Anger burst: norepinephrine +200 to +400, cortisol +100 to +200
+
+For everything else, set event_override: false and use conservative deltas."""
 
 
-def _call_delta_tool(messages: list[dict], label: str = "delta") -> dict:
+def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, bool]:
     """
-    Call the model with the delta tool enforced. Returns the delta dict.
-    Falls back to empty dict on any error (fail silently — never crash a turn).
+    Plain completion returning a delta dict + event_override flag.
+    Falls back to ({}, False) on any error — never crashes a turn.
     """
     try:
         response = _get_client().chat.completions.create(
             model=MODEL,
             messages=messages,
-            tools=[_DELTA_TOOL],
-            tool_choice=_DELTA_TOOL_CHOICE,
             temperature=0.3,
         )
         import token_stats
         token_stats.record_response(label, response)
-        msg = response.choices[0].message
-        if msg.tool_calls:
-            return json.loads(msg.tool_calls[0].function.arguments)
+        content = response.choices[0].message.content or ""
+        # Strip markdown code fences if present
+        content = re.sub(r"^```(?:json)?\s*", "", content.strip())
+        content = re.sub(r"\s*```$", "", content)
+        parsed = json.loads(content)
+        event_override = bool(parsed.pop("event_override", False))
+        deltas = {k: float(v) for k, v in parsed.items() if k in _DELTA_FIELDS}
+        return deltas, event_override
     except Exception as e:
-        print(f"[delta tool error] {e}")
-    return {}
+        print(f"[delta json error] {e}")
+    return {}, False
 
 
 def _apply_saturation(deltas: dict, state: BiologicalState) -> dict:
@@ -163,7 +151,7 @@ def encode_stimulus(state: BiologicalState, stimulus_text: str) -> dict:
 Incoming stimulus:
 {stimulus_text}
 
-What immediate biological response does this trigger? Call apply_biomarker_deltas.
+What immediate biological response does this trigger?
 
 Magnitude guidance (real physiological units):
 - Cortisol (nmol/L, resting 100–700): Acute existential threat (abandonment, attack): +300–500. Sustained hostility: +100–200. Mild friction: +30–80. Warm interaction: -20–60.
@@ -177,9 +165,15 @@ Magnitude guidance (real physiological units):
 Engagement guidance: Dopamine is a SEEKING signal — rises with novelty, not with completion.
 When something interesting arrives, endorphins and serotonin go up, acetylcholine rises.
 Do NOT apply negative dopamine delta from satisfaction or negative acetylcholine from engagement.
-Only include fields that actually change."""
+Only include fields that actually change.
 
-    raw = _call_delta_tool([{"role": "user", "content": prompt}], label="stimulus")
+{_EVENT_OVERRIDE_GUIDANCE}
+
+{_DELTA_FORMAT}"""
+
+    raw, event_override = _call_delta_json([{"role": "user", "content": prompt}], label="stimulus")
+    if event_override:
+        return raw
     saturated = _apply_saturation(raw, state)
     return _apply_personality_scaling(saturated, _load_personality())
 
@@ -201,7 +195,7 @@ def encode_response(state: BiologicalState, response_text: str) -> dict:
 Mina just said/did:
 {response_text}
 
-What does expressing this do to her biomarkers? Call apply_biomarker_deltas.
+What does expressing this do to her biomarkers?
 
 Consider:
 - Articulating trust or warmth can reinforce oxytocin (+)
@@ -213,9 +207,15 @@ Consider:
   apply a negative acetylcholine delta from normal conversation — only suppress it if she is
   cognitively exhausted or under extreme stress.
 - If response is empty or purely mechanical, deltas are near zero.
-Only include fields that actually change."""
+Only include fields that actually change.
 
-    raw = _call_delta_tool([{"role": "user", "content": prompt}], label="response")
+{_EVENT_OVERRIDE_GUIDANCE}
+
+{_DELTA_FORMAT}"""
+
+    raw, event_override = _call_delta_json([{"role": "user", "content": prompt}], label="response")
+    if event_override:
+        return raw
     saturated = _apply_saturation(raw, state)
     return _apply_personality_scaling(saturated, _load_personality())
 
@@ -238,11 +238,19 @@ Mina just did:
 Activity: {activity}
 Description: {description}
 
-What biological effect does this activity have? Call apply_biomarker_deltas.
+What biological effect does this activity have?
 Small, realistic values. Consider her current state — an exhausted person gets less
-dopamine from a fun activity. Only include fields that actually change."""
+dopamine from a fun activity. Only include fields that actually change.
 
-    return _call_delta_tool([{"role": "user", "content": prompt}], label="activity")
+{_EVENT_OVERRIDE_GUIDANCE}
+
+{_DELTA_FORMAT}"""
+
+    raw, event_override = _call_delta_json([{"role": "user", "content": prompt}], label="activity")
+    if event_override:
+        return raw
+    saturated = _apply_saturation(raw, state)
+    return _apply_personality_scaling(saturated, _load_personality())
 
 
 # ---------------------------------------------------------------------------
