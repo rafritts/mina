@@ -30,7 +30,6 @@ from state import (
     apply_deltas,
     derived,
     load_and_advance,
-    log_state,
     save_state,
 )
 from tools import HEARTBEAT_TOOLS, call_tool, handle_generate_image
@@ -333,7 +332,6 @@ async def run_freetime(force: bool = False) -> None:
 
     # --- Load and advance state ---
     state = load_and_advance()
-    log_state(state)
 
     # If deeply asleep and no interruption, skip Phase 2
     sleep_pressure_was_high = state.sleep_pressure < 20 and state.sleeping
@@ -389,7 +387,6 @@ async def run_freetime(force: bool = False) -> None:
     _log(f"Freetime stimulus: {stimulus_text}")
     stimulus_deltas = await asyncio.to_thread(encode_stimulus, state, stimulus_text)
     if stimulus_deltas:
-        _log(f"Stimulus deltas: {stimulus_deltas}")
         state = apply_deltas(state, stimulus_deltas)
         save_state(state)
 
@@ -427,7 +424,6 @@ async def run_freetime(force: bool = False) -> None:
         )
         if do_deltas:
             state = apply_deltas(state, do_deltas)
-            _log(f"Do activity '{activity}' deltas: {do_deltas}")
 
     free_time_text = ""
     for entry in reversed(new_entries):
@@ -439,7 +435,6 @@ async def run_freetime(force: bool = False) -> None:
         response_deltas = await asyncio.to_thread(encode_response, state, free_time_text)
         if response_deltas:
             state = apply_deltas(state, response_deltas)
-            _log(f"Response deltas: {response_deltas}")
 
     state = load_and_advance()
     save_state(state)

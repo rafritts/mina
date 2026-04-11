@@ -21,7 +21,7 @@ from log import log
 from decoder import biological_report, build_system_prompt, build_memory_context, needs_summary
 from hippocampus import build_kag_context, build_rag_context
 from encoder import encode_stimulus, encode_response, evaluate_activity_deltas
-from state import apply_deltas, load_and_advance, load_state, log_state, save_state
+from state import apply_deltas, load_and_advance, load_state, save_state
 from tools import TOOLS, call_tool, handle_generate_image
 
 HISTORY_MAX = 200
@@ -330,13 +330,10 @@ async def run_turn(
     state = load_state() if paused else load_and_advance()
     if paused:
         log("STATE", "Biological updates paused — time not advanced.")
-    log_state(state)
-
     # [1] encode_stimulus — biological response to incoming message
     stimulus = f"{username}: {user_input}" + (" [sent an image]" if image_b64 else "")
     stimulus_deltas = await asyncio.to_thread(encode_stimulus, state, stimulus)
     if stimulus_deltas:
-        log("STIM/DELTA", str(stimulus_deltas))
         state = apply_deltas(state, stimulus_deltas)
         save_state(state)
 
@@ -406,7 +403,6 @@ async def run_turn(
     if reply:
         response_deltas = await asyncio.to_thread(encode_response, state, reply)
         if response_deltas:
-            log("RESP/DELTA", str(response_deltas))
             state = apply_deltas(state, response_deltas)
             save_state(state)
 
