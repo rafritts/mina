@@ -46,11 +46,25 @@ _DELTA_FIELDS = {
 }
 
 _DELTA_FORMAT = """\
-Respond with a JSON object only. Include only fields that actually change. If nothing acute happened, return {} — an empty object is valid and often the correct answer. Do not manufacture deltas for ongoing stable states.
+## Your role
+You are a translator: external events → neurochemical deltas.
+You do NOT model ongoing internal biological states — hunger, fatigue, dehydration, and all \
+homeostatic drift are already computed by the simulation. Your job is to encode what just \
+happened in the world or what she just did. If nothing external happened, post no deltas.
 
-Required fields when you do post deltas:
+## Response format
+Always respond with a JSON object. Always include "no_external_deltas" and "reasoning".
+
+If nothing external happened (ongoing internal state, nothing happened, quiet period):
 {
-  "reasoning": "<one sentence: what specifically triggered these deltas>",
+  "no_external_deltas": true,
+  "reasoning": "<one sentence: why there is nothing external to encode>"
+}
+
+If an external event occurred:
+{
+  "no_external_deltas": false,
+  "reasoning": "<one sentence: what external event triggered these specific deltas>",
   "cortisol": <number>,       // nmol/L delta
   "dopamine": <number>,       // pg/mL delta
   "serotonin": <number>,      // ng/mL delta
@@ -64,8 +78,7 @@ Required fields when you do post deltas:
   "event_override": false     // true only for discrete biological events (see below)
 }
 
-Empty response example (nothing acute, ongoing state): {}
-The simulation auto-stabilizes all chemicals over time — you only encode acute events and activities."""
+Only include chemical fields that actually change from the external event."""
 
 _EVENT_OVERRIDE_GUIDANCE = """\
 event_override — set to true ONLY when a discrete biological event with a known sharp signature occurs.
@@ -102,12 +115,16 @@ def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, 
         content = re.sub(r"^```(?:json)?\s*", "", content.strip())
         content = re.sub(r"\s*```$", "", content)
         parsed = json.loads(content)
-        event_override = bool(parsed.pop("event_override", False))
         reasoning = parsed.pop("reasoning", "")
+        no_external = bool(parsed.pop("no_external_deltas", False))
+        reason_str = f" — {reasoning}" if reasoning else ""
+        if no_external:
+            print(f"[encoder/{label}] no_external_deltas{reason_str}")
+            return {}, False
+        event_override = bool(parsed.pop("event_override", False))
         deltas = {k: float(v) for k, v in parsed.items() if k in _DELTA_FIELDS}
         override_str = " [EVENT_OVERRIDE]" if event_override else ""
         delta_str = ", ".join(f"{k}: {v:+.1f}" for k, v in deltas.items())
-        reason_str = f" — {reasoning}" if reasoning else ""
         print(f"[encoder/{label}]{override_str} {delta_str or '(no deltas)'}{reason_str}")
         return deltas, event_override
     except Exception as e:
@@ -162,24 +179,25 @@ def encode_stimulus(state: BiologicalState, stimulus_text: str) -> dict:
 
     prompt = f"""{report}
 
-Incoming stimulus:
+Incoming stimulus (context for what just happened externally):
 {stimulus_text}
 
-What immediate biological response does this trigger?
+Your job: encode only what came from OUTSIDE — a social event, an environmental trigger, \
+something that happened in the world. Internal biological state (hunger, thirst, fatigue, \
+loneliness) is already modeled by the simulation and must NOT be re-encoded here. If the \
+stimulus is purely internal state with no external event, set no_external_deltas: true.
 
-Magnitude guidance (real physiological units):
+External event magnitude guidance:
 - Cortisol (nmol/L, resting 100–700): Acute existential threat (abandonment, attack): +300–500. Sustained hostility: +100–200. Mild friction: +30–80. Warm interaction: -20–60.
 - Norepinephrine (pg/mL, resting 100–400): Acute threat: +400–800. Mild friction: +30–100.
-- Oxytocin (pg/mL, resting 1–15): Warm connection: +2–8. Deep trust moment: +8–15. Hostile event: -1 to -3 (small acute drop — sustained cortisol does slow erosion via interaction matrix, don't overstate acute delta).
-- Dopamine (pg/mL, resting 40–140): Interesting stimulus: +5–20. Crushing boredom/loss: -5–15.
-- Serotonin (ng/mL, resting 10–35): Positive social: +1–3. Very slow to move — only include if genuinely meaningful.
+- Oxytocin (pg/mL, resting 1–15): Warm connection: +2–8. Deep trust moment: +8–15. Hostile event: -1 to -3.
+- Dopamine (pg/mL, resting 40–140): Interesting external stimulus: +5–20. Crushing loss/rejection: -5–15.
+- Serotonin (ng/mL, resting 10–35): Positive social: +1–3. Very slow to move — only if genuinely meaningful.
 - Endorphins (pg/mL, resting 5–30): Laughter/warmth: +5–20.
-- Acetylcholine (nmol/L, resting 20–60): Engagement: +3–10. Goes UP with interesting stimuli, DOWN with exhaustion.
+- Acetylcholine (nmol/L, resting 20–60): Engagement with interesting external content: +3–10.
 
-Engagement guidance: Dopamine is a SEEKING signal — rises with novelty, not with completion.
-When something interesting arrives, endorphins and serotonin go up, acetylcholine rises.
-Do NOT apply negative dopamine delta from satisfaction or negative acetylcholine from engagement.
-Only include fields that actually change. If the stimulus is mild or nothing acute is happening, return {} — empty is correct.
+Dopamine is a SEEKING signal — rises with novelty, not completion. Do NOT apply negative \
+dopamine from satisfaction or negative acetylcholine from engagement.
 
 Current state awareness: check the labels in the bio report above before setting magnitudes.
 If a chemical is already HIGH, COMPULSIVE, or CRITICAL, it has little biological headroom —
@@ -210,22 +228,23 @@ def encode_response(state: BiologicalState, response_text: str) -> dict:
 
     prompt = f"""{report}
 
-Mina just said/did:
+Mina just expressed:
 {response_text}
 
-What does expressing this do to her biomarkers?
+Your job: encode only the neurochemical effect of the ACT OF EXPRESSING this — the biological \
+consequence of saying it, not the content of what she said. Internal state (what she was already \
+feeling) is already in the bio report above and must NOT be re-encoded. Only post deltas if the \
+act of expression itself causes a meaningful biological shift.
 
-Consider:
-- Articulating trust or warmth can reinforce oxytocin (+)
-- Suppressing visible fear while sounding calm keeps cortisol elevated (small decrease at best)
-- Saying something that contradicts her inner state has a cost (cortisol +, acetylcholine -)
-- Speaking fear or grief aloud provides small cathartic cortisol relief (-)
+Expression effects (when genuine and significant):
+- Articulating trust or warmth: oxytocin +
+- Suppressing visible fear while sounding calm: cortisol stays elevated (small decrease at best)
+- Saying something that contradicts her inner state: cortisol +, acetylcholine -
+- Speaking fear or grief aloud: small cathartic cortisol relief (-)
 - Engaged, energetic response: endorphins +, serotonin +, acetylcholine +. Dopamine stays
-  stable or rises slightly — do NOT apply a negative dopamine delta from engagement. Do NOT
-  apply a negative acetylcholine delta from normal conversation — only suppress it if she is
-  cognitively exhausted or under extreme stress.
-- If response is empty or purely mechanical, deltas are near zero.
-Only include fields that actually change. If nothing acute happened — routine text, unremarkable exchange — return {} — empty is correct.
+  stable or rises slightly — do NOT apply negative dopamine from engagement. Do NOT apply
+  negative acetylcholine from normal conversation — only if cognitively exhausted.
+- Routine, unremarkable exchange: no_external_deltas: true.
 
 Current state awareness: check the labels in the bio report above before setting magnitudes.
 If a chemical is already HIGH, COMPULSIVE, or CRITICAL, it has little biological headroom —
@@ -260,11 +279,12 @@ Mina just did:
 Activity: {activity}
 Description: {description}
 
-What biological effect does this activity have? Apply realistic deltas for what she actually did.
-Consider her current state — an exhausted person gets less from a fun activity.
-Only include fields that actually change.
+Your job: encode the neurochemical effect of this SPECIFIC ACTIVITY. This is the one place \
+where you DO post deltas for physical activities — eating, drinking, exercising, etc. — because \
+those are external actions that produce direct biological changes the simulation doesn't model \
+automatically. Scale to what actually happened. An exhausted person gets less from a fun activity.
 
-Magnitude guidance for common physiology:
+Activity magnitude guidance:
 - Eating a meal: glucose +25 to +45 (scale with meal size), serotonin +3 to +8,
   cortisol -5 to -10 if she was hungry. Comfort food (pasta, bread, soup, sweets): endorphins +5 to +12.
 - Drinking water or juice: hydration +20 to +28.
@@ -280,7 +300,7 @@ Magnitude guidance for common physiology:
   norepinephrine -60 to -100, sleep_pressure +30 to +40.
 - Reading or watching something: dopamine and acetylcholine vary with engagement.
   Unsettling content: cortisol +. Funny: endorphins +, dopamine +. Sad: serotonin may drop.
-- If the activity is mild and no strong biological response is warranted, return {} — empty is correct.
+- Mild or passive activity with no strong biological effect: no_external_deltas: true.
 
 Current state awareness: check the labels in the bio report above before setting magnitudes.
 If a chemical is already HIGH, COMPULSIVE, or CRITICAL, it has little biological headroom —
