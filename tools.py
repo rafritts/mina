@@ -171,7 +171,7 @@ _BIOLOGICAL_TOOLS = [
                 "properties": {
                     "prompt": {
                         "type": "string",
-                        "description": "Image description (Danbooru-style tags). APPEARANCE.md tags are prepended automatically for self-images.",
+                        "description": "Image description (Danbooru-style tags). MINA.md appearance tags are prepended automatically for self-images.",
                     },
                     "dimensions": {
                         "type": "string",
@@ -240,7 +240,8 @@ _SEARCH_TOOLS = [
 
 # message_user is only available during freetime (she's already in a conversation for regular turns)
 HEARTBEAT_TOOLS = _BIOLOGICAL_TOOLS + _SEARCH_TOOLS
-TOOLS = [t for t in HEARTBEAT_TOOLS if t["function"]["name"] != "message_user"]
+_CONVERSATION_EXCLUDED = {"message_user", "do_action"}
+TOOLS = [t for t in HEARTBEAT_TOOLS if t["function"]["name"] not in _CONVERSATION_EXCLUDED]
 
 
 # ---------------------------------------------------------------------------
@@ -359,10 +360,10 @@ async def handle_generate_image(args: dict) -> str:
     workflow        = args.get("workflow", "upscale")
     seed            = args.get("seed", None)
 
-    appearance = read_identity("APPEARANCE.md")
+    mina_identity = read_identity("MINA.md")
     appearance_tags = ""
-    if appearance:
-        for line in appearance.splitlines():
+    if mina_identity:
+        for line in mina_identity.splitlines():
             stripped = line.strip()
             if stripped.lower().startswith("prompt:"):
                 appearance_tags = stripped[len("prompt:"):].strip()

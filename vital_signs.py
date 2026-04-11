@@ -384,7 +384,7 @@ def process_danger(s: BiologicalState, vs: dict) -> Optional[str]:
 def _execute_state_wipe(reason: str) -> None:
     """
     Mina has died. Biological state and memories are reset.
-    Identity (MINA.md, APPEARANCE.md) survives. Relationships don't.
+    Identity (MINA.md) survives. Relationships don't.
     """
     import json as _json
     from state import BiologicalState, save_state

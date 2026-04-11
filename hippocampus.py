@@ -11,7 +11,7 @@ Two roles, one module — mirroring the real hippocampus:
                  storage. Updates RAG episodic memories and KAG knowledge files.
 
 Storage layout:
-  identity/         — permanent identity files (MINA.md, APPEARANCE.md). Never wiped.
+  identity/         — permanent identity files (MINA.md). Never wiped.
   memory/kag/       — accumulated knowledge files. Wiped on reset.
   memory/rag/       — ChromaDB episodic memory. Wiped on reset.
 """
@@ -107,10 +107,6 @@ def build_kag_context() -> str:
     mina = read_identity("MINA.md")
     if mina:
         parts.append(f"## Character\n{mina}")
-
-    appearance = read_identity("APPEARANCE.md")
-    if appearance:
-        parts.append(f"## Appearance\n{appearance}")
 
     relationship = read_kag("RELATIONSHIP.md")
     if relationship:

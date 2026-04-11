@@ -66,7 +66,7 @@ def _cli_run_command(cmd: str) -> bool:
             "Commands:\n"
             "  /state           — show current biological state\n"
             "  /reset           — wipe relationship/RAG/knowledge/history; keep biomarkers + identity\n"
-            "  /factory-reset   — same as /reset + reset biomarkers; identity (MINA.md/APPEARANCE.md) always preserved\n"
+            "  /factory-reset   — same as /reset + reset biomarkers; identity (MINA.md) always preserved\n"
             "  exit / quit      — exit"
         )
         return True

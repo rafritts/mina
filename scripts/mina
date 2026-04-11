@@ -142,7 +142,7 @@ clean)
         read -rp "Clear conversation.json, state.json, and memory/rag/? [y/N] " ans
         [[ "$ans" =~ ^[Yy]$ ]] || exit 0
     fi
-    rm -f "$REPO_DIR/conversation.json" "$REPO_DIR/state.json"
+    rm -f "$RUN_DIR/conversation.json" "$RUN_DIR/state.json"
     rm -rf "$REPO_DIR/memory/rag"
     echo "Runtime data cleared."
     ;;

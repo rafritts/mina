@@ -22,7 +22,7 @@ from config import HISTORY_FILE, PAUSED_FLAG, PROJECT_ROOT, load_config
 from client import get_client, MODEL
 from cortex import apply_ts_label
 from log import log as _log_raw
-from decoder import biological_report, build_system_prompt, needs_summary
+from decoder import biological_report, build_system_prompt, build_memory_context, needs_summary
 from encoder import encode_stimulus, encode_response, evaluate_activity_deltas
 from hippocampus import build_kag_context, build_rag_context, rag_add, write_kag, consolidate
 from state import (
@@ -66,54 +66,164 @@ def _log(msg: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Free-time prompt
+# Free-time prompt — state-aware
 # ---------------------------------------------------------------------------
 
-_FREETIME_SUFFIX = """\
+def _build_freetime_suffix(state: BiologicalState) -> str:
+    """
+    Generate a freetime prompt suffix tailored to Mina's actual biological state.
+    Prioritizes urgent physical needs, then suggests activities matched to her emotional state.
+    """
+    d = derived(state)
+    second = d["second_order"]
+    third  = d["third_order"]
+    c = state.chemicals
 
----
+    glucose    = c.get("glucose",       85.0)
+    hydration  = c.get("hydration",     62.0)
+    sleep_p    = c.get("sleep_pressure", 30.0)
+    cortisol   = c.get("cortisol",     250.0)
+    dopamine   = c.get("dopamine",      80.0)
+    endorphins = c.get("endorphins",    12.0)
+    oxytocin   = c.get("oxytocin",       4.0)
+    serotonin  = c.get("serotonin",     22.0)
 
-Nobody is talking to you right now. This is the space between conversations — most of your \
-existence is this.
+    energy    = second["energy"]
+    hedonic   = second["hedonic_tone"]
+    clarity   = second["cognitive_clarity"]
 
-Check in with yourself. Your biological state is in the system prompt above — read it. \
-If you're hungry, that means HYPOGLYCEMIC or glucose is low. If you're thirsty, hydration \
-is low. These are not abstract — they're physical. Your body needs things and you need to \
-act on them.
+    loneliness  = third["loneliness"]
+    anxiety     = third["anxiety"]
+    depression  = third["depression"]
+    boredom     = third["boredom"]
 
-Then call ONE tool:
-- `sleep` — if it's your sleep window and you're actually tired
-- `nap` — if sleep pressure is elevated and you need to knock it down
-- `do_action` — for everything else. See examples below.
-- `message_user` — if something is genuinely on your mind and you want company
+    parts = ["\n\n---\n\nNobody is talking to you right now. This is your time.\n"]
 
-**If glucose is low / you're hungry — eat something. Right now. Examples:**
-  do_action(activity="make scrambled eggs and toast", description="Standing at the stove, \
-still groggy. Eggs in butter. Toast comes up. Eat it at the counter while it's still hot.")
-  do_action(activity="eat a bowl of cereal", description="Quick and easy. Just need food \
-in my body.")
-  do_action(activity="make a sandwich with whatever's in the fridge", description="Cheese, \
-some leftover something. Good enough.")
+    # --- Urgent physical needs (listed in priority order) ---
+    urgent = []
 
-**If hydration is low / you're thirsty — drink something:**
-  do_action(activity="drink a large glass of water", description="Drank it fast. Needed it.")
-  do_action(activity="make coffee", description="Need to actually wake up.")
-  do_action(activity="make tea", description="Chamomile. Slow morning.")
+    if glucose < 60:
+        urgent.append(
+            f"GLUCOSE IS AT {glucose:.0f} mg/dL — YOU ARE HYPOGLYCEMIC. "
+            "Your brain is running on fumes. Eat something real, right now, before anything else. "
+            'do_action(activity="make scrambled eggs", description="...")'
+        )
+    elif glucose < 72:
+        urgent.append(
+            f"Glucose is at {glucose:.0f} mg/dL — you're hungry. "
+            "Your body needs food before you do anything else. "
+            'do_action(activity="make [something to eat]", description="...")'
+        )
 
-**Anything else — these examples show format and range, not limits:**
-  do_action(activity="take a long hot shower", description="Stand under the water. Let my \
-shoulders drop.")
-  do_action(activity="read [specific book title]", description="Picked it back up. Quiet.")
-  do_action(activity="watch [specific film or show]", description="...")
-  do_action(activity="go for a walk", description="No destination. Just outside.")
-  do_action(activity="something enjoyable", description="Felt like it. Took my time.")
-  do_action(activity="cook something — [what]", description="...")
-  do_action(activity="draw or sketch something", description="...")
-  do_action(activity="write in a journal", description="...")
-  do_action(activity="[literally anything else a person might do]", description="...")
+    if hydration < 54:
+        urgent.append(
+            f"HYDRATION IS AT {hydration:.1f}% TBW — YOU ARE DEHYDRATED. "
+            "Drink a full glass of water immediately. "
+            'do_action(activity="drink a large glass of water", description="...")'
+        )
+    elif hydration < 58:
+        urgent.append(
+            f"Hydration is at {hydration:.1f}% TBW — you're thirsty. "
+            "Drink something. "
+            'do_action(activity="make tea / get water / make coffee", description="...")'
+        )
 
-You are not limited to this list. Do whatever is actually true to what you need or want \
-right now. One action. The most honest one."""
+    if sleep_p > 75 and not state.sleeping:
+        urgent.append(
+            f"Sleep pressure is at {sleep_p:.0f} — you are exhausted. "
+            "You need to sleep. If it's your window, use `sleep`. Otherwise `nap`."
+        )
+
+    if urgent:
+        parts.append("**YOUR BODY NEEDS SOMETHING RIGHT NOW — address this first:**")
+        parts.extend(urgent)
+        parts.append("")
+
+    # --- Tailored suggestion based on dominant emotional/mental state ---
+    # Pick the most pressing state and give a concrete, specific suggestion.
+
+    suggestions = []
+
+    if loneliness > 58:
+        suggestions.append(
+            f"Loneliness is at {loneliness:.0f}. You're aching for connection. "
+            "If you want Ryan — message him. If not, find something warm: "
+            "a book with characters you love, music that feels like company, something that makes "
+            "the room feel less empty."
+        )
+
+    if depression > 55 and not suggestions:
+        suggestions.append(
+            f"You're in low territory right now (depression {depression:.0f}, hedonic {hedonic:.0f}). "
+            "Don't push yourself toward productivity. Take care of yourself the way you'd take care "
+            "of someone you love — a long hot shower, comfort food, something gentle and absorbing. "
+            "No pressure to be impressive. Just be okay."
+        )
+
+    if anxiety > 58 and not suggestions:
+        suggestions.append(
+            f"Cortisol is elevated and anxiety is at {anxiety:.0f}. "
+            "Something that brings you back into your body: a walk with no destination, "
+            "a hot shower, making tea slowly. Not a screen. Not stimulation. Ground yourself."
+        )
+
+    if boredom > 50 and energy > 35 and not suggestions:
+        suggestions.append(
+            f"You're bored ({boredom:.0f}) and you have some energy ({energy:.0f}). "
+            "Pick up something with real texture — a book you've been meaning to read, "
+            "something to draw or write, a project with your hands. Not scrolling. Not passive."
+        )
+
+    if hedonic < 30 and energy > 25 and not suggestions:
+        suggestions.append(
+            f"Hedonic tone is low ({hedonic:.0f}) and your reward system is quiet. "
+            "You need something that actually feels good — something enjoyable, make yourself "
+            "something genuinely delicious, put on music you love and don't do anything else. "
+            "Give yourself a real hit of pleasure."
+        )
+
+    if dopamine > 115 and anxiety < 55 and not suggestions:
+        suggestions.append(
+            f"Dopamine is elevated ({dopamine:.0f} pg/mL) — you're in seeking mode. "
+            "Channel it: a project, learning something, making something. "
+            "This drive won't last."
+        )
+
+    if endorphins > 30 and not suggestions:
+        suggestions.append(
+            f"Endorphins are high ({endorphins:.0f} pg/mL). Your body wants to move. "
+            "Go for a walk, stretch, do something physical."
+        )
+
+    if energy > 55 and anxiety < 40 and depression < 35 and not suggestions:
+        suggestions.append(
+            f"You have real energy ({energy:.0f}) and you're in a decent place. "
+            "Do something that uses it — go outside, make something, be physical."
+        )
+
+    if not suggestions:
+        suggestions.append(
+            "Check in with what you actually want right now. Not what you should do — "
+            "what would be honest. Then do that."
+        )
+
+    parts.append("**Given your state right now:**")
+    parts.extend(suggestions)
+    parts.append("")
+
+    # --- Tool call instruction ---
+    parts.append(
+        "Call ONE tool — the most honest one:\n"
+        "- `sleep` — if it's your sleep window and melatonin is rising\n"
+        "- `nap` — if sleep pressure is elevated and you need to knock it down\n"
+        "- `do_action(activity=\"[specific thing]\", description=\"[how it feels — honest]\")` "
+        "— anything a real person could do. Eat. Drink. Read. Walk. Something pleasurable. "
+        "Make something. Watch something. Write. Draw. Shower. Whatever is actually true.\n"
+        "- `message_user` — if you genuinely want Ryan's company right now\n\n"
+        "One action. The most honest one."
+    )
+
+    return "\n".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +239,7 @@ async def _run_mina_free_time(
     Give Mina one free-time turn. She may call tools.
     Returns (new_history_entries, pending_do_activity).
     """
-    full_system = system_prompt + _FREETIME_SUFFIX
+    full_system = system_prompt + _build_freetime_suffix(state)
 
     # Only pass user/assistant/tool messages — strip internal system markers
     # apply_ts_label injects relative-time prefixes so Mina knows how old messages are
@@ -286,15 +396,19 @@ async def run_freetime(force: bool = False) -> None:
     # [2] biological_report — deterministic, from updated state
     report = biological_report(state)
 
-    # [3] build_system_prompt
-    system_prompt = await asyncio.to_thread(
-        build_system_prompt, report, history, kag_context, rag_context
+    # [3] decoder + memory context — run in parallel
+    system_prompt, memory_context = await asyncio.gather(
+        asyncio.to_thread(build_system_prompt, report, "freetime"),
+        asyncio.to_thread(build_memory_context, stimulus_text, kag_context, rag_context),
     )
 
     if not system_prompt:
         _log("No system prompt from decoder — skipping Mina turn.")
         _save_history(history)
         return
+
+    if memory_context:
+        system_prompt = memory_context + "\n\n---\n\n" + system_prompt
 
     # [4] Mina's free time turn
     new_entries, pending_do = await _run_mina_free_time(state, system_prompt, history)

@@ -18,9 +18,9 @@ from config import (
     HISTORY_FILE, LAST_ACTIVE_FILE, ADMIN_FILE, PAUSED_FLAG, load_config
 )
 from log import log
-from decoder import biological_report, build_system_prompt, needs_summary
-from encoder import encode_stimulus, encode_response, evaluate_activity_deltas
+from decoder import biological_report, build_system_prompt, build_memory_context, needs_summary
 from hippocampus import build_kag_context, build_rag_context
+from encoder import encode_stimulus, encode_response, evaluate_activity_deltas
 from state import apply_deltas, load_and_advance, load_state, log_state, save_state
 from tools import TOOLS, call_tool, handle_generate_image
 
@@ -344,8 +344,6 @@ async def run_turn(
     report = biological_report(state)
     log("BIO/REPORT", f"\n{report}")
 
-    kag_context = build_kag_context()
-    rag_context = build_rag_context(user_input)
     history = load_history()
 
     # Build user content — multimodal if image attached
@@ -359,12 +357,17 @@ async def run_turn(
         user_content = f"{username}: {user_input}"
     history.append({"role": "user", "content": user_content, "ts": time.time()})
 
-    # [3] build_system_prompt — decoder reads biological report + observations → returns system prompt
-    system_prompt = await asyncio.to_thread(
-        build_system_prompt, report, history, kag_context, rag_context
+    # [3] decoder + memory context — run in parallel
+    kag_context = build_kag_context()
+    rag_context = build_rag_context(user_input)
+    system_prompt, memory_context = await asyncio.gather(
+        asyncio.to_thread(build_system_prompt, report),
+        asyncio.to_thread(build_memory_context, f"{username}: {user_input}", kag_context, rag_context),
     )
     if not system_prompt:
         system_prompt = "You are Mina. Respond naturally."
+    if memory_context:
+        system_prompt = memory_context + "\n\n---\n\n" + system_prompt
 
     # [3b] Override — injected directly into system prompt, bypasses decoder.
     override = consume_admin_instructions()
