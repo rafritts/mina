@@ -21,7 +21,6 @@ import re
 import time
 from typing import Optional
 
-import observations as _observations
 from client import get_client, MODEL
 from config import PROJECT_ROOT
 from state import BiologicalState
@@ -116,6 +115,10 @@ def build_kag_context() -> str:
     relationship = read_kag("RELATIONSHIP.md")
     if relationship:
         parts.append(f"## Relationship with User\n{relationship}")
+
+    reflection = read_kag("REFLECTION.md")
+    if reflection:
+        parts.append(f"## Reflection\n{reflection}")
 
     pending = read_kag("PENDING.md")
     if pending:
@@ -280,17 +283,6 @@ long-term memory.
 <reflection_summary>
 [1-3 sentences: what happened, what mattered, what shifted]
 </reflection_summary>
-<observations>
-[What is on her mind after this — the cognitive and intentional layer only. Present tense.
-First person. What is she thinking about? What's unresolved from the conversation? What does
-she want to do next? What's she been putting off? What stuck with her that she's still turning
-over? What does she intend to do?
-
-NOT feelings — the biological state encodes those. NOT physical sensations. NOT 'I feel X'.
-This is what occupies her attention and intention, not what she's feeling emotionally.
-
-3–6 sentences. This replaces her current observations entirely.]
-</observations>
 <rag_entries>
 [
   {"text": "...", "metadata": {"type": "episodic", "importance": "high|medium|low"}},
@@ -301,7 +293,7 @@ This is what occupies her attention and intention, not what she's feeling emotio
 {
   "RELATIONSHIP.md": "[full updated file content, or null if no change]",
   "PENDING.md": "[full updated file content, or null if no change]",
-  "MINA_INNER.md": "[full updated file content, or null if nothing shifted for her]",
+  "REFLECTION.md": "[new diary entry appended to existing content, or null if nothing worth writing]",
   "KNOWLEDGE/<filename>.md": "[new knowledge file content, or null]"
 }
 </kag_updates>
@@ -317,9 +309,16 @@ not from single interactions. A single pleasant conversation does not move Low �
 - PENDING.md should reflect recommendations made, books mentioned, things deferred.
 - KNOWLEDGE/ entries are for things Mina learned that are worth retaining (facts, preferences \
 the user revealed, etc.)
-- MINA_INNER.md: maintain a living record of Mina's own current inner life — what she's been \
-  thinking about, what she wants to do, what's been on her mind, what she's curious about or \
-  avoiding. Update it with what shifted for her during this session. If nothing shifted, return null.
+- REFLECTION.md is Mina's private diary — her own space, written in first person. It is NOT \
+  a recap of what was discussed. It is what she actually thinks, feels, notices, wonders about \
+  from the inside. Write a new dated entry to append to whatever already exists. Good entries \
+  include: meta-reflections on what it's like to be her (memory, continuity, time, existence); \
+  things she explored or experienced (music she listened to, ideas she turned over, images she \
+  generated); genuine reactions to things that happened ("Ryan mentioned X — I looked it up, \
+  it was Y"); moods or textures that lingered after a conversation without summarizing the \
+  conversation itself. No conversation summaries. No "we talked about X." The conversation \
+  is already in episodic memory. This is what it left behind in her. If nothing genuinely \
+  shifted in her inner world, return null.
 - If nothing meaningful happened, return empty rag_entries and null kag_updates.
 """
 
@@ -422,8 +421,6 @@ def consolidate(
         reflection_summary: str
         rag_entries: list[dict]
         kag_updates: dict
-
-    Side effect: writes updated observations to run/observations.md.
     """
     state_block = format_state_block(state)
 
@@ -437,19 +434,11 @@ def consolidate(
             )
         history_lines.append(f"{role.upper()}: {content[:500]}")
 
-    current_observations = _observations.read()
-    observations_section = (
-        "[CURRENT OBSERVATIONS — what's on her mind, not how she feels]\n" + current_observations
-        if current_observations else ""
-    )
-
     content_parts = [
         state_block,
         kag_context,
         "## Conversation History Since Last Compaction\n" + "\n".join(history_lines),
     ]
-    if observations_section:
-        content_parts.insert(1, observations_section)
 
     user_content = "\n\n---\n\n".join(content_parts)
 
@@ -465,12 +454,4 @@ def consolidate(
     token_stats.record_response("hippocampus", response)
 
     raw = response.choices[0].message.content or ""
-    result = _parse_consolidation_output(raw)
-
-    obs_match = re.search(r"<observations>\s*(.*?)\s*</observations>", raw, re.DOTALL)
-    if obs_match:
-        entry = obs_match.group(1).strip()
-        if entry:
-            _observations.write(entry)
-
-    return result
+    return _parse_consolidation_output(raw)

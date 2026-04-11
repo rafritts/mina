@@ -18,6 +18,7 @@ from decoder import (
 )
 
 
+
 def make_state(**chem_overrides) -> BiologicalState:
     s = BiologicalState()
     s.chemicals.update(chem_overrides)
@@ -54,32 +55,23 @@ def test_biological_report_reflects_sleeping_state():
 # _parse_decoder_output — XML tag extraction
 # ---------------------------------------------------------------------------
 
-def test_parse_decoder_output_extracts_observations_and_prompt():
+def test_parse_decoder_output_extracts_system_prompt():
     raw = """
-<observations>
-Still thinking about what he said.
-</observations>
 <system_prompt>
-## What's on her mind
-Still thinking about what he said.
+## How you're being right now
+Grounded. Not reaching.
 </system_prompt>
 """
-    obs, prompt = _parse_decoder_output(raw)
-    assert "Still thinking" in obs
-    assert "What's on her mind" in prompt
+    prompt = _parse_decoder_output(raw)
+    assert "Grounded" in prompt
 
 
-def test_parse_decoder_output_handles_missing_tags_gracefully():
-    raw = "No tags here at all."
-    obs, prompt = _parse_decoder_output(raw)
-    assert obs == ""
-    assert prompt == ""
+def test_parse_decoder_output_handles_missing_tag_gracefully():
+    assert _parse_decoder_output("No tags here at all.") == ""
 
 
 def test_parse_decoder_output_handles_empty_string():
-    obs, prompt = _parse_decoder_output("")
-    assert obs == ""
-    assert prompt == ""
+    assert _parse_decoder_output("") == ""
 
 
 # ---------------------------------------------------------------------------
@@ -97,12 +89,9 @@ def _mock_llm_response(content: str):
 
 
 _SAMPLE_RAW = """
-<observations>
-Nothing in particular. Quiet.
-</observations>
 <system_prompt>
-## What's on her mind
-Nothing in particular. Quiet.
+## How you're being right now
+Quiet. Not reaching.
 
 ## Voice right now
 Direct. Not reaching.
@@ -113,14 +102,11 @@ Direct. Not reaching.
 @patch("decoder.get_client")
 @patch("decoder._load_personality_block", return_value="")
 @patch("decoder._consume_injection", return_value="")
-@patch("decoder._observations")
 @patch("hippocampus.read_identity", return_value="")
 def test_build_system_prompt_appends_voice_constraints(
-    mock_identity, mock_obs, mock_inj, mock_pers, mock_client
+    mock_identity, mock_inj, mock_pers, mock_client
 ):
     mock_client.return_value.chat.completions.create.return_value = _mock_llm_response(_SAMPLE_RAW)
-    mock_obs.read.return_value = ""
-
     prompt = build_system_prompt("bio report", [], "", "")
     assert "No emojis" in prompt
 
@@ -128,32 +114,10 @@ def test_build_system_prompt_appends_voice_constraints(
 @patch("decoder.get_client")
 @patch("decoder._load_personality_block", return_value="")
 @patch("decoder._consume_injection", return_value="")
-@patch("decoder._observations")
-@patch("hippocampus.read_identity", return_value="")
-def test_build_system_prompt_writes_observations_as_side_effect(
-    mock_identity, mock_obs, mock_inj, mock_pers, mock_client
-):
-    mock_client.return_value.chat.completions.create.return_value = _mock_llm_response(_SAMPLE_RAW)
-    mock_obs.read.return_value = ""
-
-    build_system_prompt("bio report", [], "", "")
-
-    mock_obs.write.assert_called_once()
-    written = mock_obs.write.call_args[0][0]
-    assert "Nothing in particular" in written
-
-
-@patch("decoder.get_client")
-@patch("decoder._load_personality_block", return_value="")
-@patch("decoder._consume_injection", return_value="")
-@patch("decoder._observations")
 @patch("hippocampus.read_identity", return_value="")
 def test_build_system_prompt_returns_fallback_when_llm_returns_empty(
-    mock_identity, mock_obs, mock_inj, mock_pers, mock_client
+    mock_identity, mock_inj, mock_pers, mock_client
 ):
     mock_client.return_value.chat.completions.create.return_value = _mock_llm_response("")
-    mock_obs.read.return_value = ""
-    mock_obs.write = MagicMock()
-
     prompt = build_system_prompt("bio report", [], "", "")
     assert isinstance(prompt, str)

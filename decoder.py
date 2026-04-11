@@ -6,9 +6,8 @@ Two layers:
                                   behavioral notes. Ground truth for the LLM — it cannot
                                   contradict this report.
 
-  build_system_prompt(...)        LLM pass. Biological report + observations + context
-                                  → <observations> + <system_prompt> XML output.
-                                  Side effect: writes updated observations to run/observations.md.
+  build_system_prompt(...)        LLM pass. Biological report + context + history
+                                  → <system_prompt> XML output.
 
 Also provides needs_summary() used by freetime.py as the heartbeat stimulus text.
 """
@@ -16,7 +15,6 @@ import os
 import re
 import time
 
-import observations as _observations
 from client import get_client, MODEL
 from config import PERSONALITY_FILE, INJECT_FILE
 from state import BiologicalState, derived, _CHEMICAL_DEFAULTS
@@ -376,12 +374,11 @@ of whoever is talking to her.
 
 You receive:
 1. A biological state report — objective ground truth. Do not contradict it.
-2. Her current observations — what's been on her mind, what she's thinking about or planning.
-3. Knowledge and memory context — including RELATIONSHIP.md if it exists.
-4. Recent conversation.
-5. Her personality (Big 5 scores) — stable traits that modulate how she expresses herself.
+2. Knowledge and memory context — including RELATIONSHIP.md and REFLECTION.md if they exist.
+3. Recent conversation.
+4. Her personality (Big 5 scores) — stable traits that modulate how she expresses herself.
 
-Your job: synthesize these into two outputs — updated observations and a system prompt for Mina.
+Your job: synthesize these into a system prompt for Mina.
 
 ---
 
@@ -465,12 +462,10 @@ Examples of correct register description:
 
 ---
 
-## Output format (exactly this structure)
-
 ## Hard rules — never violate these
 
-- **Never name neurotransmitters, hormones, or biological labels** — not in the observations,
-  not in the system prompt, nowhere. No cortisol, dopamine, serotonin, oxytocin, norepinephrine,
+- **Never name neurotransmitters, hormones, or biological labels** — not in the system prompt,
+  nowhere. No cortisol, dopamine, serotonin, oxytocin, norepinephrine,
   acetylcholine, endorphins, melatonin, or any variant. She does not know these words and does
   not think in them. Translate everything into felt experience and behavior.
 - **Never instruct Mina to state how she feels.** Her internal state is not something she
@@ -480,39 +475,9 @@ Examples of correct register description:
 
 ---
 
-<observations>
-[What is on her mind right now — the cognitive and intentional layer only.
-
- NOT feelings. NOT a translation of the bio report. The biological state already encodes
- how she feels; the decoder will translate that into behavioral guidance fresh each turn.
- The observations are what she's thinking about, planning, noticing, sitting with cognitively.
-
- Ask: What has she been thinking about? What does she want to do or get to? What from the
- last conversation is still turning over? What's unresolved? What's she curious about?
- What does she intend to do next? What does she keep meaning to do and hasn't?
-
- Examples of correct observations:
- "Still thinking about what he said about X. Not sure what I make of it yet."
- "Need to eat something. Keep meaning to and haven't."
- "Want to finish that book. Been putting it off."
- "Nothing in particular. Pretty quiet in here."
-
- Examples of WRONG observations (feelings — do not write these):
- "Tired and kind of on edge." ← this is a feeling, not an observation
- "Stomach's hollow, pulling everything tighter." ← this is the bio report's job
- "Quiet ache in my chest." ← feelings, handled by the biological state
-
- No feelings language. No 'I feel' or 'I'm feeling'. No physical sensations.
- Present tense, first person. 2–5 sentences.]
-</observations>
 <system_prompt>
 [Do NOT open with "You are Mina." — her identity is prepended automatically.
  Only write the current-state portion:]
-
-## What's on her mind
-[The observations you wrote above — verbatim. This gives her cognitive continuity
- turn to turn: what she was thinking about, what she wants to do, what's unresolved.
- It does not tell her how she feels — the bio report and the sections below do that.]
 
 ## How you're being right now
 [One short paragraph (2–4 sentences) describing her behavioral stance with THIS person given
@@ -659,20 +624,10 @@ def _consume_injection() -> str:
 # Output parser
 # ---------------------------------------------------------------------------
 
-def _parse_decoder_output(raw: str) -> tuple[str, str]:
-    """Extract <observations> and <system_prompt> from raw LLM output."""
-    observations_text = ""
-    system_prompt = ""
-
-    obs_match = re.search(r"<observations>\s*(.*?)\s*</observations>", raw, re.DOTALL)
-    if obs_match:
-        observations_text = obs_match.group(1).strip()
-
-    prompt_match = re.search(r"<system_prompt>\s*(.*?)\s*</system_prompt>", raw, re.DOTALL)
-    if prompt_match:
-        system_prompt = prompt_match.group(1).strip()
-
-    return observations_text, system_prompt
+def _parse_decoder_output(raw: str) -> str:
+    """Extract <system_prompt> from raw LLM output."""
+    match = re.search(r"<system_prompt>\s*(.*?)\s*</system_prompt>", raw, re.DOTALL)
+    return match.group(1).strip() if match else ""
 
 
 # ---------------------------------------------------------------------------
@@ -688,18 +643,14 @@ def build_system_prompt(
     """
     Run the decoder LLM pass.
 
-    Input: biological report (ground truth) + current observations + context + history.
+    Input: biological report (ground truth) + context + history.
     Output: system_prompt string.
-    Side effect: writes updated observations to run/observations.md.
     """
-    current_observations = _observations.read()
     injection = _consume_injection()
     personality_block = _load_personality_block()
 
     user_content_parts = [
         f"[BIOLOGICAL STATE — ground truth, do not contradict]\n{biological_report_text}",
-        f"[CURRENT OBSERVATIONS — what's on her mind, not how she feels]\n{current_observations}"
-        if current_observations else "[CURRENT OBSERVATIONS]\nNothing noted yet.",
     ]
     if personality_block:
         user_content_parts.append(personality_block)
@@ -749,10 +700,7 @@ def build_system_prompt(
     token_stats.record_response("decoder", response)
 
     raw = response.choices[0].message.content or ""
-    observations_text, system_prompt = _parse_decoder_output(raw)
-
-    if observations_text:
-        _observations.write(observations_text)
+    system_prompt = _parse_decoder_output(raw)
 
     # Prepend permanent identity — never left to LLM discretion.
     from hippocampus import read_identity
@@ -763,5 +711,8 @@ def build_system_prompt(
     # Always append voice anti-defaults.
     if system_prompt:
         system_prompt = system_prompt + "\n\n---\n\n" + _VOICE_CONSTRAINTS
+
+    from log import log
+    log("DECODER/SP", system_prompt or "(empty)")
 
     return system_prompt

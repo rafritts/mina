@@ -1,7 +1,7 @@
 """
 Mina Dashboard Server — FastAPI sidecar.
 
-Exposes biological state read/write, monologue, relationship,
+Exposes biological state read/write, reflection, relationship,
 admin instructions, and subconscious injection over HTTP.
 
 Run:
@@ -30,7 +30,7 @@ import uvicorn
 # ---------------------------------------------------------------------------
 
 _STATE_FILE      = _PROJECT_ROOT / "state.json"
-_MONOLOGUE_FILE  = _PROJECT_ROOT / "run" / "observations.md"
+_MONOLOGUE_FILE  = _PROJECT_ROOT / "memory" / "kag" / "REFLECTION.md"
 _RELATION_FILE   = _PROJECT_ROOT / "memory" / "kag" / "RELATIONSHIP.md"
 _ADMIN_FILE      = _PROJECT_ROOT / "run" / "ADMIN_INSTRUCTIONS.md"
 _INJECT_FILE     = _PROJECT_ROOT / "run" / "subconscious_inject.md"

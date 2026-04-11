@@ -52,9 +52,6 @@ _SAMPLE_OUTPUT = """
 <reflection_summary>
 Had a warm conversation about music preferences.
 </reflection_summary>
-<observations>
-Still thinking about the album he recommended.
-</observations>
 <rag_entries>
 [{"text": "User mentioned loving Radiohead", "metadata": {"type": "episodic", "importance": "medium"}}]
 </rag_entries>

@@ -397,15 +397,7 @@ def _execute_state_wipe(reason: str) -> None:
     try:
         write_kag("RELATIONSHIP.md", "No history yet.")
         write_kag("PENDING.md", "")
-        write_kag("MINA_INNER.md", "")
-    except Exception:
-        pass
-
-    # Clear observations
-    observations_file = os.path.join(_PROJECT_ROOT, "run", "observations.md")
-    try:
-        with open(observations_file, "w") as f:
-            f.write("")
+        write_kag("REFLECTION.md", "")
     except Exception:
         pass
 

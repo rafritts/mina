@@ -626,7 +626,7 @@ async def on_message(message: discord.Message) -> None:
 
 def _wipe_user_data() -> list[str]:
     wiped = []
-    for rel_path in ["run/conversation.json", "run/observations.md"]:
+    for rel_path in ["run/conversation.json"]:
         dst = os.path.join(_PROJECT_ROOT, rel_path)
         if os.path.exists(dst):
             os.remove(dst)
@@ -924,8 +924,6 @@ async def cmd_clean(interaction: discord.Interaction, n: int = 0):
 
 @tree.command(name="context", description="Show Mina's context window, bio state, and config.")
 async def cmd_context(interaction: discord.Interaction):
-    import observations as _monologue
-
     cfg = _load_config()
     s = load_state()
     d = derived(s)
@@ -944,10 +942,14 @@ async def cmd_context(interaction: discord.Interaction):
     bar = "\u2588" * bar_filled + "\u2591" * (20 - bar_filled)
     role_str = "  ".join(f"{r}: {c}" for r, c in sorted(role_counts.items()))
 
-    # --- Monologue ---
-    mono_text = _monologue.read()
-    mono_words = len(mono_text.split()) if mono_text else 0
-    mono_preview = mono_text[:120].replace("\n", " ") + ("…" if len(mono_text) > 120 else "") if mono_text else "(empty)"
+    # --- Reflection ---
+    from hippocampus import read_kag
+    reflection_text = read_kag("REFLECTION.md") or ""
+    reflection_words = len(reflection_text.split()) if reflection_text else 0
+    reflection_preview = (
+        reflection_text[:120].replace("\n", " ") + ("…" if len(reflection_text) > 120 else "")
+        if reflection_text else "(empty)"
+    )
 
     # --- Bio state ---
     so = d["second_order"]
@@ -965,9 +967,9 @@ async def cmd_context(interaction: discord.Interaction):
         f"  Progress:  [{bar}]",
         f"  Breakdown: {role_str}",
         "",
-        "Monologue",
-        f"  Words:     {mono_words}",
-        f"  Preview:   {mono_preview}",
+        "Reflection",
+        f"  Words:     {reflection_words}",
+        f"  Preview:   {reflection_preview}",
         "",
         "Biological State",
         f"  Status:    {sleep_str}",

@@ -18,7 +18,7 @@ from config import (
     HISTORY_FILE, LAST_ACTIVE_FILE, ADMIN_FILE, PAUSED_FLAG, load_config
 )
 from log import log
-from decoder import biological_report, build_system_prompt
+from decoder import biological_report, build_system_prompt, needs_summary
 from encoder import encode_stimulus, encode_response, evaluate_activity_deltas
 from hippocampus import build_kag_context, build_rag_context
 from state import apply_deltas, load_and_advance, load_state, log_state, save_state
@@ -375,13 +375,8 @@ async def run_turn(
         )
         log("OVERRIDE", override)
 
-    # Log just the "## Right now" / observations section
-    _rn_match = re.search(r"## Right now\n(.*?)(?=\n##|\Z)", system_prompt, re.DOTALL)
-    _rn_text = _rn_match.group(1).strip() if _rn_match else "(not found)"
-    log("DECODER/RN", _rn_text)
-
     # Re-inject current state near end of context to counter conversation momentum
-    _state_note_parts = [f"[Your current state, right now: {_rn_text}]"]
+    _state_note_parts = [f"[Your current state, right now: {needs_summary(state, 0)}]"]
     if state.substances:
         _full_report = biological_report(state)
         _cog_lines = [l for l in _full_report.splitlines() if "COGNITIVE STATE" in l]
