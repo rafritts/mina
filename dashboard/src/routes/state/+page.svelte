@@ -208,6 +208,35 @@
     }
   }
 
+  const FIELD_TOOLTIPS: Record<string, string> = {
+    // Homeostatic
+    sleep_pressure:  'Adenosine buildup — how tired she is. Rises while awake, clears during sleep.',
+    glucose:         'Blood sugar — primary brain fuel. Too low: foggy, irritable, hypoglycemic.',
+    hydration:       'Total body water. Below 58% TBW noticeably thirsty; below 54% dehydrated.',
+    // Neuromodulators
+    cortisol:        'Stress hormone. Elevated = threat mode, narrowed thinking, guarded. Chronically high = burnout.',
+    dopamine:        'Drive and reward. High = motivated, seeking. Low = nothing feels worth doing.',
+    serotonin:       'Mood floor and stability. Low = fragile, impulsive, negative bias. High = stable and grounded.',
+    norepinephrine:  'Alertness and urgency. High = hypervigilant, reactive. Crashes hard when the stress passes.',
+    oxytocin:        'Trust and bond. High = warm, open, feels safe. Low = guarded, no social anchor.',
+    endorphins:      'Natural opioids — pleasure and pain buffer. High = blissful, dampened reactivity. Low = raw.',
+    acetylcholine:   'Attention and cognition. High = sharp, focused, learning. Low = slow, things not sticking.',
+    melatonin:       'Circadian sleep signal. Rises at night, drives sleep onset. Controlled by time of day.',
+    // Second-order
+    energy:            'Capacity to act — combines glucose, sleep pressure, and arousal.',
+    cognitive_clarity: 'How sharp and functional her thinking is right now.',
+    hedonic_tone:      "How satisfying things feel. Low = going through the motions, nothing lands.",
+    social_warmth:     'Ease and openness with people — driven by oxytocin and serotonin.',
+    arousal:           'Overall activation level — from calm to wired.',
+    mood_valence:      'Positive/negative emotional tone — a composite of multiple signals.',
+    // Third-order
+    anxiety:    'Background worry and threat-sensing — driven by cortisol and norepinephrine.',
+    depression: 'Pervasive low mood and loss of motivation.',
+    boredom:    'Restlessness from lack of stimulation. High boredom seeks any relief.',
+    loneliness: 'Ache for connection — driven by low oxytocin and low social contact.',
+    flow:       'Deep engagement — absorbed in something, time disappears.',
+  };
+
   const DERIVED_LABELS: Record<string, string> = {
     energy:            'Energy',
     cognitive_clarity: 'Clarity',
@@ -435,7 +464,9 @@
               {@const label = getLabel(field, val)}
               <div>
                 <div class="flex justify-between items-center mb-1">
-                  <span class="text-sm font-medium">{FIELD_LABELS[field] ?? field}</span>
+                  <div class="tooltip tooltip-bottom text-left" data-tip={FIELD_TOOLTIPS[field]}>
+                    <span class="text-sm font-medium cursor-help">{FIELD_LABELS[field] ?? field}</span>
+                  </div>
                   <div class="flex items-center gap-2">
                     {#if saving.has(field)}
                       <span class="loading loading-spinner loading-xs"></span>
@@ -473,7 +504,9 @@
               {@const label = getLabel(field, val)}
               <div>
                 <div class="flex justify-between items-center mb-1">
-                  <span class="text-sm font-medium">{FIELD_LABELS[field] ?? field}</span>
+                  <div class="tooltip tooltip-bottom text-left" data-tip={FIELD_TOOLTIPS[field]}>
+                    <span class="text-sm font-medium cursor-help">{FIELD_LABELS[field] ?? field}</span>
+                  </div>
                   <div class="flex items-center gap-2">
                     {#if saving.has(field)}
                       <span class="loading loading-spinner loading-xs"></span>
@@ -508,7 +541,9 @@
             {@const label = getLabel(field, val)}
             <div class="mt-4 pt-4 border-t border-base-300">
               <div class="flex justify-between items-center mb-1">
-                <span class="text-sm font-medium opacity-60">{FIELD_LABELS[field] ?? field}</span>
+                <div class="tooltip tooltip-bottom text-left" data-tip={FIELD_TOOLTIPS[field]}>
+                  <span class="text-sm font-medium opacity-60 cursor-help">{FIELD_LABELS[field] ?? field}</span>
+                </div>
                 <div class="flex items-center gap-2">
                   {#if label}
                     <span class="badge badge-xs {COLOR_CLASSES[label.color]?.badge}">{label.name}</span>
@@ -598,7 +633,9 @@
               {@const label = getLabel(field, val)}
               <div>
                 <div class="flex justify-between items-center mb-1">
-                  <span class="text-sm">{DERIVED_LABELS[field] ?? field}</span>
+                  <div class="tooltip tooltip-bottom text-left" data-tip={FIELD_TOOLTIPS[field]}>
+                    <span class="text-sm cursor-help">{DERIVED_LABELS[field] ?? field}</span>
+                  </div>
                   <div class="flex items-center gap-2">
                     {#if label}
                       <span class="badge badge-xs {COLOR_CLASSES[label.color]?.badge}">{label.name}</span>
@@ -625,7 +662,9 @@
               {@const label = getLabel(field, val)}
               <div>
                 <div class="flex justify-between items-center mb-1">
-                  <span class="text-sm">{DERIVED_LABELS[field] ?? field}</span>
+                  <div class="tooltip tooltip-bottom text-left" data-tip={FIELD_TOOLTIPS[field]}>
+                    <span class="text-sm cursor-help">{DERIVED_LABELS[field] ?? field}</span>
+                  </div>
                   <div class="flex items-center gap-2">
                     {#if label}
                       <span class="badge badge-xs {derivedBadgeColor(field, val)}">{label.name}</span>
