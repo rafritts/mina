@@ -11,7 +11,8 @@ from state import BiologicalState
 from decoder import (
     biological_report,
     needs_summary,
-    _parse_decoder_output,
+    _parse_decoder_json,
+    _assemble_system_prompt,
     _get_range,
     _CLARITY_RANGES,
     build_system_prompt,
@@ -52,26 +53,56 @@ def test_biological_report_reflects_sleeping_state():
 
 
 # ---------------------------------------------------------------------------
-# _parse_decoder_output — XML tag extraction
+# _parse_decoder_json — JSON extraction and validation
 # ---------------------------------------------------------------------------
 
-def test_parse_decoder_output_extracts_system_prompt():
-    raw = """
-<system_prompt>
-## How you're being right now
-Grounded. Not reaching.
-</system_prompt>
-"""
-    prompt = _parse_decoder_output(raw)
-    assert "Grounded" in prompt
+_SAMPLE_JSON = '{"how_you_are": "Grounded. Not reaching.", "voice": "Direct.", "context": null}'
+_SAMPLE_JSON_FENCED = '```json\n' + _SAMPLE_JSON + '\n```'
 
 
-def test_parse_decoder_output_handles_missing_tag_gracefully():
-    assert _parse_decoder_output("No tags here at all.") == ""
+def test_parse_decoder_json_extracts_all_fields():
+    data = _parse_decoder_json(_SAMPLE_JSON)
+    assert data["how_you_are"] == "Grounded. Not reaching."
+    assert data["voice"] == "Direct."
+    assert data["context"] is None
 
 
-def test_parse_decoder_output_handles_empty_string():
-    assert _parse_decoder_output("") == ""
+def test_parse_decoder_json_strips_markdown_fences():
+    data = _parse_decoder_json(_SAMPLE_JSON_FENCED)
+    assert data["voice"] == "Direct."
+
+
+def test_parse_decoder_json_raises_on_missing_keys():
+    import pytest
+    with pytest.raises((ValueError, KeyError)):
+        _parse_decoder_json('{"voice": "Direct."}')
+
+
+def test_parse_decoder_json_raises_on_invalid_json():
+    import pytest
+    with pytest.raises(Exception):
+        _parse_decoder_json("not json at all")
+
+
+# ---------------------------------------------------------------------------
+# _assemble_system_prompt — section assembly
+# ---------------------------------------------------------------------------
+
+def test_assemble_includes_present_sections():
+    sections = {"how_you_are": "Grounded.", "voice": "Direct.", "context": None}
+    result = _assemble_system_prompt(sections)
+    assert "## How you're being right now" in result
+    assert "Grounded." in result
+    assert "## Voice right now" in result
+    assert "Direct." in result
+    assert "## Context" not in result
+
+
+def test_assemble_includes_context_when_provided():
+    sections = {"how_you_are": None, "voice": "Quick.", "context": "She met him last week."}
+    result = _assemble_system_prompt(sections)
+    assert "## Context" in result
+    assert "She met him last week." in result
 
 
 # ---------------------------------------------------------------------------
@@ -88,15 +119,7 @@ def _mock_llm_response(content: str):
     return resp
 
 
-_SAMPLE_RAW = """
-<system_prompt>
-## How you're being right now
-Quiet. Not reaching.
-
-## Voice right now
-Direct. Not reaching.
-</system_prompt>
-"""
+_SAMPLE_RAW = '{"how_you_are": "Quiet. Not reaching.", "voice": "Direct. Not reaching.", "context": null}'
 
 
 @patch("decoder.get_client")
@@ -115,9 +138,37 @@ def test_build_system_prompt_appends_voice_constraints(
 @patch("decoder._load_personality_block", return_value="")
 @patch("decoder._consume_injection", return_value="")
 @patch("hippocampus.read_identity", return_value="")
-def test_build_system_prompt_returns_fallback_when_llm_returns_empty(
+def test_build_system_prompt_includes_dynamic_sections(
     mock_identity, mock_inj, mock_pers, mock_client
 ):
-    mock_client.return_value.chat.completions.create.return_value = _mock_llm_response("")
+    mock_client.return_value.chat.completions.create.return_value = _mock_llm_response(_SAMPLE_RAW)
+    prompt = build_system_prompt("bio report", [], "", "")
+    assert "Quiet. Not reaching." in prompt
+    assert "Direct. Not reaching." in prompt
+
+
+@patch("decoder.get_client")
+@patch("decoder._load_personality_block", return_value="")
+@patch("decoder._consume_injection", return_value="")
+@patch("hippocampus.read_identity", return_value="")
+def test_build_system_prompt_retries_on_bad_json(
+    mock_identity, mock_inj, mock_pers, mock_client
+):
+    bad = _mock_llm_response("not json")
+    good = _mock_llm_response(_SAMPLE_RAW)
+    mock_client.return_value.chat.completions.create.side_effect = [bad, good]
+    prompt = build_system_prompt("bio report", [], "", "")
+    assert "Quiet. Not reaching." in prompt
+
+
+@patch("decoder.get_client")
+@patch("decoder._load_personality_block", return_value="")
+@patch("decoder._consume_injection", return_value="")
+@patch("hippocampus.read_identity", return_value="")
+def test_build_system_prompt_returns_string_when_all_retries_fail(
+    mock_identity, mock_inj, mock_pers, mock_client
+):
+    bad = _mock_llm_response("not json")
+    mock_client.return_value.chat.completions.create.return_value = bad
     prompt = build_system_prompt("bio report", [], "", "")
     assert isinstance(prompt, str)

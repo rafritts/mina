@@ -186,7 +186,12 @@ def api_messages(history: list[dict], system_prompt: str, state_note: str = "") 
             if isinstance(content, str) and content.startswith("[COMPACT]"):
                 compact_parts.append(content[len("[COMPACT]\n"):])
             continue
-        conversation.append(apply_ts_label(msg))
+        # Only label user messages — labeling assistant messages causes the LLM
+        # to mimic the "[just now]" prefix in its own generated output.
+        if role == "user":
+            conversation.append(apply_ts_label(msg))
+        else:
+            conversation.append({k: v for k, v in msg.items() if k != "ts"})
 
     full_system = system_prompt
     if compact_parts:

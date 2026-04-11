@@ -138,7 +138,10 @@ async def _run_mina_free_time(
         role = msg.get("role", "")
         if role == "system":
             continue
-        messages.append(apply_ts_label(msg))
+        if role == "user":
+            messages.append(apply_ts_label(msg))
+        else:
+            messages.append({k: v for k, v in msg.items() if k != "ts"})
 
     new_entries = [{"role": "system", "content": "[FREETIME]"}]
     pending_do = {}

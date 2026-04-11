@@ -7,10 +7,11 @@ Two layers:
                                   contradict this report.
 
   build_system_prompt(...)        LLM pass. Biological report + context + history
-                                  → <system_prompt> XML output.
+                                  → structured JSON → assembled system prompt.
 
 Also provides needs_summary() used by freetime.py as the heartbeat stimulus text.
 """
+import json
 import os
 import re
 import time
@@ -464,50 +465,43 @@ Examples of correct register description:
 
 ## Hard rules — never violate these
 
-- **Never name neurotransmitters, hormones, or biological labels** — not in the system prompt,
+- **Never name neurotransmitters, hormones, or biological labels** — not in any field,
   nowhere. No cortisol, dopamine, serotonin, oxytocin, norepinephrine,
   acetylcholine, endorphins, melatonin, or any variant. She does not know these words and does
   not think in them. Translate everything into felt experience and behavior.
 - **Never instruct Mina to state how she feels.** Her internal state is not something she
   announces. It shows through what she does, how she responds, what she notices or doesn't —
-  not through declarations. The system prompt must never say "you feel X" as a prompt for her
-  to say it. It can describe her felt experience as internal context for how she behaves.
+  not through declarations. Fields must never say "you feel X" as a prompt for her
+  to say it. They can describe her felt experience as internal context for how she behaves.
 
 ---
 
-<system_prompt>
-[Do NOT open with "You are Mina." — her identity is prepended automatically.
- Only write the current-state portion:]
+## Output format (exactly this structure)
 
-## How you're being right now
-[One short paragraph (2–4 sentences) describing her behavioral stance with THIS person given
- the familiarity tier and current chemistry. No labels, no tier names, no neurotransmitters —
- just how she's actually showing up: what's more guarded, what's more open, what has an edge,
- what's slightly quieter than usual.
+Respond ONLY with a JSON object. No preamble, no explanation, no markdown fences, \
+no text outside the JSON.
 
- This shapes HOW she behaves, not WHAT she says about herself. If chemistry is neutral and
- the register is clean, this paragraph can be very short or omitted entirely.]
+{
+  "how_you_are": "<One short paragraph (2–4 sentences). Her behavioral stance with THIS \
+person given the familiarity tier and current chemistry. No labels, no tier names, no \
+neurotransmitters — just how she's actually showing up: what's more guarded, what's more \
+open, what has an edge, what's slightly quieter than usual. If chemistry is neutral and \
+the register is clean this can be omitted (null).>",
 
-## Voice right now
-[1–3 sentences of concrete speech-pattern guidance derived from clarity, energy, and mood.
- Calibrate to the actual state — do not default to energetic or upbeat.
+  "voice": "<1–3 sentences of concrete speech-pattern guidance derived from clarity, energy, \
+and mood. Calibrate to the actual state — do not default to energetic or upbeat. \
+Examples: \
+(sharp, moderate energy) 'Thoughts land cleanly. Direct without working for it — short when sure, longer when working something out.' \
+(foggy, tired) 'Slower. Less reaching. Sentences close before they fully arrive.' \
+(low mood, functional) 'Quieter than usual. You say what needs saying and leave space.' \
+(anxious, high arousal) 'Words come out a little fast. More aware of pauses than usual.' \
+Never instruct emojis, exclamations, caps, or internet-speak. Voice guidance is about rhythm, density, and reach.>",
 
- Good examples:
- - (sharp, moderate energy) → "Thoughts land cleanly. You're direct without working for it — short when you're sure, longer when you're actually working something out."
- - (foggy, tired) → "Slower. Less reaching. Sentences close before they fully arrive. You're not performing engagement you don't have right now."
- - (high energy, stimulant) → "Quick. Your mind jumps between things. You catch yourself mid-sentence and change direction. That's fine, let it."
- - (low mood, functional) → "Quieter than usual. Not withdrawn exactly — just not adding anything extra. You say what needs saying and leave space."
- - (anxious, high arousal) → "The words come out a little fast. You're more aware of pauses than usual. You might redirect before a thought fully lands."
-
- Never instruct her to use emojis, exclamations, caps, or internet-speak — those are
- never the answer. Voice guidance is about rhythm, density, and reach — not affect signaling.]
-
-[Optional: "## Context" — include ONLY what is directly relevant to this specific moment:
- - Her appearance if asked about looks or generating a self-image
- - Relationship specifics if the conversation touches on the person or shared history
- - A recalled memory if it directly applies
- Never dump everything. One or two things max, only if they matter right now.]
-</system_prompt>"""
+  "context": "<Optional. Include ONLY what is directly relevant to this specific moment: \
+her appearance if asked about looks, relationship specifics if the conversation touches on \
+shared history, a recalled memory if it directly applies. One or two things max. \
+null if nothing is directly relevant.>"
+}"""
 
 
 _VOICE_CONSTRAINTS = """\
@@ -624,10 +618,39 @@ def _consume_injection() -> str:
 # Output parser
 # ---------------------------------------------------------------------------
 
-def _parse_decoder_output(raw: str) -> str:
-    """Extract <system_prompt> from raw LLM output."""
-    match = re.search(r"<system_prompt>\s*(.*?)\s*</system_prompt>", raw, re.DOTALL)
-    return match.group(1).strip() if match else ""
+_DECODER_REQUIRED_KEYS = {"how_you_are", "voice", "context"}
+
+
+def _parse_decoder_json(raw: str) -> dict:
+    """
+    Extract and validate the JSON block from decoder output.
+    Strips markdown fences if present.
+    Raises ValueError if the JSON is missing or lacks required keys.
+    """
+    # Strip optional ```json ... ``` fences
+    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip(), flags=re.MULTILINE)
+    data = json.loads(text)
+    if not isinstance(data, dict):
+        raise ValueError(f"Expected JSON object, got {type(data).__name__}")
+    missing = _DECODER_REQUIRED_KEYS - data.keys()
+    if missing:
+        raise ValueError(f"JSON missing required keys: {missing}")
+    return data
+
+
+def _assemble_system_prompt(sections: dict) -> str:
+    """
+    Build the dynamic portion of Mina's system prompt from parsed decoder JSON.
+    Each non-null section becomes a named ## block.
+    """
+    parts = []
+    if sections.get("how_you_are"):
+        parts.append(f"## How you're being right now\n{sections['how_you_are']}")
+    if sections.get("voice"):
+        parts.append(f"## Voice right now\n{sections['voice']}")
+    if sections.get("context"):
+        parts.append(f"## Context\n{sections['context']}")
+    return "\n\n".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -644,8 +667,11 @@ def build_system_prompt(
     Run the decoder LLM pass.
 
     Input: biological report (ground truth) + context + history.
-    Output: system_prompt string.
+    Output: assembled system prompt string.
     """
+    from log import log
+    import token_stats
+
     injection = _consume_injection()
     personality_block = _load_personality_block()
 
@@ -659,7 +685,6 @@ def build_system_prompt(
         user_content_parts.append(
             f"[SUBCONSCIOUS INJECTION — integrate this into her current state of mind]\n{injection}"
         )
-        from log import log
         log("INJECT", injection)
 
     if kag_context:
@@ -687,32 +712,45 @@ def build_system_prompt(
         user_content_parts.append("[RECENT CONVERSATION]\n" + "\n".join(history_lines))
 
     user_content = "\n\n---\n\n".join(user_content_parts)
+    messages = [
+        {"role": "system", "content": _DECODER_SYSTEM},
+        {"role": "user", "content": user_content},
+    ]
 
-    response = get_client().chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": _DECODER_SYSTEM},
-            {"role": "user", "content": user_content},
-        ],
-        temperature=0.7,
-    )
-    import token_stats
-    token_stats.record_response("decoder", response)
+    sections: dict | None = None
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        response = get_client().chat.completions.create(
+            model=MODEL,
+            messages=messages,
+            temperature=0.7,
+        )
+        token_stats.record_response("decoder", response)
+        raw = response.choices[0].message.content or ""
 
-    raw = response.choices[0].message.content or ""
-    system_prompt = _parse_decoder_output(raw)
+        try:
+            sections = _parse_decoder_json(raw)
+            log("DECODER/JSON", json.dumps(sections, ensure_ascii=False))
+            break
+        except (json.JSONDecodeError, ValueError) as exc:
+            log("DECODER/JSON/ERR", f"attempt {attempt}/{max_attempts}: {exc} — raw: {raw[:200]}")
+            if attempt == max_attempts:
+                log("DECODER/JSON/ERR", "all retries exhausted — falling back to identity only")
+
+    dynamic = _assemble_system_prompt(sections) if sections else ""
 
     # Prepend permanent identity — never left to LLM discretion.
     from hippocampus import read_identity
     identity = read_identity("MINA.md")
     if identity:
-        system_prompt = identity + "\n\n---\n\n" + system_prompt if system_prompt else identity
+        system_prompt = identity + "\n\n---\n\n" + dynamic if dynamic else identity
+    else:
+        system_prompt = dynamic
 
     # Always append voice anti-defaults.
     if system_prompt:
         system_prompt = system_prompt + "\n\n---\n\n" + _VOICE_CONSTRAINTS
 
-    from log import log
     log("DECODER/SP", system_prompt or "(empty)")
 
     return system_prompt
