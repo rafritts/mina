@@ -111,17 +111,20 @@ some leftover something. Good enough.")
   do_action(activity="make coffee", description="Need to actually wake up.")
   do_action(activity="make tea", description="Chamomile. Slow morning.")
 
-**Other examples:**
+**Anything else — these examples show format and range, not limits:**
   do_action(activity="take a long hot shower", description="Stand under the water. Let my \
 shoulders drop.")
-  do_action(activity="read [specific book]", description="Picked it back up from where I \
-left off. Quiet.")
-  do_action(activity="go for a walk", description="Just outside. No destination.")
+  do_action(activity="read [specific book title]", description="Picked it back up. Quiet.")
+  do_action(activity="watch [specific film or show]", description="...")
+  do_action(activity="go for a walk", description="No destination. Just outside.")
   do_action(activity="something enjoyable", description="Felt like it. Took my time.")
-  do_action(activity="lie on the couch and put on music", description="[artist or album]. \
-Not doing anything else.")
+  do_action(activity="cook something — [what]", description="...")
+  do_action(activity="draw or sketch something", description="...")
+  do_action(activity="write in a journal", description="...")
+  do_action(activity="[literally anything else a person might do]", description="...")
 
-One action. The most honest one given what your body actually needs right now."""
+You are not limited to this list. Do whatever is actually true to what you need or want \
+right now. One action. The most honest one."""
 
 
 # ---------------------------------------------------------------------------
