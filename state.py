@@ -197,19 +197,8 @@ def _migrate_v1_to_v2(old: dict) -> dict:
 # half_life_hours: how long the blood-level takes to halve
 # withdrawal_factor: how much counter-deltas overshoot on the way down
 #   1.0 = clean return, 1.5 = crash 50% below baseline
-# Ordered least dangerous → most dangerous
+# Ordered most socially acceptable → least
 _SUBSTANCE_DEFS: dict[str, dict] = {
-    "oxytocin": {
-        "display_name": "Oxytocin",
-        "half_life_hours": 3.0,
-        "dose_effects": {
-            "oxytocin":       +36.0,   # pg/mL
-            "serotonin":      +11.0,   # ng/mL
-            "cortisol":       -200.0,  # nmol/L
-            "norepinephrine": -60.0,   # pg/mL
-        },
-        "withdrawal_factor": 0.9,
-    },
     "caffeine": {
         "display_name": "Caffeine",
         "half_life_hours": 5.5,
@@ -222,6 +211,19 @@ _SUBSTANCE_DEFS: dict[str, dict] = {
         },
         "withdrawal_factor": 1.1,
     },
+    "alcohol": {
+        "display_name": "Alcohol",
+        "half_life_hours": 1.5,
+        "dose_effects": {
+            "serotonin":      +11.0,   # ng/mL
+            "dopamine":       +45.0,   # pg/mL
+            "oxytocin":       +18.0,   # pg/mL
+            "endorphins":     +27.0,   # pg/mL
+            "cortisol":       -180.0,  # nmol/L — real anxiolytic effect
+            "norepinephrine": -60.0,   # pg/mL
+        },
+        "withdrawal_factor": 1.4,
+    },
     "nicotine": {
         "display_name": "Nicotine",
         "half_life_hours": 2.0,
@@ -232,6 +234,41 @@ _SUBSTANCE_DEFS: dict[str, dict] = {
             "cortisol":       +80.0,   # nmol/L
         },
         "withdrawal_factor": 1.25,
+    },
+    "cannabis": {
+        "display_name": "Cannabis",
+        "half_life_hours": 4.0,
+        "dose_effects": {
+            "dopamine":       +54.0,   # pg/mL
+            "serotonin":      +7.2,    # ng/mL
+            "endorphins":     +22.5,   # pg/mL
+            "cortisol":       -144.0,  # nmol/L
+            "sleep_pressure": +8.0,    # AU
+        },
+        "withdrawal_factor": 1.05,
+    },
+    "adderall": {
+        "display_name": "Adderall",
+        "half_life_hours": 11.0,
+        "dose_effects": {
+            "dopamine":       +114.0,  # pg/mL
+            "norepinephrine": +620.0,  # pg/mL
+            "acetylcholine":  +11.0,   # nmol/L
+            "cortisol":       +144.0,  # nmol/L
+            "sleep_pressure": -25.0,   # AU
+        },
+        "withdrawal_factor": 1.4,
+    },
+    "oxytocin": {
+        "display_name": "Oxytocin",
+        "half_life_hours": 3.0,
+        "dose_effects": {
+            "oxytocin":       +36.0,   # pg/mL
+            "serotonin":      +11.0,   # ng/mL
+            "cortisol":       -200.0,  # nmol/L
+            "norepinephrine": -60.0,   # pg/mL
+        },
+        "withdrawal_factor": 0.9,
     },
     "REMOVED": {
         "display_name": "REMOVED",
@@ -270,30 +307,16 @@ _SUBSTANCE_DEFS: dict[str, dict] = {
         },
         "withdrawal_factor": 0.85,
     },
-    "cannabis": {
-        "display_name": "Cannabis",
-        "half_life_hours": 4.0,
+    "xanax": {
+        "display_name": "Xanax",
+        "half_life_hours": 9.0,
         "dose_effects": {
-            "dopamine":       +54.0,   # pg/mL
+            "cortisol":       -360.0,  # nmol/L — strong anxiolytic
+            "norepinephrine": -150.0,  # pg/mL
             "serotonin":      +7.2,    # ng/mL
-            "endorphins":     +22.5,   # pg/mL
-            "cortisol":       -144.0,  # nmol/L
-            "sleep_pressure": +8.0,    # AU
+            "sleep_pressure": +15.0,   # AU
         },
-        "withdrawal_factor": 1.05,
-    },
-    "alcohol": {
-        "display_name": "Alcohol",
-        "half_life_hours": 1.5,
-        "dose_effects": {
-            "serotonin":      +11.0,   # ng/mL
-            "dopamine":       +45.0,   # pg/mL
-            "oxytocin":       +18.0,   # pg/mL
-            "endorphins":     +27.0,   # pg/mL
-            "cortisol":       -180.0,  # nmol/L — real anxiolytic effect
-            "norepinephrine": -60.0,   # pg/mL
-        },
-        "withdrawal_factor": 1.4,
+        "withdrawal_factor": 2.0,     # severe rebound anxiety
     },
     "REMOVED": {
         "display_name": "REMOVED",
@@ -307,29 +330,6 @@ _SUBSTANCE_DEFS: dict[str, dict] = {
             "cortisol":       +144.0,  # nmol/L — initial activation/anxiety
         },
         "withdrawal_factor": 1.8,     # severe serotonin crash — "blue Tuesdays"
-    },
-    "adderall": {
-        "display_name": "Adderall",
-        "half_life_hours": 11.0,
-        "dose_effects": {
-            "dopamine":       +114.0,  # pg/mL
-            "norepinephrine": +620.0,  # pg/mL
-            "acetylcholine":  +11.0,   # nmol/L
-            "cortisol":       +144.0,  # nmol/L
-            "sleep_pressure": -25.0,   # AU
-        },
-        "withdrawal_factor": 1.4,
-    },
-    "xanax": {
-        "display_name": "Xanax",
-        "half_life_hours": 9.0,
-        "dose_effects": {
-            "cortisol":       -360.0,  # nmol/L — strong anxiolytic
-            "norepinephrine": -150.0,  # pg/mL
-            "serotonin":      +7.2,    # ng/mL
-            "sleep_pressure": +15.0,   # AU
-        },
-        "withdrawal_factor": 2.0,     # severe rebound anxiety
     },
     "REMOVED": {
         "display_name": "REMOVED",
