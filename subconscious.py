@@ -99,6 +99,9 @@ def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, 
         parsed = json.loads(content)
         event_override = bool(parsed.pop("event_override", False))
         deltas = {k: float(v) for k, v in parsed.items() if k in _DELTA_FIELDS}
+        override_str = " [EVENT_OVERRIDE]" if event_override else ""
+        delta_str = ", ".join(f"{k}: {v:+.1f}" for k, v in deltas.items())
+        print(f"[encoder/{label}]{override_str} {delta_str or '(no deltas)'}")
         return deltas, event_override
     except Exception as e:
         print(f"[delta json error] {e}")
