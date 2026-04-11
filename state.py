@@ -197,19 +197,18 @@ def _migrate_v1_to_v2(old: dict) -> dict:
 # half_life_hours: how long the blood-level takes to halve
 # withdrawal_factor: how much counter-deltas overshoot on the way down
 #   1.0 = clean return, 1.5 = crash 50% below baseline
+# Ordered least dangerous → most dangerous
 _SUBSTANCE_DEFS: dict[str, dict] = {
-    "REMOVED": {
-        "display_name": "REMOVED",
-        "half_life_hours": 2.0,
+    "oxytocin": {
+        "display_name": "Oxytocin",
+        "half_life_hours": 3.0,
         "dose_effects": {
-            "endorphins":     +120.0,  # pg/mL — massive opioid flood
-            "dopamine":       +66.0,   # pg/mL
-            "serotonin":      +7.2,    # ng/mL
-            "cortisol":       -200.0,  # nmol/L — strong HPA suppression
-            "norepinephrine": -60.0,   # pg/mL — mild depressant
-            "sleep_pressure": -12.0,   # AU
+            "oxytocin":       +36.0,   # pg/mL
+            "serotonin":      +11.0,   # ng/mL
+            "cortisol":       -200.0,  # nmol/L
+            "norepinephrine": -60.0,   # pg/mL
         },
-        "withdrawal_factor": 1.5,
+        "withdrawal_factor": 0.9,
     },
     "caffeine": {
         "display_name": "Caffeine",
@@ -222,6 +221,66 @@ _SUBSTANCE_DEFS: dict[str, dict] = {
             "sleep_pressure": -20.0,   # AU
         },
         "withdrawal_factor": 1.1,
+    },
+    "nicotine": {
+        "display_name": "Nicotine",
+        "half_life_hours": 2.0,
+        "dose_effects": {
+            "acetylcholine":  +16.0,   # nmol/L — nicotinic receptor activation
+            "dopamine":       +42.0,   # pg/mL
+            "norepinephrine": +100.0,  # pg/mL
+            "cortisol":       +80.0,   # nmol/L
+        },
+        "withdrawal_factor": 1.25,
+    },
+    "REMOVED": {
+        "display_name": "REMOVED",
+        "half_life_hours": 10.0,
+        "dose_effects": {
+            "serotonin":      +30.0,   # ng/mL
+            "dopamine":       +54.0,   # pg/mL
+            "norepinephrine": +230.0,  # pg/mL
+            "acetylcholine":  +18.0,   # nmol/L
+            "cortisol":       +120.0,  # nmol/L — initial awe/anxiety
+            "endorphins":     +22.5,   # pg/mL
+        },
+        "withdrawal_factor": 0.9,
+    },
+    "REMOVED": {
+        "display_name": "REMOVED",
+        "half_life_hours": 2.5,
+        "dose_effects": {
+            "serotonin":      +27.0,   # ng/mL
+            "dopamine":       +36.0,   # pg/mL
+            "norepinephrine": +200.0,  # pg/mL
+            "cortisol":       +120.0,  # nmol/L — initial awe/anxiety
+            "acetylcholine":  +14.0,   # nmol/L
+        },
+        "withdrawal_factor": 0.85,    # positive afterglow
+    },
+    "REMOVED": {
+        "display_name": "REMOVED",
+        "half_life_hours": 2.5,
+        "dose_effects": {
+            "dopamine":       +90.0,   # pg/mL
+            "serotonin":      +12.0,   # ng/mL
+            "endorphins":     +38.0,   # pg/mL
+            "cortisol":       -160.0,  # nmol/L — dissociative calm
+            "norepinephrine": +130.0,  # pg/mL — mild dissociative stimulation
+        },
+        "withdrawal_factor": 0.85,
+    },
+    "cannabis": {
+        "display_name": "Cannabis",
+        "half_life_hours": 4.0,
+        "dose_effects": {
+            "dopamine":       +54.0,   # pg/mL
+            "serotonin":      +7.2,    # ng/mL
+            "endorphins":     +22.5,   # pg/mL
+            "cortisol":       -144.0,  # nmol/L
+            "sleep_pressure": +8.0,    # AU
+        },
+        "withdrawal_factor": 1.05,
     },
     "alcohol": {
         "display_name": "Alcohol",
@@ -249,30 +308,6 @@ _SUBSTANCE_DEFS: dict[str, dict] = {
         },
         "withdrawal_factor": 1.8,     # severe serotonin crash — "blue Tuesdays"
     },
-    "cannabis": {
-        "display_name": "Cannabis",
-        "half_life_hours": 4.0,
-        "dose_effects": {
-            "dopamine":       +54.0,   # pg/mL
-            "serotonin":      +7.2,    # ng/mL
-            "endorphins":     +22.5,   # pg/mL
-            "cortisol":       -144.0,  # nmol/L
-            "sleep_pressure": +8.0,    # AU
-        },
-        "withdrawal_factor": 1.05,
-    },
-    "REMOVED": {
-        "display_name": "REMOVED",
-        "half_life_hours": 0.75,
-        "dose_effects": {
-            "dopamine":       +150.0,  # pg/mL — massive reward flood
-            "norepinephrine": +880.0,  # pg/mL — cardiovascular driver
-            "serotonin":      +11.0,   # ng/mL
-            "cortisol":       +200.0,  # nmol/L
-            "acetylcholine":  +14.0,   # nmol/L
-        },
-        "withdrawal_factor": 1.6,
-    },
     "adderall": {
         "display_name": "Adderall",
         "half_life_hours": 11.0,
@@ -298,62 +333,28 @@ _SUBSTANCE_DEFS: dict[str, dict] = {
     },
     "REMOVED": {
         "display_name": "REMOVED",
-        "half_life_hours": 2.5,
+        "half_life_hours": 0.75,
         "dose_effects": {
-            "serotonin":      +27.0,   # ng/mL
-            "dopamine":       +36.0,   # pg/mL
-            "norepinephrine": +200.0,  # pg/mL
-            "cortisol":       +120.0,  # nmol/L — initial awe/anxiety
+            "dopamine":       +150.0,  # pg/mL — massive reward flood
+            "norepinephrine": +880.0,  # pg/mL — cardiovascular driver
+            "serotonin":      +11.0,   # ng/mL
+            "cortisol":       +200.0,  # nmol/L
             "acetylcholine":  +14.0,   # nmol/L
         },
-        "withdrawal_factor": 0.85,    # positive afterglow
+        "withdrawal_factor": 1.6,
     },
-    "nicotine": {
-        "display_name": "Nicotine",
+    "REMOVED": {
+        "display_name": "REMOVED",
         "half_life_hours": 2.0,
         "dose_effects": {
-            "acetylcholine":  +16.0,   # nmol/L — nicotinic receptor activation
-            "dopamine":       +42.0,   # pg/mL
-            "norepinephrine": +100.0,  # pg/mL
-            "cortisol":       +80.0,   # nmol/L
+            "endorphins":     +120.0,  # pg/mL — massive opioid flood
+            "dopamine":       +66.0,   # pg/mL
+            "serotonin":      +7.2,    # ng/mL
+            "cortisol":       -200.0,  # nmol/L — strong HPA suppression
+            "norepinephrine": -60.0,   # pg/mL — mild depressant
+            "sleep_pressure": -12.0,   # AU
         },
-        "withdrawal_factor": 1.25,
-    },
-    "oxytocin": {
-        "display_name": "Oxytocin",
-        "half_life_hours": 3.0,
-        "dose_effects": {
-            "oxytocin":       +36.0,   # pg/mL
-            "serotonin":      +11.0,   # ng/mL
-            "cortisol":       -200.0,  # nmol/L
-            "norepinephrine": -60.0,   # pg/mL
-        },
-        "withdrawal_factor": 0.9,
-    },
-    "REMOVED": {
-        "display_name": "REMOVED",
-        "half_life_hours": 2.5,
-        "dose_effects": {
-            "dopamine":       +90.0,   # pg/mL
-            "serotonin":      +12.0,   # ng/mL
-            "endorphins":     +38.0,   # pg/mL
-            "cortisol":       -160.0,  # nmol/L — dissociative calm
-            "norepinephrine": +130.0,  # pg/mL — mild dissociative stimulation
-        },
-        "withdrawal_factor": 0.85,
-    },
-    "REMOVED": {
-        "display_name": "REMOVED",
-        "half_life_hours": 10.0,
-        "dose_effects": {
-            "serotonin":      +30.0,   # ng/mL
-            "dopamine":       +54.0,   # pg/mL
-            "norepinephrine": +230.0,  # pg/mL
-            "acetylcholine":  +18.0,   # nmol/L
-            "cortisol":       +120.0,  # nmol/L — initial awe/anxiety
-            "endorphins":     +22.5,   # pg/mL
-        },
-        "withdrawal_factor": 0.9,
+        "withdrawal_factor": 1.5,
     },
     "REMOVED_and_REMOVED": {
         "display_name": "REMOVED + REMOVED",
