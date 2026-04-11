@@ -600,6 +600,39 @@ async def on_message(message: discord.Message) -> None:
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Wipe helper (used by /reset and /factory-reset)
+# ---------------------------------------------------------------------------
+
+def _wipe_user_data() -> list[str]:
+    wiped = []
+    for rel_path in ["run/conversation.json", "run/monologue.md"]:
+        dst = os.path.join(_PROJECT_ROOT, rel_path)
+        if os.path.exists(dst):
+            os.remove(dst)
+            wiped.append(rel_path)
+    kag_dir = os.path.join(_PROJECT_ROOT, "memory", "kag")
+    if os.path.exists(kag_dir):
+        for root, dirs, files in os.walk(kag_dir):
+            for fname in files:
+                full = os.path.join(root, fname)
+                os.remove(full)
+                wiped.append(os.path.relpath(full, _PROJECT_ROOT).replace(os.sep, "/"))
+    os.makedirs(kag_dir, exist_ok=True)
+    rel_md = os.path.join(kag_dir, "RELATIONSHIP.md")
+    with open(rel_md, "w") as f:
+        f.write("# Relationship with User\n\nNo history yet.\n")
+    wiped.append("memory/kag/RELATIONSHIP.md (reset to blank)")
+    try:
+        from memory import rag_wipe
+        rag_wipe()
+        wiped.append("memory/rag/ (RAG wiped)")
+    except Exception as e:
+        wiped.append(f"memory/rag/ (wipe failed: {e})")
+    return wiped
+
+
+# ---------------------------------------------------------------------------
 # Slash commands
 # ---------------------------------------------------------------------------
 
@@ -615,7 +648,6 @@ async def cmd_new(interaction: discord.Interaction):
 
 @tree.command(name="reset", description="Wipe Mina's memory, state, and history.")
 async def cmd_reset(interaction: discord.Interaction):
-    from checkpoints import _wipe_user_data
     await interaction.response.defer(ephemeral=True)
     try:
         wiped = _wipe_user_data()
@@ -630,7 +662,6 @@ async def cmd_reset(interaction: discord.Interaction):
 
 @tree.command(name="factory-reset", description="Nuclear reset: wipe everything including biomarkers.")
 async def cmd_factory_reset(interaction: discord.Interaction):
-    from checkpoints import _wipe_user_data
     from state import BiologicalState, save_state
     await interaction.response.defer(ephemeral=True)
     try:

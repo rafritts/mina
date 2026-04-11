@@ -429,40 +429,28 @@ def _cli_run_command(cmd: str) -> bool:
     """
     Handle a CLI slash command. Returns True if handled, False if not a command.
     """
-    import checkpoints as _ckpts
     from state import load_and_advance, log_state
 
     parts = cmd.strip().split()
     name = parts[0].lower()
 
     if name == "/reset":
-        print(_ckpts.reset())
+        from discord_gateway import _wipe_user_data
+        wiped = _wipe_user_data()
+        print(f"Reset complete. Wiped: {', '.join(wiped)}")
         return True
 
     if name == "/factory-reset":
-        confirm = input("This wipes everything including her identity. Type YES to confirm: ").strip()
+        confirm = input("Wipes everything including biomarkers. Type YES to confirm: ").strip()
         if confirm == "YES":
-            print(_ckpts.factory_reset())
+            from discord_gateway import _wipe_user_data
+            from state import BiologicalState, save_state
+            wiped = _wipe_user_data()
+            save_state(BiologicalState())
+            wiped.append("state.json (biomarkers reset to defaults)")
+            print(f"Factory reset complete. Wiped: {', '.join(wiped)}")
         else:
             print("Cancelled.")
-        return True
-
-    if name == "/checkpoints":
-        ckpts = _ckpts.list_checkpoints()
-        if not ckpts:
-            print("No checkpoints yet.")
-        else:
-            print("Available checkpoints (0 = most recent):")
-            for c in ckpts[:20]:
-                print(f"  {c['index']}  {c['created']}  ({c['label']})")
-        return True
-
-    if name == "/rollback":
-        index = int(parts[1]) if len(parts) > 1 else 0
-        try:
-            print(_ckpts.restore(index))
-        except ValueError as e:
-            print(f"Error: {e}")
         return True
 
     if name == "/state":
@@ -474,8 +462,6 @@ def _cli_run_command(cmd: str) -> bool:
         print(
             "Commands:\n"
             "  /state           — show current biological state\n"
-            "  /checkpoints     — list available checkpoints\n"
-            "  /rollback [N]    — restore checkpoint N (default 0 = most recent)\n"
             "  /reset           — wipe relationship/RAG/knowledge/history; keep biomarkers + identity\n"
             "  /factory-reset   — same as /reset + reset biomarkers; identity (MINA.md/APPEARANCE.md) always preserved\n"
             "  exit / quit      — exit"
