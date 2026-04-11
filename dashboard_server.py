@@ -29,7 +29,7 @@ import uvicorn
 # Paths
 # ---------------------------------------------------------------------------
 
-_STATE_FILE      = _PROJECT_ROOT / "state.json"
+_STATE_FILE      = _PROJECT_ROOT / "run" / "state.json"
 _MONOLOGUE_FILE  = _PROJECT_ROOT / "memory" / "kag" / "REFLECTION.md"
 _RELATION_FILE   = _PROJECT_ROOT / "memory" / "kag" / "RELATIONSHIP.md"
 _ADMIN_FILE      = _PROJECT_ROOT / "run" / "ADMIN_INSTRUCTIONS.md"

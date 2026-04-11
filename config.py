@@ -13,7 +13,7 @@ PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 RUN_DIR = os.path.join(PROJECT_ROOT, "run")
 
 # Canonical file paths
-STATE_FILE       = os.path.join(PROJECT_ROOT, "state.json")
+STATE_FILE       = os.path.join(RUN_DIR, "state.json")
 CONFIG_FILE      = os.path.join(PROJECT_ROOT, "config.json")
 HISTORY_FILE     = os.path.join(RUN_DIR, "conversation.json")
 LAST_ACTIVE_FILE = os.path.join(PROJECT_ROOT, ".last_user_active")

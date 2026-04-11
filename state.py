@@ -17,7 +17,7 @@ from typing import Optional
 from chemicals import REGISTRY, clamp_chemical, normalize
 
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-_STATE_FILE = os.path.join(_PROJECT_ROOT, "state.json")
+_STATE_FILE = os.path.join(_PROJECT_ROOT, "run", "state.json")
 _CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
 
 
@@ -751,6 +751,7 @@ def load_state() -> BiologicalState:
 
 
 def save_state(s: BiologicalState) -> None:
+    os.makedirs(os.path.dirname(_STATE_FILE), exist_ok=True)
     with open(_STATE_FILE, "w") as f:
         json.dump(s.to_dict(), f, indent=2)
 
