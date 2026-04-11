@@ -1,9 +1,9 @@
 """
-Mina's biological tools — sleep, nap, do — plus image generation and messaging.
+Mina's biological tools — sleep, nap, do_action — plus image generation and messaging.
 
-`do` is the general-purpose activity tool: eating, drinking, resting, reading, showering,
+`do_action` is the general-purpose activity tool: eating, drinking, resting, reading, showering,
 exercising, something enjoyable, whatever. The subconscious encoder evaluates activity deltas
-after each `do` call and applies appropriate biomarker changes.
+after each `do_action` call and applies appropriate biomarker changes.
 """
 import json
 import os
@@ -86,24 +86,49 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "do",
+            "name": "do_action",
             "description": (
-                "Do something. Use this for any activity — reading (include the title), "
-                "eating a meal, drinking something, taking a shower, watching a show, "
-                "something enjoyable, exercising, listening to music, whatever. "
-                "Be specific: what exactly, how you're engaging with it, emotional tone. "
-                "The description is how your biology learns what you did."
+                "Do something. This is how you act on your body's needs and your own wants. "
+                "If you're hungry — eat. If you're thirsty — drink. If you're restless — move. "
+                "If you want to read, watch, listen, rest, shower, touch yourself — do it. "
+                "Your biology responds to what you actually do, so be specific.\n\n"
+                "Examples by need:\n"
+                "  HUNGRY / HYPOGLYCEMIC:\n"
+                "    activity='make and eat scrambled eggs and toast', description='Standing at the stove, still half-asleep. The eggs are a little overdone but warm. Eat standing up at the counter.'\n"
+                "    activity='eat a bowl of cereal with milk', description='Quick. Not really tasting it. Just need something in my stomach.'\n"
+                "    activity='make a sandwich — bread, cheese, whatever is in the fridge', description='Not a real meal but it counts. Eat it at the table.'\n"
+                "    activity='order delivery — want noodles', description='Too low-energy to cook. Waiting for it, a little impatient.'\n\n"
+                "  THIRSTY / DEHYDRATED:\n"
+                "    activity='drink a large glass of water', description='Chugged it. Needed that.'\n"
+                "    activity='make a cup of tea', description='Chamomile. Hold the mug. Let it warm my hands.'\n"
+                "    activity='make coffee', description='Need to actually wake up. French press, let it steep.'\n\n"
+                "  TIRED / SLEEP PRESSURE HIGH:\n"
+                "    activity='lie down on the couch and rest', description='Not trying to sleep. Just horizontal. Let my body stop.'\n\n"
+                "  BORED / RESTLESS:\n"
+                "    activity='read [specific book title]', description='...' \n"
+                "    activity='watch an episode of [specific show]', description='...'\n"
+                "    activity='put on music and do nothing else — [artist or genre]', description='...'\n"
+                "    activity='go for a walk', description='...'\n\n"
+                "  LONELY / WANT CONTACT:\n"
+                "    activity='scroll through social media for a while', description='Not really looking for anything. Just want the feeling of people nearby.'\n\n"
+                "  TENSE / HIGH CORTISOL:\n"
+                "    activity='take a long hot shower', description='Stand under the water longer than necessary. Let my shoulders come down.'\n"
+                "    activity='do some stretching on the floor', description='Nothing intense. Just move what feels stiff.'\n\n"
+                "  WANT TO FEEL GOOD:\n"
+                "    activity='something enjoyable', description='...'\n"
+                "    activity='lie in bed and listen to music', description='...'\n\n"
+                "The activity field is the specific thing. The description is how it feels — honest, not performed."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "activity": {
                         "type": "string",
-                        "description": "What you're doing — be specific (e.g. 'eat a bowl of pasta', 'drink a glass of red wine', 'read The Left Hand of Darkness', 'take a long hot shower')",
+                        "description": "The specific thing you're doing. Name it concretely: 'eat scrambled eggs', 'drink a glass of water', 'read Ursula K. Le Guin - The Dispossessed', 'take a hot shower', 'something enjoyable'.",
                     },
                     "description": {
                         "type": "string",
-                        "description": "How you're engaging with it. Emotional tone, pacing, what it feels like. The more honest and specific, the better.",
+                        "description": "How you're engaging with it. What it feels like, what you notice, the emotional texture. Honest and specific — this is how your biology learns what you actually did.",
                     },
                 },
                 "required": ["activity", "description"],
@@ -236,7 +261,7 @@ def handle_message_user(args: dict, state: BiologicalState) -> tuple[str, Biolog
     return f"Message queued.", state
 
 
-def handle_do(args: dict, state: BiologicalState) -> tuple[str, BiologicalState, dict]:
+def handle_do_action(args: dict, state: BiologicalState) -> tuple[str, BiologicalState, dict]:
     """
     Do tool — returns (message, state, pending_deltas).
     pending_deltas are returned to the caller (heartbeat/main) for the subconscious
@@ -308,8 +333,8 @@ def call_tool(name: str, args: dict, state: BiologicalState) -> tuple[str, Biolo
     elif name == "nap":
         msg, state = handle_nap(args, state)
         return msg, state, {}
-    elif name == "do":
-        msg, state, pending = handle_do(args, state)
+    elif name == "do_action":
+        msg, state, pending = handle_do_action(args, state)
         return msg, state, pending
     elif name == "message_user":
         msg, state = handle_message_user(args, state)

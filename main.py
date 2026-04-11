@@ -244,7 +244,7 @@ async def _mina_turn(
                 result, state, extra = call_tool(name, args, state)
                 save_state(state)
                 print(f"  [result] {result}")
-                if name == "do" and extra:
+                if name == "do_action" and extra:
                     activity = extra.get("activity", "")
                     description = extra.get("description", "")
                     do_deltas = await asyncio.to_thread(evaluate_activity_deltas, state, activity, description)
