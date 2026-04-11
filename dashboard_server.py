@@ -30,7 +30,7 @@ import uvicorn
 # ---------------------------------------------------------------------------
 
 _STATE_FILE      = _PROJECT_ROOT / "state.json"
-_MONOLOGUE_FILE  = _PROJECT_ROOT / "run" / "monologue.md"
+_MONOLOGUE_FILE  = _PROJECT_ROOT / "run" / "observations.md"
 _RELATION_FILE   = _PROJECT_ROOT / "memory" / "kag" / "RELATIONSHIP.md"
 _ADMIN_FILE      = _PROJECT_ROOT / "run" / "ADMIN_INSTRUCTIONS.md"
 _INJECT_FILE     = _PROJECT_ROOT / "run" / "subconscious_inject.md"
@@ -406,7 +406,7 @@ as misplaced as doubting my own memories.
 def post_reveal(request: Request):
     _check_auth(request)
     import json as _json
-    from memory import write_kag, rag_add
+    from hippocampus import write_kag, rag_add
 
     content = _build_relationship_memory()
 

@@ -23,7 +23,9 @@ import discord
 from discord import app_commands
 from PIL import Image
 
-from main import run_turn, bio_tick_loop, heartbeat_loop, load_history, save_history, touch_last_active
+from cortex import run_turn, load_history, save_history, touch_last_active, HISTORY_MAX
+from heartbeat import bio_tick_loop
+from freetime import run_freetime as _run_freetime
 
 # Suppress noisy-but-harmless WebSocket transport errors on reconnect
 class _SuppressResetError(logging.Filter):
@@ -33,7 +35,7 @@ class _SuppressResetError(logging.Filter):
 logging.getLogger("discord.client").addFilter(_SuppressResetError())
 logging.getLogger("discord.gateway").addFilter(_SuppressResetError())
 from state import load_and_advance, save_state, load_state, apply_deltas, log_state, derived
-from memory import build_kag_context, build_rag_context
+from hippocampus import build_kag_context, build_rag_context, rag_wipe
 
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 _CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
@@ -188,6 +190,23 @@ async def _update_presence(state) -> None:
             status=discord.Status.online,
             activity=discord.Activity(type=discord.ActivityType.listening, name="you"),
         )
+
+
+async def _gateway_freetime_loop() -> None:
+    """Periodically run Mina's autonomous freetime session."""
+    from config import PAUSED_FLAG, load_config
+    while True:
+        cfg = load_config()
+        interval = int(cfg.get("heartbeat_interval_seconds", 1800))
+        await asyncio.sleep(interval)
+        if os.path.exists(PAUSED_FLAG):
+            print("[FREETIME] Paused — skipping.")
+            continue
+        print(f"\n[FREETIME] Firing (interval={interval}s)...")
+        try:
+            await _run_freetime()
+        except Exception as e:
+            print(f"[FREETIME ERROR] {e}")
 
 
 async def _presence_loop() -> None:
@@ -504,7 +523,7 @@ async def on_ready():
 
     # Start background loops
     asyncio.create_task(bio_tick_loop())
-    asyncio.create_task(heartbeat_loop())
+    asyncio.create_task(_gateway_freetime_loop())
     asyncio.create_task(_outbox_watcher())
     asyncio.create_task(_presence_loop())
     print("[GATEWAY] Bio tick, heartbeat, outbox watcher, and presence loop started.")
@@ -606,7 +625,7 @@ async def on_message(message: discord.Message) -> None:
 
 def _wipe_user_data() -> list[str]:
     wiped = []
-    for rel_path in ["run/conversation.json", "run/monologue.md"]:
+    for rel_path in ["run/conversation.json", "run/observations.md"]:
         dst = os.path.join(_PROJECT_ROOT, rel_path)
         if os.path.exists(dst):
             os.remove(dst)
@@ -624,8 +643,7 @@ def _wipe_user_data() -> list[str]:
         f.write("# Relationship with User\n\nNo history yet.\n")
     wiped.append("memory/kag/RELATIONSHIP.md (reset to blank)")
     try:
-        from memory import rag_wipe
-        rag_wipe()
+        rag_wipe()  # imported from hippocampus at top of file
         wiped.append("memory/rag/ (RAG wiped)")
     except Exception as e:
         wiped.append(f"memory/rag/ (wipe failed: {e})")
@@ -734,7 +752,7 @@ async def cmd_compress(interaction: discord.Interaction, factor: float):
 @tree.command(name="sleep", description="Put Mina to sleep.")
 @app_commands.describe(hours="How many simulated hours to sleep")
 async def cmd_sleep(interaction: discord.Interaction, hours: float = 8.0):
-    from tools_mina import handle_sleep
+    from tools import handle_sleep
     s = load_and_advance()
     _, s = handle_sleep({"duration_hours": hours}, s)
     save_state(s)
@@ -905,7 +923,7 @@ async def cmd_clean(interaction: discord.Interaction, n: int = 0):
 
 @tree.command(name="context", description="Show Mina's context window, bio state, and config.")
 async def cmd_context(interaction: discord.Interaction):
-    import monologue as _monologue
+    import observations as _monologue
 
     cfg = _load_config()
     s = load_state()
@@ -914,7 +932,7 @@ async def cmd_context(interaction: discord.Interaction):
 
     # --- Conversation stats ---
     history = load_history()
-    from main import HISTORY_MAX
+    # HISTORY_MAX already imported from cortex at top of file
     total_msgs = len(history)
     role_counts: dict[str, int] = {}
     for m in history:

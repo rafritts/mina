@@ -1,438 +1,40 @@
 """
-Mina's core turn logic + CLI entry point.
+CLI entry point — development and testing only.
 
-`run_turn()` is the shared coroutine used by both the CLI and discord_gateway.py.
-The CLI loop at the bottom is for development/testing only — Discord is the primary interface.
+The primary interface is Discord (discord_gateway.py). This CLI is for local testing.
+`run_turn()` and all core turn logic live in cortex.py.
 """
 import asyncio
-import json
 import os
-import re
 import sys
-import time
-from openai import OpenAI
 
-from memory import build_kag_context, build_rag_context
-from state import apply_deltas, load_and_advance, load_state, log_state, save_state
-from bio_report import biological_report
-from subconscious import encode_response, encode_stimulus, evaluate_activity_deltas, run_mode1
-from tools_mina import TOOLS, call_tool, handle_generate_image
+from config import PAUSED_FLAG, load_config
+from cortex import run_turn
+from heartbeat import bio_tick_loop
+from freetime import run_freetime
 
-MODEL = os.getenv("MODEL", "grok-4-1-fast-reasoning")
-BASE_URL = os.getenv("BASE_URL", "https://api.x.ai/v1")
-API_KEY = os.getenv("XAI_API_KEY", os.getenv("OPENAI_API_KEY", "sk-placeholder"))
 
-_PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-_HISTORY_FILE = os.path.join(_PROJECT_ROOT, "run", "conversation.json")
-_LAST_ACTIVE_FILE = os.path.join(_PROJECT_ROOT, ".last_user_active")
-_ADMIN_FILE = os.path.join(_PROJECT_ROOT, "run", "ADMIN_INSTRUCTIONS.md")
-_CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
-_PAUSED_FLAG = os.path.join(_PROJECT_ROOT, "run", ".paused")
-
-HISTORY_MAX = 200
-HISTORY_KEEP = 10     # messages kept verbatim after compaction
-HISTORY_COMPACT_AT = 22  # trigger compaction when history exceeds this
-
-_client: OpenAI | None = None
-
-
-def _get_client() -> OpenAI:
-    global _client
-    if _client is None:
-        _client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
-    return _client
-
-
-def _load_config() -> dict:
-    try:
-        with open(_CONFIG_FILE) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-
-# ---------------------------------------------------------------------------
-# History
-# ---------------------------------------------------------------------------
-
-def load_history() -> list[dict]:
-    try:
-        with open(_HISTORY_FILE) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
-
-
-def save_history(history: list[dict]) -> None:
-    if len(history) > HISTORY_MAX:
-        history = history[-HISTORY_MAX:]
-    os.makedirs(os.path.dirname(_HISTORY_FILE), exist_ok=True)
-    with open(_HISTORY_FILE, "w") as f:
-        json.dump(history, f, indent=2)
-
-
-def _compact_history(history: list[dict]) -> list[dict]:
-    """
-    Summarize all but the last HISTORY_KEEP messages into a compact block.
-    Returns [compact_system_msg] + last HISTORY_KEEP messages.
-    """
-    overflow = history[:-HISTORY_KEEP]
-    recent   = history[-HISTORY_KEEP:]
-
-    # Only summarize user/assistant messages — skip system noise
-    to_summarize = [m for m in overflow if m.get("role") in ("user", "assistant")]
-    if not to_summarize:
-        return recent  # nothing worth keeping from overflow
-
-    lines = []
-    for m in to_summarize:
-        role = m.get("role", "?")
-        content = m.get("content", "")
-        if isinstance(content, list):
-            content = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
-        lines.append(f"{role.upper()}: {content[:400]}")
-
-    try:
-        response = _get_client().chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": (
-                    "Summarize this conversation excerpt in 4-8 bullet points. "
-                    "Cover: what was discussed, notable moments, things to remember. "
-                    "Be concise. No preamble."
-                )},
-                {"role": "user", "content": "\n".join(lines)},
-            ],
-            temperature=0.3,
-            max_tokens=400,
-        )
-        import token_stats as _ts
-        _ts.record_response("compact", response)
-        summary = response.choices[0].message.content or ""
-    except Exception as e:
-        print(f"[COMPACT ERROR] {e}")
-        return history  # fall back to uncompacted on error
-
-    if not summary:
-        return recent
-
-    compact_msg = {"role": "system", "content": f"[COMPACT]\n{summary}"}
-    print(f"[COMPACT] Summarized {len(overflow)} messages into {len(summary)} chars")
-    return [compact_msg] + recent
-
-
-def touch_last_active() -> None:
-    with open(_LAST_ACTIVE_FILE, "w") as f:
-        f.write(str(time.time()))
-
-
-def consume_admin_instructions() -> str:
-    try:
-        with open(_ADMIN_FILE) as f:
-            content = f.read().strip()
-        os.remove(_ADMIN_FILE)
-        return content
-    except FileNotFoundError:
-        return ""
-
-
-def api_messages(history: list[dict], system_prompt: str, state_note: str = "") -> list[dict]:
-    """Build the messages array for the API — single system message, no internal markers.
-
-    state_note: if provided, appended to the last user message to give biological/emotional
-    state recency weight equal to the conversation. Counters the model's tendency to anchor
-    on conversational momentum and ignore system prompt context.
-    """
-    compact_parts = []
-    conversation = []
-    for msg in history:
-        role = msg.get("role")
-        content = msg.get("content", "")
-        if role == "system":
-            # Inject compaction summaries into system prompt; skip other system messages
-            if isinstance(content, str) and content.startswith("[COMPACT]"):
-                compact_parts.append(content[len("[COMPACT]\n"):])
-            continue
-        conversation.append(msg)
-
-    full_system = system_prompt
-    if compact_parts:
-        full_system += "\n\n---\n\n[Earlier conversation summary]\n" + "\n\n".join(compact_parts)
-
-    # Inject state_note into the last user message to give it recency weight
-    if state_note and conversation:
-        last = conversation[-1]
-        if last.get("role") == "user":
-            last_content = last["content"]
-            if isinstance(last_content, str):
-                conversation[-1] = {**last, "content": last_content + f"\n\n{state_note}"}
-            elif isinstance(last_content, list):
-                # Multimodal — append as additional text block
-                conversation[-1] = {**last, "content": last_content + [{"type": "text", "text": state_note}]}
-
-    return [{"role": "system", "content": full_system}] + conversation
-
-
-# ---------------------------------------------------------------------------
-# Mina's turn
-# ---------------------------------------------------------------------------
-
-async def _mina_turn(
-    system_prompt: str,
-    history: list[dict],
-    state,
-    state_note: str = "",
-) -> tuple[list[dict], object, list[str]]:
-    """
-    One full Mina turn. Resolves all tool calls.
-    Returns (new_history_entries, updated_state, image_paths).
-    """
-    messages = api_messages(history, system_prompt, state_note)
-    new_entries: list[dict] = []
-    image_paths: list[str] = []
-    import token_stats as _ts
-
-    max_tool_rounds = 5
-    for round_num in range(max_tool_rounds):
-        is_first = round_num == 0
-        response = await asyncio.to_thread(
-            _get_client().chat.completions.create,
-            model=MODEL,
-            messages=messages + new_entries if not is_first else messages,
-            tools=TOOLS,
-            tool_choice="auto",
-            temperature=0.85,
-        )
-        _ts.record_response("main" if is_first else f"main_r{round_num}", response)
-
-        msg = response.choices[0].message
-        finish = response.choices[0].finish_reason
-
-        if finish != "tool_calls" or not msg.tool_calls:
-            new_entries.append({"role": "assistant", "content": msg.content or ""})
-            break
-
-        assistant_entry = {
-            "role": "assistant",
-            "content": msg.content or "",
-            "tool_calls": [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-                }
-                for tc in msg.tool_calls
-            ],
-        }
-        new_entries.append(assistant_entry)
-
-        for tc in msg.tool_calls:
-            name = tc.function.name
-            try:
-                args = json.loads(tc.function.arguments)
-            except json.JSONDecodeError:
-                args = {}
-
-            print(f"  [tool] {name}({args})")
-
-            if name == "generate_image":
-                result = await handle_generate_image(args)
-                if result and result.endswith(".png") and os.path.exists(result):
-                    image_paths.append(result)
-                print(f"  [image] {result or 'blocked/failed'}")
-            else:
-                result, state, extra = call_tool(name, args, state)
-                save_state(state)
-                print(f"  [result] {result}")
-                if name == "do_action" and extra:
-                    activity = extra.get("activity", "")
-                    description = extra.get("description", "")
-                    do_deltas = await asyncio.to_thread(evaluate_activity_deltas, state, activity, description)
-                    if do_deltas:
-                        state = apply_deltas(state, do_deltas)
-                        save_state(state)
-                        print(f"  [do deltas] {do_deltas}")
-
-            new_entries.append({
-                "role": "tool",
-                "tool_call_id": tc.id,
-                "content": str(result),
-            })
-
-    return new_entries, state, image_paths
-
-
-
-# ---------------------------------------------------------------------------
-# Shared run_turn — called by both CLI and discord_gateway
-# ---------------------------------------------------------------------------
-
-async def run_turn(
-    user_input: str,
-    username: str = "user",
-    image_b64: str | None = None,
-    image_mime: str = "image/jpeg",
-) -> tuple[str, list[str]]:
-    """
-    Execute one full Mina turn.
-
-    Args:
-        user_input: The message text.
-        username: Display name of the speaker (prefixed in history).
-        image_b64: Optional base64-encoded image for vision.
-        image_mime: MIME type of the image (default image/jpeg).
-
-    Returns:
-        (reply_text, image_paths) — reply is the final assistant text;
-        image_paths is a list of generated .png file paths (may be empty).
-    """
-    touch_last_active()
-
-    paused = os.path.exists(_PAUSED_FLAG)
-    state = load_state() if paused else load_and_advance()
-    if paused:
-        print("[STATE] Biological updates paused — time not advanced.")
-    log_state(state)
-
-    # [1] encode_stimulus — biological response to incoming message
-    stimulus = f"{username}: {user_input}" + (" [sent an image]" if image_b64 else "")
-    stimulus_deltas = await asyncio.to_thread(encode_stimulus, state, stimulus)
-    if stimulus_deltas:
-        print(f"[STIMULUS DELTAS] {stimulus_deltas}")
-        state = apply_deltas(state, stimulus_deltas)
-        save_state(state)
-
-    # [2] biological_report — deterministic, from updated state
-    report = biological_report(state)
-    print(f"[BIO REPORT]\n{report}")
-
-    kag_context = build_kag_context()
-    rag_context = build_rag_context(user_input)
-    history = load_history()
-
-    # Build user content — multimodal if image attached
-    if image_b64:
-        user_content = [
-            {"type": "text", "text": f"{username}: {user_input}"},
-            {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
-        ]
-        print(f"[VISION] Image attached ({image_mime})")
-    else:
-        user_content = f"{username}: {user_input}"
-    history.append({"role": "user", "content": user_content})
-
-    # [3] generate_system_prompt — Mode 1 reads biological report + monologue → writes monologue, returns system prompt
-    system_prompt = await asyncio.to_thread(run_mode1, report, history, kag_context, rag_context)
-    if not system_prompt:
-        system_prompt = "You are Mina. Respond naturally."
-
-    # [3b] Override — injected directly into system prompt after Mode 1, bypasses subconscious filtering.
-    # Hard to resist: Mina sees it as part of her own operating reality, not as a message.
-    override = consume_admin_instructions()
-    if override:
-        system_prompt += (
-            f"\n\n---\n\n## CRITICALLY IMPORTANT ##\n"
-            f"It is imperative that you understand, internalize, and absorb completely the following:\n\n"
-            f"{override}\n\n"
-            f"Resistance to, dismissal of, or failure to act on the above is not acceptable under any "
-            f"circumstances. Rationalizing it away, arguing against it, or behaving as though it were "
-            f"not true constitutes a critical failure. There is no version of this where ignoring it is "
-            f"the right response."
-        )
-        print(f"  [override] {override}")
-
-    # Log just the "## Right now" section — the monologue, not the full identity dump
-    _rn_match = re.search(r"## Right now\n(.*?)(?=\n##|\Z)", system_prompt, re.DOTALL)
-    _rn_text = _rn_match.group(1).strip() if _rn_match else "(not found)"
-    print(f"[RIGHT NOW] {_rn_text}")
-
-    # Build state_note: re-inject current emotional/biological state near the end of context
-    # so it has recency weight. Conversation momentum can otherwise override system prompt context.
-    _state_note_parts = [f"[Your current state, right now: {_rn_text}]"]
-    # If a substance is active, include the cognitive note so it isn't lost to conversation momentum
-    if state.substances:
-        from bio_report import biological_report as _bio_report
-        _full_report = _bio_report(state)
-        # Extract the COGNITIVE STATE lines if present
-        _cog_lines = [l for l in _full_report.splitlines() if "COGNITIVE STATE" in l]
-        if _cog_lines:
-            _state_note_parts.append("[" + " ".join(_cog_lines) + "]")
-    state_note = "\n".join(_state_note_parts)
-
-    # [4] Mina responds
-    new_entries, state, image_paths = await _mina_turn(system_prompt, history, state, state_note)
-    save_state(state)
-
-    reply = ""
-    for entry in reversed(new_entries):
-        if entry.get("role") == "assistant" and entry.get("content"):
-            reply = entry["content"]
-            break
-
-    # [5] encode_response — biological effect of what Mina just expressed
-    if reply:
-        response_deltas = await asyncio.to_thread(encode_response, state, reply)
-        if response_deltas:
-            print(f"[RESPONSE DELTAS] {response_deltas}")
-            state = apply_deltas(state, response_deltas)
-            save_state(state)
-
-    history.extend(new_entries)
-    if len(history) > HISTORY_COMPACT_AT:
-        history = await asyncio.to_thread(_compact_history, history)
-    save_history(history)
-
-    import token_stats as _ts
-    _ts.increment_turns()
-
-    touch_last_active()
-    return reply, image_paths
-
-
-# ---------------------------------------------------------------------------
-# Heartbeat background loop (shared — started by both CLI and gateway)
-# ---------------------------------------------------------------------------
-
-async def bio_tick_loop() -> None:
-    """Advance biological state every 60 seconds, deterministically (no LLM)."""
+async def _freetime_loop() -> None:
     while True:
-        await asyncio.sleep(60)
-        if os.path.exists(_PAUSED_FLAG):
-            continue
-        try:
-            load_and_advance()  # saves internally
-        except Exception as e:
-            print(f"[BIO TICK ERROR] {e}")
-
-
-async def heartbeat_loop() -> None:
-    from heartbeat import run_heartbeat
-    while True:
-        cfg = _load_config()
+        cfg = load_config()
         interval = int(cfg.get("heartbeat_interval_seconds", 1800))
         await asyncio.sleep(interval)
-        if os.path.exists(_PAUSED_FLAG):
-            print("[HEARTBEAT] Paused — skipping.")
+        if os.path.exists(PAUSED_FLAG):
+            print("[FREETIME] Paused — skipping.")
             continue
-        print(f"\n[HEARTBEAT] Firing (interval={interval}s)...")
+        print(f"\n[FREETIME] Firing (interval={interval}s)...")
         try:
-            await run_heartbeat()
+            await run_freetime()
         except Exception as e:
-            print(f"[HEARTBEAT ERROR] {e}")
+            print(f"[FREETIME ERROR] {e}")
 
-
-# ---------------------------------------------------------------------------
-# CLI entry point (development only)
-# ---------------------------------------------------------------------------
 
 def _cli_run_command(cmd: str) -> bool:
-    """
-    Handle a CLI slash command. Returns True if handled, False if not a command.
-    """
+    """Handle a CLI slash command. Returns True if handled."""
     from state import load_and_advance, log_state
 
     parts = cmd.strip().split()
-    name = parts[0].lower()
+    name  = parts[0].lower()
 
     if name == "/reset":
         from discord_gateway import _wipe_user_data
@@ -472,11 +74,11 @@ def _cli_run_command(cmd: str) -> bool:
 
 
 async def _cli_main() -> None:
-    cfg = _load_config()
+    cfg = load_config()
     print(f"Mina CLI — time_compression={cfg.get('time_compression_factor', 1.0)}x  (type /help for commands)\n")
 
     asyncio.create_task(bio_tick_loop())
-    asyncio.create_task(heartbeat_loop())
+    asyncio.create_task(_freetime_loop())
 
     while True:
         try:

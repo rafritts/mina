@@ -8,18 +8,16 @@ planning. Present tense, first person, 3–6 sentences.
 
 The biological report encodes how she feels. This encodes what's on her mind.
 
-File: run/monologue.md
+File: run/observations.md
 """
 import os
-
-_PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-_MONOLOGUE_FILE = os.path.join(_PROJECT_ROOT, "run", "monologue.md")
+from config import OBSERVATIONS_FILE
 
 
 def read() -> str:
     """Return the current observations text, or empty string if none exists."""
     try:
-        with open(_MONOLOGUE_FILE) as f:
+        with open(OBSERVATIONS_FILE) as f:
             return f.read().strip()
     except FileNotFoundError:
         return ""
@@ -27,6 +25,6 @@ def read() -> str:
 
 def write(text: str) -> None:
     """Replace the entire observations with new text."""
-    os.makedirs(os.path.dirname(_MONOLOGUE_FILE), exist_ok=True)
-    with open(_MONOLOGUE_FILE, "w") as f:
+    os.makedirs(os.path.dirname(OBSERVATIONS_FILE), exist_ok=True)
+    with open(OBSERVATIONS_FILE, "w") as f:
         f.write(text.strip())

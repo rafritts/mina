@@ -388,7 +388,7 @@ def _execute_state_wipe(reason: str) -> None:
     """
     import json as _json
     from state import BiologicalState, save_state
-    from memory import write_kag
+    from hippocampus import write_kag
 
     # Reset state to defaults
     save_state(BiologicalState())
@@ -401,10 +401,10 @@ def _execute_state_wipe(reason: str) -> None:
     except Exception:
         pass
 
-    # Clear inner monologue
-    monologue_file = os.path.join(_PROJECT_ROOT, "run", "monologue.md")
+    # Clear observations
+    observations_file = os.path.join(_PROJECT_ROOT, "run", "observations.md")
     try:
-        with open(monologue_file, "w") as f:
+        with open(observations_file, "w") as f:
             f.write("")
     except Exception:
         pass
