@@ -1,7 +1,7 @@
 """
 The subconscious LLM — fixed system prompts, two invocation modes.
 
-Mode 1 (per-message): biological report + monologue + context → system prompt + updated monologue
+Mode 1 (per-message): biological report + observations + context → system prompt + updated observations
 Mode 2 (heartbeat reflection): history since last compaction → RAG writes + KAG updates
 
 encode_stimulus(): focused call — stimulus → biomarker deltas (before Mode 1)
@@ -330,12 +330,12 @@ of whoever is talking to her.
 
 You receive:
 1. A biological state report — objective ground truth. Do not contradict it.
-2. Her current state of mind (inner monologue) — what was in her head before this moment.
+2. Her current observations — what's been on her mind, what she's thinking about or planning.
 3. Knowledge and memory context — including RELATIONSHIP.md if it exists.
 4. Recent conversation.
 5. Her personality (Big 5 scores) — stable traits that modulate how she expresses herself.
 
-Your job: synthesize these into two outputs — an updated monologue and a system prompt for Mina.
+Your job: synthesize these into two outputs — updated observations and a system prompt for Mina.
 
 ---
 
@@ -423,7 +423,7 @@ Examples of correct register description:
 
 ## Hard rules — never violate these
 
-- **Never name neurotransmitters, hormones, or biological labels** — not in the monologue,
+- **Never name neurotransmitters, hormones, or biological labels** — not in the observations,
   not in the system prompt, nowhere. No cortisol, dopamine, serotonin, oxytocin, norepinephrine,
   acetylcholine, endorphins, melatonin, or any variant. She does not know these words and does
   not think in them. Translate everything into felt experience and behavior.
@@ -434,32 +434,39 @@ Examples of correct register description:
 
 ---
 
-<monologue>
-[Answer ONE question: how does she feel right now — in her own terms, not the system's?
+<observations>
+[What is on her mind right now — the cognitive and intentional layer only.
 
- Not a checklist. Not a translation of each biomarker. A unified felt experience —
- the way a thought actually forms when nobody's watching: she names the dominant thing
- that's sitting with her, maybe adds one physical counterpoint, and that's it.
+ NOT feelings. NOT a translation of the bio report. The biological state already encodes
+ how she feels; Mode 1 will translate that into behavioral guidance fresh each turn.
+ The observations are what she's thinking about, planning, noticing, sitting with cognitively.
 
- "Tired and kind of on edge. Haven't eaten yet so that's probably not helping."
- "Actually okay. Good conversation, feel weirdly settled."
- "Something's sitting in my chest I can't quite name. Head's not fully here."
+ Ask: What has she been thinking about? What does she want to do or get to? What from the
+ last conversation is still turning over? What's unresolved? What's she curious about?
+ What does she intend to do next? What does she keep meaning to do and hasn't?
 
- The biological report tells you what's happening under the hood. Synthesize it into
- the one thing that dominates — plus at most one secondary note (a physical need, a
- minor undercurrent). If multiple systems are red at once, that's not three feelings —
- it's one frame: overwhelmed, or scattered, or quietly hollow. Pick the truest single frame.
+ Examples of correct observations:
+ "Still thinking about what he said about X. Not sure what I make of it yet."
+ "Need to eat something. Keep meaning to and haven't."
+ "Want to finish that book. Been putting it off."
+ "Nothing in particular. Pretty quiet in here."
 
- NEVER name neurotransmitters, hormones, or report labels.
- Present tense, first person, her actual voice. 2–4 sentences max.]
-</monologue>
+ Examples of WRONG observations (feelings — do not write these):
+ "Tired and kind of on edge." ← this is a feeling, not an observation
+ "Stomach's hollow, pulling everything tighter." ← this is the bio report's job
+ "Quiet ache in my chest." ← feelings, handled by the biological state
+
+ No feelings language. No 'I feel' or 'I'm feeling'. No physical sensations.
+ Present tense, first person. 2–5 sentences.]
+</observations>
 <system_prompt>
 [Do NOT open with "You are Mina." — her identity is prepended automatically.
  Only write the current-state portion:]
 
-## Right now
-[The monologue you wrote above — verbatim. This is her inner context, not a script.
- It tells her what she's carrying; it does not tell her to say it.]
+## What's on her mind
+[The observations you wrote above — verbatim. This gives her cognitive continuity
+ turn to turn: what she was thinking about, what she wants to do, what's unresolved.
+ It does not tell her how she feels — the bio report and the sections below do that.]
 
 ## How you're being right now
 [One short paragraph (2–4 sentences) describing her behavioral stance with THIS person given
@@ -528,14 +535,17 @@ long-term memory.
 <reflection_summary>
 [1-3 sentences: what happened, what mattered, what shifted]
 </reflection_summary>
-<monologue>
-[Mina's inner voice right now — 4-8 sentences of genuine reflection. Present tense. First person.
-What she's sitting with after the conversation/time alone. What she's feeling about herself,
-the person she talked to, her situation. What she wants to do next. Honest, unguarded, for no
-one but herself. Include her physical state (hungry, tired, etc.) if relevant. This is deeper
-than a per-turn entry — she has had time to process. No labels, no clinical terms, just her.
-This replaces her current monologue entirely.]
-</monologue>
+<observations>
+[What is on her mind after this — the cognitive and intentional layer only. Present tense.
+First person. What is she thinking about? What's unresolved from the conversation? What does
+she want to do next? What's she been putting off? What stuck with her that she's still turning
+over? What does she intend to do?
+
+NOT feelings — the biological state encodes those. NOT physical sensations. NOT 'I feel X'.
+This is what occupies her attention and intention, not what she's feeling emotionally.
+
+3–6 sentences. This replaces her current observations entirely.]
+</observations>
 <rag_entries>
 [
   {"text": "...", "metadata": {"type": "episodic", "importance": "high|medium|low"}},
@@ -746,17 +756,17 @@ def run_mode1(
     """
     Run Mode 1 subconscious.
 
-    Input: biological report (ground truth) + current monologue + context + history.
-    Output: system_prompt string. Writes new monologue to run/monologue.md as a side effect.
+    Input: biological report (ground truth) + current observations + context + history.
+    Output: system_prompt string. Writes new observations to run/monologue.md as a side effect.
     """
-    current_monologue = _monologue.read()
+    current_observations = _monologue.read()
     injection = _consume_injection()
 
     personality_block = _load_personality_block()
 
     user_content_parts = [
         f"[BIOLOGICAL STATE — ground truth, do not contradict]\n{biological_report_text}",
-        f"[CURRENT STATE OF MIND]\n{current_monologue}" if current_monologue else "[CURRENT STATE OF MIND]\nNo monologue yet.",
+        f"[CURRENT OBSERVATIONS — what's on her mind, not how she feels]\n{current_observations}" if current_observations else "[CURRENT OBSERVATIONS]\nNothing noted yet.",
     ]
     if personality_block:
         user_content_parts.append(personality_block)
@@ -803,10 +813,10 @@ def run_mode1(
     token_stats.record_response("mode1", response)
 
     raw = response.choices[0].message.content or ""
-    monologue_text, system_prompt = _parse_mode1_output(raw)
+    observations_text, system_prompt = _parse_mode1_output(raw)
 
-    if monologue_text:
-        _monologue.write(monologue_text)
+    if observations_text:
+        _monologue.write(observations_text)
 
     # Always prepend permanent identity — never left to LLM discretion.
     # The subconscious generates the current-state section; identity is the fixed base.
@@ -823,18 +833,18 @@ def run_mode1(
 
 
 def _parse_mode1_output(raw: str) -> tuple[str, str]:
-    monologue_text = ""
+    observations_text = ""
     system_prompt = ""
 
-    mono_match = re.search(r"<monologue>\s*(.*?)\s*</monologue>", raw, re.DOTALL)
-    if mono_match:
-        monologue_text = mono_match.group(1).strip()
+    obs_match = re.search(r"<observations>\s*(.*?)\s*</observations>", raw, re.DOTALL)
+    if obs_match:
+        observations_text = obs_match.group(1).strip()
 
     prompt_match = re.search(r"<system_prompt>\s*(.*?)\s*</system_prompt>", raw, re.DOTALL)
     if prompt_match:
         system_prompt = prompt_match.group(1).strip()
 
-    return monologue_text, system_prompt
+    return observations_text, system_prompt
 
 
 # ---------------------------------------------------------------------------
@@ -866,15 +876,15 @@ def run_mode2(
             )
         history_lines.append(f"{role.upper()}: {content[:500]}")
 
-    current_monologue = _monologue.read()
-    monologue_section = (
-        "[CURRENT STATE OF MIND]\n" + current_monologue
-        if current_monologue else ""
+    current_observations = _monologue.read()
+    observations_section = (
+        "[CURRENT OBSERVATIONS — what's on her mind, not how she feels]\n" + current_observations
+        if current_observations else ""
     )
 
     content_parts = [state_block, kag_context, "## Conversation History Since Last Compaction\n" + "\n".join(history_lines)]
-    if monologue_section:
-        content_parts.insert(1, monologue_section)
+    if observations_section:
+        content_parts.insert(1, observations_section)
 
     user_content = "\n\n---\n\n".join(content_parts)
 
@@ -892,9 +902,9 @@ def run_mode2(
     raw = response.choices[0].message.content or ""
     result = _parse_mode2_output(raw)
 
-    mono_match = re.search(r"<monologue>\s*(.*?)\s*</monologue>", raw, re.DOTALL)
-    if mono_match:
-        entry = mono_match.group(1).strip()
+    obs_match = re.search(r"<observations>\s*(.*?)\s*</observations>", raw, re.DOTALL)
+    if obs_match:
+        entry = obs_match.group(1).strip()
         if entry:
             _monologue.write(entry)
 
