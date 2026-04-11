@@ -20,6 +20,7 @@ from openai import OpenAI
 
 from config import HISTORY_FILE, PAUSED_FLAG, PROJECT_ROOT, load_config
 from client import get_client, MODEL
+from cortex import apply_ts_label
 from log import log as _log_raw
 from decoder import biological_report, build_system_prompt, needs_summary
 from encoder import encode_stimulus, encode_response, evaluate_activity_deltas
@@ -131,12 +132,13 @@ async def _run_mina_free_time(
     full_system = system_prompt + _FREETIME_SUFFIX
 
     # Only pass user/assistant/tool messages — strip internal system markers
+    # apply_ts_label injects relative-time prefixes so Mina knows how old messages are
     messages = [{"role": "system", "content": full_system}]
     for msg in history[-10:]:
         role = msg.get("role", "")
         if role == "system":
             continue
-        messages.append(msg)
+        messages.append(apply_ts_label(msg))
 
     new_entries = [{"role": "system", "content": "[FREETIME]"}]
     pending_do = {}
@@ -151,7 +153,7 @@ async def _run_mina_free_time(
     )
 
     msg = response.choices[0].message
-    assistant_entry = {"role": "assistant", "content": msg.content or ""}
+    assistant_entry = {"role": "assistant", "content": msg.content or "", "ts": time.time()}
 
     if msg.tool_calls:
         assistant_entry["tool_calls"] = [
@@ -196,7 +198,7 @@ async def _run_mina_free_time(
             temperature=0.9,
         )
         follow_msg = follow_response.choices[0].message
-        new_entries.append({"role": "assistant", "content": follow_msg.content or ""})
+        new_entries.append({"role": "assistant", "content": follow_msg.content or "", "ts": time.time()})
 
     else:
         new_entries.append(assistant_entry)

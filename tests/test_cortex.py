@@ -2,6 +2,7 @@
 import json
 import os
 import sys
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,7 +11,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from cortex import (
     api_messages,
+    apply_ts_label,
     _compact_history,
+    _rel_time,
     load_history,
     save_history,
     HISTORY_MAX,
@@ -19,8 +22,73 @@ from cortex import (
 
 
 # ---------------------------------------------------------------------------
+# _rel_time
+# ---------------------------------------------------------------------------
+
+def test_rel_time_just_now():
+    assert _rel_time(time.time() - 30) == "just now"
+
+def test_rel_time_minutes():
+    assert _rel_time(time.time() - 600) == "10m ago"
+
+def test_rel_time_hours():
+    assert _rel_time(time.time() - 3 * 3600) == "3h ago"
+
+def test_rel_time_days():
+    assert _rel_time(time.time() - 2 * 86400) == "2d ago"
+
+
+# ---------------------------------------------------------------------------
+# apply_ts_label
+# ---------------------------------------------------------------------------
+
+def test_apply_ts_label_strips_ts_field():
+    msg = {"role": "user", "content": "hello", "ts": time.time() - 10}
+    result = apply_ts_label(msg)
+    assert "ts" not in result
+
+def test_apply_ts_label_prefixes_string_content():
+    msg = {"role": "user", "content": "hello", "ts": time.time() - 600}
+    result = apply_ts_label(msg)
+    assert result["content"].startswith("[10m ago] hello")
+
+def test_apply_ts_label_no_ts_returns_clean_copy():
+    msg = {"role": "user", "content": "hello"}
+    result = apply_ts_label(msg)
+    assert result["content"] == "hello"
+    assert "ts" not in result
+
+def test_apply_ts_label_multimodal_prefixes_first_text_block():
+    msg = {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "look"},
+            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,abc"}},
+        ],
+        "ts": time.time() - 600,
+    }
+    result = apply_ts_label(msg)
+    content = result["content"]
+    assert isinstance(content, list)
+    assert content[0]["text"].startswith("[10m ago] look")
+    # image block untouched
+    assert content[1]["type"] == "image_url"
+
+
+# ---------------------------------------------------------------------------
 # api_messages
 # ---------------------------------------------------------------------------
+
+def test_api_messages_injects_relative_time_for_timestamped_messages():
+    history = [
+        {"role": "user", "content": "old message", "ts": time.time() - 4 * 3600},
+        {"role": "assistant", "content": "old reply", "ts": time.time() - 4 * 3600},
+    ]
+    result = api_messages(history, "prompt")
+    user_msgs = [m for m in result if m["role"] == "user"]
+    assert user_msgs[0]["content"].startswith("[4h ago]")
+    assert "ts" not in user_msgs[0]
+
 
 def test_api_messages_places_single_system_message_first():
     history = [

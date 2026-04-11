@@ -30,6 +30,57 @@ HISTORY_COMPACT_AT = 22
 
 
 # ---------------------------------------------------------------------------
+# Timestamp helpers
+# ---------------------------------------------------------------------------
+
+def _rel_time(ts: float) -> str:
+    """Format a Unix timestamp as a human-readable relative label."""
+    delta = time.time() - ts
+    if delta < 120:
+        return "just now"
+    if delta < 3600:
+        return f"{int(delta / 60)}m ago"
+    if delta < 86400:
+        return f"{int(delta / 3600)}h ago"
+    days = int(delta / 86400)
+    if days < 7:
+        return f"{days}d ago"
+    return time.strftime("%-d %b", time.localtime(ts))
+
+
+def apply_ts_label(msg: dict) -> dict:
+    """
+    Return a copy of msg with the 'ts' field stripped and a relative-time
+    prefix injected into the content so the LLM can see message age.
+
+    Handles both string content and multimodal (list) content.
+    Messages without 'ts' are returned clean (ts stripped if somehow present).
+    """
+    ts = msg.get("ts")
+    base = {k: v for k, v in msg.items() if k != "ts"}
+
+    if ts is None:
+        return base
+
+    label = f"[{_rel_time(ts)}] "
+    content = base.get("content", "")
+
+    if isinstance(content, str):
+        base["content"] = label + content
+    elif isinstance(content, list):
+        patched = list(content)
+        for i, block in enumerate(patched):
+            if isinstance(block, dict) and block.get("type") == "text":
+                patched[i] = {**block, "text": label + block["text"]}
+                break
+        else:
+            patched = [{"type": "text", "text": label}] + patched
+        base["content"] = patched
+
+    return base
+
+
+# ---------------------------------------------------------------------------
 # History management
 # ---------------------------------------------------------------------------
 
@@ -68,7 +119,9 @@ def _compact_history(history: list[dict]) -> list[dict]:
         content = m.get("content", "")
         if isinstance(content, list):
             content = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
-        lines.append(f"{role.upper()}: {content[:400]}")
+        ts = m.get("ts")
+        time_prefix = f"[{_rel_time(ts)}] " if ts else ""
+        lines.append(f"{time_prefix}{role.upper()}: {content[:400]}")
 
     try:
         response = get_client().chat.completions.create(
@@ -133,7 +186,7 @@ def api_messages(history: list[dict], system_prompt: str, state_note: str = "") 
             if isinstance(content, str) and content.startswith("[COMPACT]"):
                 compact_parts.append(content[len("[COMPACT]\n"):])
             continue
-        conversation.append(msg)
+        conversation.append(apply_ts_label(msg))
 
     full_system = system_prompt
     if compact_parts:
@@ -187,12 +240,13 @@ async def _mina_turn(
         finish = response.choices[0].finish_reason
 
         if finish != "tool_calls" or not msg.tool_calls:
-            new_entries.append({"role": "assistant", "content": msg.content or ""})
+            new_entries.append({"role": "assistant", "content": msg.content or "", "ts": time.time()})
             break
 
         assistant_entry = {
             "role": "assistant",
             "content": msg.content or "",
+            "ts": time.time(),
             "tool_calls": [
                 {
                     "id": tc.id,
@@ -298,7 +352,7 @@ async def run_turn(
         log("VISION", f"Image attached ({image_mime})")
     else:
         user_content = f"{username}: {user_input}"
-    history.append({"role": "user", "content": user_content})
+    history.append({"role": "user", "content": user_content, "ts": time.time()})
 
     # [3] build_system_prompt — decoder reads biological report + observations → returns system prompt
     system_prompt = await asyncio.to_thread(
