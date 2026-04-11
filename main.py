@@ -190,83 +190,74 @@ async def _mina_turn(
     messages = api_messages(history, system_prompt, state_note)
     new_entries: list[dict] = []
     image_paths: list[str] = []
-
-    response = await asyncio.to_thread(
-        _get_client().chat.completions.create,
-        model=MODEL,
-        messages=messages,
-        tools=TOOLS,
-        tool_choice="auto",
-        temperature=0.85,
-    )
     import token_stats as _ts
-    _ts.record_response("main", response)
 
-    msg = response.choices[0].message
-    finish = response.choices[0].finish_reason
+    max_tool_rounds = 5
+    for round_num in range(max_tool_rounds):
+        is_first = round_num == 0
+        response = await asyncio.to_thread(
+            _get_client().chat.completions.create,
+            model=MODEL,
+            messages=messages + new_entries if not is_first else messages,
+            tools=TOOLS,
+            tool_choice="auto",
+            temperature=0.85,
+        )
+        _ts.record_response("main" if is_first else f"main_r{round_num}", response)
 
-    if finish != "tool_calls" or not msg.tool_calls:
-        new_entries.append({"role": "assistant", "content": msg.content or ""})
-        return new_entries, state, image_paths
+        msg = response.choices[0].message
+        finish = response.choices[0].finish_reason
 
-    assistant_entry = {
-        "role": "assistant",
-        "content": msg.content or "",
-        "tool_calls": [
-            {
-                "id": tc.id,
-                "type": "function",
-                "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-            }
-            for tc in msg.tool_calls
-        ],
-    }
-    new_entries.append(assistant_entry)
+        if finish != "tool_calls" or not msg.tool_calls:
+            new_entries.append({"role": "assistant", "content": msg.content or ""})
+            break
 
-    for tc in msg.tool_calls:
-        name = tc.function.name
-        try:
-            args = json.loads(tc.function.arguments)
-        except json.JSONDecodeError:
-            args = {}
+        assistant_entry = {
+            "role": "assistant",
+            "content": msg.content or "",
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                }
+                for tc in msg.tool_calls
+            ],
+        }
+        new_entries.append(assistant_entry)
 
-        print(f"  [tool] {name}({args})")
+        for tc in msg.tool_calls:
+            name = tc.function.name
+            try:
+                args = json.loads(tc.function.arguments)
+            except json.JSONDecodeError:
+                args = {}
 
-        if name == "generate_image":
-            result = await handle_generate_image(args)
-            if result and result.endswith(".png") and os.path.exists(result):
-                image_paths.append(result)
-            print(f"  [image] {result or 'blocked/failed'}")
-        else:
-            result, state, extra = call_tool(name, args, state)
-            save_state(state)
-            print(f"  [result] {result}")
-            if name == "do" and extra:
-                activity = extra.get("activity", "")
-                description = extra.get("description", "")
-                do_deltas = await asyncio.to_thread(evaluate_activity_deltas, state, activity, description)
-                if do_deltas:
-                    state = apply_deltas(state, do_deltas)
-                    save_state(state)
-                    print(f"  [do deltas] {do_deltas}")
+            print(f"  [tool] {name}({args})")
 
-        new_entries.append({
-            "role": "tool",
-            "tool_call_id": tc.id,
-            "content": str(result),
-        })
+            if name == "generate_image":
+                result = await handle_generate_image(args)
+                if result and result.endswith(".png") and os.path.exists(result):
+                    image_paths.append(result)
+                print(f"  [image] {result or 'blocked/failed'}")
+            else:
+                result, state, extra = call_tool(name, args, state)
+                save_state(state)
+                print(f"  [result] {result}")
+                if name == "do" and extra:
+                    activity = extra.get("activity", "")
+                    description = extra.get("description", "")
+                    do_deltas = await asyncio.to_thread(evaluate_activity_deltas, state, activity, description)
+                    if do_deltas:
+                        state = apply_deltas(state, do_deltas)
+                        save_state(state)
+                        print(f"  [do deltas] {do_deltas}")
 
-    follow_messages = api_messages(history, system_prompt) + new_entries
-    follow_response = await asyncio.to_thread(
-        _get_client().chat.completions.create,
-        model=MODEL,
-        messages=follow_messages,
-        temperature=0.85,
-    )
-    import token_stats as _ts
-    _ts.record_response("main_follow", follow_response)
-    follow_msg = follow_response.choices[0].message
-    new_entries.append({"role": "assistant", "content": follow_msg.content or ""})
+            new_entries.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": str(result),
+            })
 
     return new_entries, state, image_paths
 
