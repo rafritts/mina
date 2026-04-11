@@ -137,20 +137,21 @@ REGISTRY: dict[str, ChemicalProfile] = {
         resting_high=700.0,
         critical_low=20.0,
         critical_high=1000.0,
-        display_min=50.0,
-        display_max=900.0,
+        display_min=0.0,
+        display_max=800.0,
         # No saturation ceiling — cortisol is reactive; the system should allow high spikes
         interactions=[
-            Interaction("serotonin", "above", 550.0, -0.8,
+            Interaction("serotonin", "above", 550.0, -0.5,
                         "Chronic stress depletes serotonin baseline"),
-            Interaction("dopamine",  "above", 550.0, -2.0,
+            Interaction("dopamine",  "above", 550.0, -1.5,
                         "HPA axis suppresses dopamine reward system"),
-            Interaction("oxytocin",  "above", 550.0, -0.4,
+            Interaction("oxytocin",  "above", 550.0, -0.2,
                         "Sustained stress erodes bonding capacity"),
         ],
         labels=[
-            (100.0,  "DEPLETED",     "Pathologically low. Fatigue, inability to respond."),
-            (380.0,  "NORMAL",       "Healthy range. Full circadian variation falls here. Stable."),
+            (25.0,   "CRASHED",      "Adrenal crisis territory. No stress response possible."),
+            (80.0,   "DEPLETED",     "Suppressed below trough. Chronic fatigue, flat affect."),
+            (380.0,  "NORMAL",       "Healthy range. Includes full circadian variation."),
             (520.0,  "ELEVATED",     "Decision-making beginning to narrow. Slightly defensive."),
             (650.0,  "HIGH STRESS",  "Fight-or-flight activating. Emotional regulation costs."),
             (760.0,  "ACUTE STRESS", "Survival framing. Hard to think past immediate threat."),
@@ -223,7 +224,7 @@ REGISTRY: dict[str, ChemicalProfile] = {
         soft_ceiling=40.0,
         hard_ceiling=55.0,    # serotonin syndrome territory (SSRI + REMOVED combo)
         interactions=[
-            Interaction("cortisol", "above", 32.0, -25.0,
+            Interaction("cortisol", "above", 32.0, -4.0,
                         "Good serotonin dampens HPA axis reactivity"),
         ],
         labels=[
@@ -250,7 +251,7 @@ REGISTRY: dict[str, ChemicalProfile] = {
         soft_ceiling=55.0,
         hard_ceiling=75.0,
         interactions=[
-            Interaction("cortisol", "above", 8.0, -40.0,
+            Interaction("cortisol", "above", 8.0, -6.0,
                         "Social bonding suppresses HPA axis"),
         ],
         labels=[
@@ -278,7 +279,7 @@ REGISTRY: dict[str, ChemicalProfile] = {
         soft_ceiling=60.0,
         hard_ceiling=120.0,       # hard exercise/laughter ceiling without substances
         interactions=[
-            Interaction("cortisol", "above", 70.0, -80.0,
+            Interaction("cortisol", "above", 70.0, -12.0,
                         "Endorphin flood actively suppresses cortisol (runner's high window)"),
         ],
         labels=[

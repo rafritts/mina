@@ -455,9 +455,15 @@ def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalSt
             )
             if meets:
                 target_val = s.chemicals.get(interaction.target, 0.0)
+                new_val = target_val + interaction.rate_per_hour * sim_hours
+                # Protective floor: suppressive interactions can't push below critical_low
+                if interaction.rate_per_hour < 0:
+                    target_profile = REGISTRY.get(interaction.target)
+                    if target_profile and target_profile.critical_low > 0:
+                        new_val = max(target_profile.critical_low, new_val)
                 s.chemicals[interaction.target] = clamp_chemical(
                     interaction.target,
-                    target_val + interaction.rate_per_hour * sim_hours
+                    new_val
                 )
 
     # Additional cross-effects not in REGISTRY (sleep dep, glucose starvation)
