@@ -190,12 +190,16 @@ def _apply_personality_scaling(deltas: dict, personality: dict) -> dict:
 def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, bool]:
     """
     Plain completion returning a delta dict + event_override flag.
+    On JSON parse failure, retries once with the bad output and error appended.
     Falls back to ({}, False) on any error — never crashes a turn.
     """
-    try:
+    from log import log
+    subtag = label.replace("encode_", "").upper()
+
+    def _attempt(msgs: list[dict]) -> tuple[dict, bool]:
         response = get_client().chat.completions.create(
             model=MODEL,
-            messages=messages,
+            messages=msgs,
             temperature=0.3,
         )
         import token_stats
@@ -207,8 +211,6 @@ def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, 
         reasoning = parsed.pop("reasoning", "")
         no_external = bool(parsed.pop("no_external_deltas", False))
         reason_str = f" — {reasoning}" if reasoning else ""
-        from log import log
-        subtag = label.replace("encode_", "").upper()
         if no_external:
             log(f"ENCODER/{subtag}", f"no_external_deltas{reason_str}")
             return {}, False
@@ -218,9 +220,26 @@ def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, 
         delta_str = ", ".join(f"{k}: {v:+.1f}" for k, v in deltas.items())
         log(f"ENCODER/{subtag}", f"{override_str}{delta_str or '(no deltas)'}{reason_str}".strip())
         return deltas, event_override
+
+    try:
+        return _attempt(messages)
+    except json.JSONDecodeError as e:
+        # Retry once: show the LLM its bad output and ask it to fix it
+        log(f"ENCODER/{subtag}/RETRY", f"JSON parse error: {e} — retrying")
+        retry_messages = messages + [
+            {"role": "assistant", "content": "<previous response had invalid JSON>"},
+            {"role": "user", "content": (
+                f"Your previous response could not be parsed as JSON. "
+                f"Error: {e}\n\n"
+                f"Respond with valid JSON only, no prose, no markdown fences."
+            )},
+        ]
+        try:
+            return _attempt(retry_messages)
+        except Exception as e2:
+            log(f"ENCODER/{subtag}/ERROR", str(e2))
     except Exception as e:
-        from log import log
-        log(f"ENCODER/{label.replace('encode_', '').upper()}/ERROR", str(e))
+        log(f"ENCODER/{subtag}/ERROR", str(e))
     return {}, False
 
 
