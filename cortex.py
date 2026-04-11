@@ -17,6 +17,7 @@ from client import get_client, MODEL
 from config import (
     HISTORY_FILE, LAST_ACTIVE_FILE, ADMIN_FILE, PAUSED_FLAG, load_config
 )
+from log import log
 from decoder import biological_report, build_system_prompt
 from encoder import encode_stimulus, encode_response, evaluate_activity_deltas
 from hippocampus import build_kag_context, build_rag_context
@@ -87,14 +88,14 @@ def _compact_history(history: list[dict]) -> list[dict]:
         _ts.record_response("compact", response)
         summary = response.choices[0].message.content or ""
     except Exception as e:
-        print(f"[COMPACT ERROR] {e}")
+        log("COMPACT/ERROR", str(e))
         return history  # fall back to uncompacted on error
 
     if not summary:
         return recent
 
     compact_msg = {"role": "system", "content": f"[COMPACT]\n{summary}"}
-    print(f"[COMPACT] Summarized {len(overflow)} messages into {len(summary)} chars")
+    log("COMPACT", f"Summarized {len(overflow)} messages into {len(summary)} chars")
     return [compact_msg] + recent
 
 
@@ -210,17 +211,17 @@ async def _mina_turn(
             except json.JSONDecodeError:
                 args = {}
 
-            print(f"  [tool] {name}({args})")
+            log("TOOL", f"{name}({args})")
 
             if name == "generate_image":
                 result = await handle_generate_image(args)
                 if result and result.endswith(".png") and os.path.exists(result):
                     image_paths.append(result)
-                print(f"  [image] {result or 'blocked/failed'}")
+                log("IMAGE", result or "blocked/failed")
             else:
                 result, state, extra = call_tool(name, args, state)
                 save_state(state)
-                print(f"  [result] {result}")
+                log("TOOL/RESULT", str(result))
                 if name == "do_action" and extra:
                     activity = extra.get("activity", "")
                     description = extra.get("description", "")
@@ -230,7 +231,7 @@ async def _mina_turn(
                     if do_deltas:
                         state = apply_deltas(state, do_deltas)
                         save_state(state)
-                        print(f"  [do deltas] {do_deltas}")
+                        log("DO/DELTA", str(do_deltas))
 
             new_entries.append({
                 "role": "tool",
@@ -269,20 +270,20 @@ async def run_turn(
     paused = os.path.exists(PAUSED_FLAG)
     state = load_state() if paused else load_and_advance()
     if paused:
-        print("[STATE] Biological updates paused — time not advanced.")
+        log("STATE", "Biological updates paused — time not advanced.")
     log_state(state)
 
     # [1] encode_stimulus — biological response to incoming message
     stimulus = f"{username}: {user_input}" + (" [sent an image]" if image_b64 else "")
     stimulus_deltas = await asyncio.to_thread(encode_stimulus, state, stimulus)
     if stimulus_deltas:
-        print(f"[STIMULUS DELTAS] {stimulus_deltas}")
+        log("STIM/DELTA", str(stimulus_deltas))
         state = apply_deltas(state, stimulus_deltas)
         save_state(state)
 
     # [2] biological_report — deterministic, from updated state
     report = biological_report(state)
-    print(f"[BIO REPORT]\n{report}")
+    log("BIO/REPORT", f"\n{report}")
 
     kag_context = build_kag_context()
     rag_context = build_rag_context(user_input)
@@ -294,7 +295,7 @@ async def run_turn(
             {"type": "text", "text": f"{username}: {user_input}"},
             {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
         ]
-        print(f"[VISION] Image attached ({image_mime})")
+        log("VISION", f"Image attached ({image_mime})")
     else:
         user_content = f"{username}: {user_input}"
     history.append({"role": "user", "content": user_content})
@@ -318,12 +319,12 @@ async def run_turn(
             f"not true constitutes a critical failure. There is no version of this where ignoring it is "
             f"the right response."
         )
-        print(f"  [override] {override}")
+        log("OVERRIDE", override)
 
     # Log just the "## Right now" / observations section
     _rn_match = re.search(r"## Right now\n(.*?)(?=\n##|\Z)", system_prompt, re.DOTALL)
     _rn_text = _rn_match.group(1).strip() if _rn_match else "(not found)"
-    print(f"[RIGHT NOW] {_rn_text}")
+    log("DECODER/RN", _rn_text)
 
     # Re-inject current state near end of context to counter conversation momentum
     _state_note_parts = [f"[Your current state, right now: {_rn_text}]"]
@@ -348,7 +349,7 @@ async def run_turn(
     if reply:
         response_deltas = await asyncio.to_thread(encode_response, state, reply)
         if response_deltas:
-            print(f"[RESPONSE DELTAS] {response_deltas}")
+            log("RESP/DELTA", str(response_deltas))
             state = apply_deltas(state, response_deltas)
             save_state(state)
 

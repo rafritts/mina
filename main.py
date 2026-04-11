@@ -12,6 +12,7 @@ from config import PAUSED_FLAG, load_config
 from cortex import run_turn
 from heartbeat import bio_tick_loop
 from freetime import run_freetime
+from log import log
 
 
 async def _freetime_loop() -> None:
@@ -20,13 +21,13 @@ async def _freetime_loop() -> None:
         interval = int(cfg.get("heartbeat_interval_seconds", 1800))
         await asyncio.sleep(interval)
         if os.path.exists(PAUSED_FLAG):
-            print("[FREETIME] Paused — skipping.")
+            log("FREETIME", "Paused — skipping.")
             continue
-        print(f"\n[FREETIME] Firing (interval={interval}s)...")
+        log("FREETIME", f"Firing (interval={interval}s)...")
         try:
             await run_freetime()
         except Exception as e:
-            print(f"[FREETIME ERROR] {e}")
+            log("FREETIME/ERROR", str(e))
 
 
 def _cli_run_command(cmd: str) -> bool:
@@ -98,7 +99,7 @@ async def _cli_main() -> None:
         reply, image_paths = await run_turn(user_input, username="user")
         print(f"\nMina: {reply}\n")
         for path in image_paths:
-            print(f"  [image] {path}")
+            log("IMAGE", path)
 
 
 if __name__ == "__main__":

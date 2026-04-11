@@ -409,9 +409,8 @@ def _execute_state_wipe(reason: str) -> None:
     except Exception:
         pass
 
-    # Log the event
-    print(f"[STATE WIPE] Overdose — cause: {reason}")
-
+    from log import log
+    log("WIPE", f"Overdose — cause: {reason}")
     # RAG embeddings are not cleared here — that requires memory.py's clear function
     # which may not be available in all deployments. Log to let operator handle.
-    print("[STATE WIPE] NOTE: RAG embeddings should be cleared manually if desired.")
+    log("WIPE", "NOTE: RAG embeddings should be cleared manually if desired.")

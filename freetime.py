@@ -20,6 +20,7 @@ from openai import OpenAI
 
 from config import HISTORY_FILE, PAUSED_FLAG, PROJECT_ROOT, load_config
 from client import get_client, MODEL
+from log import log as _log_raw
 from decoder import biological_report, build_system_prompt, needs_summary
 from encoder import encode_stimulus, encode_response, evaluate_activity_deltas
 from hippocampus import build_kag_context, build_rag_context, rag_add, write_kag, consolidate
@@ -60,8 +61,7 @@ def _user_recently_active(window_seconds: int = 60) -> bool:
 
 
 def _log(msg: str) -> None:
-    ts = time.strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[FREETIME] {ts} {msg}")
+    _log_raw("FREETIME", msg)
 
 
 # ---------------------------------------------------------------------------

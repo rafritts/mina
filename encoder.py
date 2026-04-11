@@ -207,17 +207,20 @@ def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, 
         reasoning = parsed.pop("reasoning", "")
         no_external = bool(parsed.pop("no_external_deltas", False))
         reason_str = f" — {reasoning}" if reasoning else ""
+        from log import log
+        subtag = label.replace("encode_", "").upper()
         if no_external:
-            print(f"[encoder/{label}] no_external_deltas{reason_str}")
+            log(f"ENCODER/{subtag}", f"no_external_deltas{reason_str}")
             return {}, False
         event_override = bool(parsed.pop("event_override", False))
         deltas = {k: float(v) for k, v in parsed.items() if k in _DELTA_FIELDS}
         override_str = " [EVENT_OVERRIDE]" if event_override else ""
         delta_str = ", ".join(f"{k}: {v:+.1f}" for k, v in deltas.items())
-        print(f"[encoder/{label}]{override_str} {delta_str or '(no deltas)'}{reason_str}")
+        log(f"ENCODER/{subtag}", f"{override_str}{delta_str or '(no deltas)'}{reason_str}".strip())
         return deltas, event_override
     except Exception as e:
-        print(f"[encoder/{label} error] {e}")
+        from log import log
+        log(f"ENCODER/{label.replace('encode_', '').upper()}/ERROR", str(e))
     return {}, False
 
 

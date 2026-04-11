@@ -26,6 +26,7 @@ from PIL import Image
 from cortex import run_turn, load_history, save_history, touch_last_active, HISTORY_MAX
 from heartbeat import bio_tick_loop
 from freetime import run_freetime as _run_freetime
+from log import log
 
 # Suppress noisy-but-harmless WebSocket transport errors on reconnect
 class _SuppressResetError(logging.Filter):
@@ -200,13 +201,13 @@ async def _gateway_freetime_loop() -> None:
         interval = int(cfg.get("heartbeat_interval_seconds", 1800))
         await asyncio.sleep(interval)
         if os.path.exists(PAUSED_FLAG):
-            print("[FREETIME] Paused — skipping.")
+            log("FREETIME", "Paused — skipping.")
             continue
-        print(f"\n[FREETIME] Firing (interval={interval}s)...")
+        log("FREETIME", f"Firing (interval={interval}s)...")
         try:
             await _run_freetime()
         except Exception as e:
-            print(f"[FREETIME ERROR] {e}")
+            log("FREETIME/ERROR", str(e))
 
 
 async def _presence_loop() -> None:
@@ -217,7 +218,7 @@ async def _presence_loop() -> None:
             from state import load_state as _load_state
             await _update_presence(_load_state())
         except Exception as e:
-            print(f"[PRESENCE] Update error: {e}")
+            log("PRESENCE/ERROR", str(e))
 
 
 # ---------------------------------------------------------------------------
@@ -307,7 +308,7 @@ async def _outbox_watcher() -> None:
                     pass
 
         if channel is None:
-            print("[OUTBOX] No channel available — re-queuing messages.")
+            log("OUTBOX", "No channel available — re-queuing messages.")
             with open(_OUTBOX_FILE, "w") as f:
                 f.write("\n".join(lines) + "\n")
             continue
@@ -319,9 +320,9 @@ async def _outbox_watcher() -> None:
                 if content:
                     for chunk in _chunk_text(content):
                         await channel.send(chunk)
-                    print(f"[OUTBOX] Delivered: {content[:80]}")
+                    log("OUTBOX", f"Delivered: {content[:80]}")
             except (json.JSONDecodeError, discord.DiscordException) as e:
-                print(f"[OUTBOX ERROR] {e}")
+                log("OUTBOX/ERROR", str(e))
 
 
 # ---------------------------------------------------------------------------
@@ -373,9 +374,9 @@ async def _run_turn(channel: discord.abc.Messageable, messages: list[discord.Mes
                                 image_b64, image_mime = _normalise_image(raw, content_type)
                                 out_kb = len(base64.b64decode(image_b64)) // 1024
                                 over = "⚠ OVER LIMIT" if out_kb > 300 else "ok"
-                                print(f"[VISION] {att.filename} {len(raw)//1024}KB → {out_kb}KB ({over})")
+                                log("VISION", f"{att.filename} {len(raw)//1024}KB → {out_kb}KB ({over})")
                 except Exception as e:
-                    print(f"[VISION ERROR] {att.filename}: {e}")
+                    log("VISION/ERROR", f"{att.filename}: {e}")
                 break
         if image_b64:
             break
@@ -389,7 +390,7 @@ async def _run_turn(channel: discord.abc.Messageable, messages: list[discord.Mes
     except asyncio.CancelledError:
         raise
     except Exception as e:
-        print(f"[GATEWAY ERROR] turn failed: {e}")
+        log("GATEWAY/ERROR", f"turn failed: {e}")
         return
 
     await _deliver(channel, reply, image_paths)
@@ -422,7 +423,7 @@ async def _debounce_fire(channel: discord.abc.Messageable, channel_id: int) -> N
             pass
         # Prepend rescued messages so they aren't lost
         if rescued:
-            print(f"  [gateway] rescued {len(rescued)} in-flight message(s) for channel {channel_id}")
+            log("GATEWAY", f"Rescued {len(rescued)} in-flight message(s) for channel {channel_id}")
             messages = rescued + messages
 
     _inflight_messages[channel_id] = messages
@@ -498,7 +499,7 @@ async def on_ready():
     cfg = _load_config()
     allowlist = [c.lstrip("#") for c in cfg.get("discord_channel_allowlist", [])]
 
-    print(f"[GATEWAY] Logged in as {client.user}")
+    log("GATEWAY", f"Logged in as {client.user}")
 
     # Seed history from Discord for all accessible channels
     seeded_total = 0
@@ -509,14 +510,14 @@ async def on_ready():
             try:
                 n = await _seed_channel(channel)
                 if n:
-                    print(f"[GATEWAY] Seeded {n} messages from #{channel.name}")
+                    log("GATEWAY", f"Seeded {n} messages from #{channel.name}")
                     seeded_total += n
             except discord.Forbidden:
                 pass
 
     # Sync slash commands
     await tree.sync()
-    print("[GATEWAY] Slash commands synced.")
+    log("GATEWAY", "Slash commands synced.")
 
     # Set initial presence
     await _update_presence(load_state())
@@ -526,7 +527,7 @@ async def on_ready():
     asyncio.create_task(_gateway_freetime_loop())
     asyncio.create_task(_outbox_watcher())
     asyncio.create_task(_presence_loop())
-    print("[GATEWAY] Bio tick, heartbeat, outbox watcher, and presence loop started.")
+    log("GATEWAY", "Bio tick, freetime, outbox watcher, and presence loop started.")
 
     # Write ready file (supervisor/CLI uses this to detect startup)
     os.makedirs(_RUN_DIR, exist_ok=True)
@@ -545,7 +546,7 @@ async def on_ready():
                     json={"content": "✅ Back online."},
                 )
         except Exception as e:
-            print(f"[GATEWAY] Failed to update restart message: {e}")
+            log("GATEWAY/ERROR", f"Failed to update restart message: {e}")
         finally:
             try:
                 os.remove(_RESTART_PENDING_FILE)
@@ -561,7 +562,7 @@ async def on_ready():
             if ch:
                 asyncio.create_task(_run_catchup_turn(ch))
 
-    print("[GATEWAY] Ready.")
+    log("GATEWAY", "Ready.")
 
 
 async def _run_catchup_turn(channel: discord.abc.Messageable) -> None:
@@ -574,7 +575,7 @@ async def _run_catchup_turn(channel: discord.abc.Messageable) -> None:
                 username="system",
             )
         except Exception as e:
-            print(f"[GATEWAY] Catchup turn error: {e}")
+            log("GATEWAY/ERROR", f"Catchup turn: {e}")
             return
     await _deliver(channel, reply, image_paths)
 

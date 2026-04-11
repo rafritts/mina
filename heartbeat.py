@@ -14,6 +14,7 @@ import asyncio
 import os
 
 from config import PAUSED_FLAG
+from log import log
 from state import load_and_advance
 
 
@@ -26,10 +27,10 @@ async def bio_tick_loop() -> None:
         try:
             load_and_advance()  # advances time and saves internally
         except Exception as e:
-            print(f"[BIO TICK ERROR] {e}")
+            log("BIO/TICK/ERROR", str(e))
 
 
 if __name__ == "__main__":
     # One-shot tick for testing
     state = load_and_advance()
-    print(f"[BIO TICK] Advanced state. sleeping={state.sleeping}")
+    log("BIO/TICK", f"Advanced state. sleeping={state.sleeping}")

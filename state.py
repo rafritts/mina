@@ -177,7 +177,8 @@ def _migrate_v1_to_v2(old: dict) -> dict:
         else:
             chemicals[name] = _CHEMICAL_DEFAULTS.get(name, 0.0)
 
-    print("[MIGRATION] Converted state from v1 (0–100 scale) to v2 (real physiological units).")
+    from log import log
+    log("MIGRATION", "Converted state from v1 (0–100 scale) to v2 (real physiological units).")
     return {
         "schema_version": 2,
         "last_updated":   old.get("last_updated", time.time()),
@@ -421,7 +422,8 @@ def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalSt
             # Hypoglycemic awakening: glucose < 55 forces the body awake
             if s.sleeping and new_glu < 55:
                 s.sleeping = False
-                print(f"[state] Hypoglycemic awakening: glucose={new_glu:.1f} mg/dL")
+                from log import log
+                log("STATE", f"Hypoglycemic awakening: glucose={new_glu:.1f} mg/dL")
 
         elif name == "hydration":
             # Pure decay: -0.4% TBW/hr; restored only by drink tool
@@ -615,9 +617,10 @@ def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalSt
             if wake <= now:
                 wake += 86400
             s.sleep_expected_wake = wake
-            print(f"[SLEEP] Auto-onset at {time.strftime('%H:%M')} "
-                  f"(melatonin={s.chemicals.get('melatonin', 0):.0f} pg/mL) — wake at "
-                  f"{time.strftime('%H:%M', time.localtime(wake))}")
+            from log import log
+            log("SLEEP", f"Auto-onset at {time.strftime('%H:%M')} "
+                f"(melatonin={s.chemicals.get('melatonin', 0):.0f} pg/mL) — wake at "
+                f"{time.strftime('%H:%M', time.localtime(wake))}")
 
     s.last_updated = now
     return s
@@ -706,24 +709,25 @@ def derived(s: BiologicalState) -> dict:
 
 
 def log_state(s: BiologicalState) -> None:
+    from log import log
     d = derived(s)
     so = d["second_order"]
     to = d["third_order"]
-    print(
-        f"[STATE]  sleep_p={s.sleep_pressure:.1f}AU glucose={s.glucose:.0f}mg/dL "
+    log("STATE",
+        f"sleep_p={s.sleep_pressure:.1f}AU glucose={s.glucose:.0f}mg/dL "
         f"hydration={s.hydration:.1f}%TBW cortisol={s.cortisol:.0f}nmol/L "
         f"dopamine={s.dopamine:.0f}pg/mL serotonin={s.serotonin:.1f}ng/mL "
         f"norepi={s.norepinephrine:.0f}pg/mL oxytocin={s.oxytocin:.1f}pg/mL "
         f"endorphins={s.endorphins:.0f}pg/mL ach={s.acetylcholine:.1f}nmol/L "
         f"melatonin={s.melatonin:.0f}pg/mL sleeping={s.sleeping}"
     )
-    print(
-        f"[DERIV]  energy={so['energy']} clarity={so['cognitive_clarity']} "
+    log("DERIV",
+        f"energy={so['energy']} clarity={so['cognitive_clarity']} "
         f"hedonic={so['hedonic_tone']} warmth={so['social_warmth']} "
         f"arousal={so['arousal']} valence={so['mood_valence']}"
     )
-    print(
-        f"[THIRD]  anxiety={to['anxiety']} depression={to['depression']} "
+    log("THIRD",
+        f"anxiety={to['anxiety']} depression={to['depression']} "
         f"boredom={to['boredom']} loneliness={to['loneliness']} flow={to['flow']}"
     )
 

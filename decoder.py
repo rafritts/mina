@@ -708,7 +708,8 @@ def build_system_prompt(
         user_content_parts.append(
             f"[SUBCONSCIOUS INJECTION — integrate this into her current state of mind]\n{injection}"
         )
-        print(f"  [inject] {injection}")
+        from log import log
+        log("INJECT", injection)
 
     if kag_context:
         user_content_parts.append(kag_context)
