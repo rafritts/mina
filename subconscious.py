@@ -113,6 +113,9 @@ def _apply_saturation(deltas: dict, state: BiologicalState) -> dict:
     Scale down positive deltas for chemicals that are already elevated.
     Soft and hard ceilings come from chemicals.REGISTRY — same source of truth as advance().
     Substances bypass this; only subconscious-issued deltas are saturated.
+
+    Uses quadratic decay in the soft→hard zone so blunting is aggressive near the ceiling.
+    At midpoint: 25% through (vs 50% with linear). At 80% of zone: 4% through.
     """
     from chemicals import REGISTRY
     result = {}
@@ -127,7 +130,8 @@ def _apply_saturation(deltas: dict, state: BiologicalState) -> dict:
         if current >= hard:
             continue  # drop the delta entirely
         elif current > soft:
-            scale = 1.0 - (current - soft) / (hard - soft)
+            t = (current - soft) / (hard - soft)  # 0 at soft, 1 at hard
+            scale = (1.0 - t) ** 2                 # quadratic: aggressive near ceiling
             scaled = round(delta * scale, 2)
             scaled = min(scaled, hard - current)
             if scaled != 0:
@@ -170,14 +174,18 @@ When something interesting arrives, endorphins and serotonin go up, acetylcholin
 Do NOT apply negative dopamine delta from satisfaction or negative acetylcholine from engagement.
 Only include fields that actually change.
 
+Current state awareness: check the labels in the bio report above before setting magnitudes.
+If a chemical is already HIGH, COMPULSIVE, or CRITICAL, it has little biological headroom —
+positive deltas for it should be 20–30% of the guidance maximums above.
+
 {_EVENT_OVERRIDE_GUIDANCE}
 
 {_DELTA_FORMAT}"""
 
     raw, event_override = _call_delta_json([{"role": "user", "content": prompt}], label="stimulus")
-    if event_override:
-        return raw
     saturated = _apply_saturation(raw, state)
+    if event_override:
+        return saturated  # bypass personality scaling but not the physical ceiling
     return _apply_personality_scaling(saturated, _load_personality())
 
 
@@ -212,14 +220,18 @@ Consider:
 - If response is empty or purely mechanical, deltas are near zero.
 Only include fields that actually change.
 
+Current state awareness: check the labels in the bio report above before setting magnitudes.
+If a chemical is already HIGH, COMPULSIVE, or CRITICAL, it has little biological headroom —
+positive deltas for it should be 20–30% of the guidance maximums.
+
 {_EVENT_OVERRIDE_GUIDANCE}
 
 {_DELTA_FORMAT}"""
 
     raw, event_override = _call_delta_json([{"role": "user", "content": prompt}], label="response")
-    if event_override:
-        return raw
     saturated = _apply_saturation(raw, state)
+    if event_override:
+        return saturated  # bypass personality scaling but not the physical ceiling
     return _apply_personality_scaling(saturated, _load_personality())
 
 
@@ -262,14 +274,18 @@ Magnitude guidance for common physiology:
 - Reading or watching something: dopamine and acetylcholine vary with engagement.
   Unsettling content: cortisol +. Funny: endorphins +, dopamine +. Sad: serotonin may drop.
 
+Current state awareness: check the labels in the bio report above before setting magnitudes.
+If a chemical is already HIGH, COMPULSIVE, or CRITICAL, it has little biological headroom —
+positive deltas for it should be 20–30% of the guidance maximums.
+
 {_EVENT_OVERRIDE_GUIDANCE}
 
 {_DELTA_FORMAT}"""
 
     raw, event_override = _call_delta_json([{"role": "user", "content": prompt}], label="activity")
-    if event_override:
-        return raw
     saturated = _apply_saturation(raw, state)
+    if event_override:
+        return saturated  # bypass personality scaling but not the physical ceiling
     return _apply_personality_scaling(saturated, _load_personality())
 
 
