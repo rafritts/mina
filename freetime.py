@@ -229,55 +229,78 @@ def _build_freetime_suffix(state: BiologicalState) -> str:
 # Phase 2 — Mina's free-time turn
 # ---------------------------------------------------------------------------
 
+_MAX_FREETIME_TOOLS = 5
+
+
 async def _run_mina_free_time(
     state: BiologicalState,
     system_prompt: str,
     history: list[dict],
-) -> tuple[list[dict], dict]:
+) -> tuple[list[dict], list[dict]]:
     """
-    Give Mina one free-time turn. She may call tools.
-    Returns (new_history_entries, pending_do_activity).
+    Give Mina a tool-calling loop during free time. She may call up to
+    _MAX_FREETIME_TOOLS tools in sequence before a final wrap-up response.
+    Returns (new_history_entries, pending_do_activities).
     """
     full_system = system_prompt + _build_freetime_suffix(state)
 
-    # Only pass user/assistant/tool messages — strip internal system markers
-    # apply_ts_label injects relative-time prefixes so Mina knows how old messages are
-    messages = [{"role": "system", "content": full_system}]
+    # Base messages — history context, stripping internal system markers
+    base_messages = [{"role": "system", "content": full_system}]
     for msg in history[-10:]:
         role = msg.get("role", "")
         if role == "system":
             continue
         if role == "user":
-            messages.append(apply_ts_label(msg))
+            base_messages.append(apply_ts_label(msg))
         else:
-            messages.append({k: v for k, v in msg.items() if k != "ts"})
+            base_messages.append({k: v for k, v in msg.items() if k != "ts"})
 
     new_entries = [{"role": "system", "content": "[FREETIME]"}]
-    pending_do = {}
+    pending_dos: list[dict] = []
+    # Accumulates assistant/tool turns within this freetime session
+    session: list[dict] = []
+    tool_calls_made = 0
 
-    response = await asyncio.to_thread(
-        get_client().chat.completions.create,
-        model=MODEL,
-        messages=messages,
-        tools=HEARTBEAT_TOOLS,
-        tool_choice="auto",
-        temperature=0.9,
-    )
+    while tool_calls_made < _MAX_FREETIME_TOOLS:
+        response = await asyncio.to_thread(
+            get_client().chat.completions.create,
+            model=MODEL,
+            messages=base_messages + session,
+            tools=HEARTBEAT_TOOLS,
+            tool_choice="auto",
+            temperature=0.9,
+        )
 
-    msg = response.choices[0].message
-    assistant_entry = {"role": "assistant", "content": msg.content or "", "ts": time.time()}
+        msg = response.choices[0].message
 
-    if msg.tool_calls:
-        assistant_entry["tool_calls"] = [
-            {
-                "id": tc.id,
-                "type": "function",
-                "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-            }
-            for tc in msg.tool_calls
-        ]
+        if not msg.tool_calls:
+            # She's done — plain response, exit loop
+            entry = {"role": "assistant", "content": msg.content or "", "ts": time.time()}
+            new_entries.append(entry)
+            session.append({"role": "assistant", "content": msg.content or ""})
+            break
 
+        tool_calls_made += 1
+
+        assistant_entry = {
+            "role": "assistant",
+            "content": msg.content or "",
+            "ts": time.time(),
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                }
+                for tc in msg.tool_calls
+            ],
+        }
         new_entries.append(assistant_entry)
+        session.append({
+            "role": "assistant",
+            "content": msg.content or "",
+            "tool_calls": assistant_entry["tool_calls"],
+        })
 
         for tc in msg.tool_calls:
             name = tc.function.name
@@ -286,37 +309,38 @@ async def _run_mina_free_time(
             except json.JSONDecodeError:
                 args = {}
 
-            _log(f"Action: {name}({args})")
+            _log(f"Action {tool_calls_made}/{_MAX_FREETIME_TOOLS}: {name}({args})")
+
             if name == "generate_image":
                 result = await handle_generate_image(args)
                 tool_result = result if result else "[Image blocked or failed]"
             else:
                 tool_result, state, extra = call_tool(name, args, state)
                 if name == "do_action" and extra:
-                    pending_do = extra
+                    pending_dos.append(extra)
 
-            new_entries.append({
+            tool_entry = {
                 "role": "tool",
                 "tool_call_id": tc.id,
                 "content": tool_result,
-            })
-
-        # Follow-up response after tool calls
-        follow_messages = messages + new_entries[1:]  # skip the [FREETIME] marker
-        follow_response = await asyncio.to_thread(
-            get_client().chat.completions.create,
-            model=MODEL,
-            messages=follow_messages,
-            temperature=0.9,
-        )
-        follow_msg = follow_response.choices[0].message
-        new_entries.append({"role": "assistant", "content": follow_msg.content or "", "ts": time.time()})
+            }
+            new_entries.append(tool_entry)
+            session.append(tool_entry)
 
     else:
-        new_entries.append(assistant_entry)
+        # Hit the cap — get a final wrap-up response without offering more tools
+        _log(f"Tool cap ({_MAX_FREETIME_TOOLS}) reached — requesting wrap-up.")
+        wrap_response = await asyncio.to_thread(
+            get_client().chat.completions.create,
+            model=MODEL,
+            messages=base_messages + session,
+            temperature=0.9,
+        )
+        wrap_msg = wrap_response.choices[0].message
+        new_entries.append({"role": "assistant", "content": wrap_msg.content or "", "ts": time.time()})
 
     save_state(state)
-    return new_entries, pending_do
+    return new_entries, pending_dos
 
 
 # ---------------------------------------------------------------------------
@@ -408,14 +432,14 @@ async def run_freetime(force: bool = False) -> None:
         system_prompt = memory_context + "\n\n---\n\n" + system_prompt
 
     # [4] Mina's free time turn
-    new_entries, pending_do = await _run_mina_free_time(state, system_prompt, history)
+    new_entries, pending_dos = await _run_mina_free_time(state, system_prompt, history)
 
     history.extend(new_entries)
 
     # --- Phase 3: State update ---
     _log("Phase 3: applying state updates.")
 
-    if pending_do:
+    for pending_do in pending_dos:
         activity    = pending_do.get("activity", "")
         description = pending_do.get("description", "")
         state = load_and_advance()
