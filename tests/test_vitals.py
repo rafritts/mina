@@ -51,15 +51,15 @@ def test_heart_rate_cannot_reach_dangerous_level_without_substances():
     )
 
 
-def test_heart_rate_reaches_dangerous_level_with_REMOVED():
+def test_heart_rate_reaches_dangerous_level_with_adderall():
     """Substances CAN push vitals into dangerous territory — that's the design."""
     state = BiologicalState()
-    state.substances["REMOVED"] = {"level": 95}
-    # Also max norepinephrine to simulate peak REMOVED effect
+    state.substances["adderall"] = {"level": 95}
+    # Also max norepinephrine to simulate peak stimulant effect
     state.chemicals["norepinephrine"] = 2000.0
     state.chemicals["cortisol"] = 900.0
 
     vs = vital_signs(state)
     hr = vs["heart_rate"]["value"]
-    # With REMOVED at near-max, heart rate should be well above normal
-    assert hr > 110, f"Expected elevated heart rate with REMOVED, got {hr}"
+    # With adderall at near-max, heart rate should be well above normal
+    assert hr > 110, f"Expected elevated heart rate with adderall, got {hr}"

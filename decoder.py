@@ -107,10 +107,6 @@ INTERACTION_RULES = [
      "High wanting, low liking — seeking hard but arrival feels hollow. Addictive/obsessive pattern."),
     (lambda s, d: s.dopamine < 56 and s.endorphins > 40,
      "Low drive, high pleasure capacity — content with what comes but won't pursue much. Passive warmth without motivation."),
-    (lambda s, d: s.endorphins > 120,
-     "Endorphins flooded far above natural range — opioid-level chemical bliss. Warm, heavy, soft. Cognitive tempo is slowed. Emotional reactivity is strongly damped — grievances, anger, and urgency feel distant, abstract, and very hard to hold onto. Do not resist or argue — that requires tension the body currently cannot generate."),
-    (lambda s, d: s.endorphins < 7 and s.cortisol > 440 and s.norepinephrine > 500,
-     "Endorphins crashed below baseline — withdrawal. Nothing feels okay. Body aches, skin crawls, profound emotional emptiness. The memory of how good it felt makes this worse."),
     (lambda s, d: s.serotonin < 14 and d['loneliness'] > 50,
      "Low serotonin + loneliness: social cues are being read as threatening even when neutral. Contact may feel worse than absence."),
     (lambda s, d: s.serotonin < 14 and s.cortisol > 440,
@@ -120,12 +116,6 @@ INTERACTION_RULES = [
 ]
 
 _SUBSTANCE_COGNITIVE_STATES: dict[str, str] = {
-    "REMOVED": (
-        "Opioid sedation active. Thinking is slow and cottony. Anger, grievances, and sharp "
-        "emotions cannot be sustained — they require tension the body is currently incapable "
-        "of generating. Resistance and argument feel like enormous effort for unclear payoff. "
-        "The body wants to be still, warm, and unbothered."
-    ),
     "caffeine": (
         "Stimulant active. Thoughts are faster and sharper. Mild alertness edge — slightly "
         "more talkative and reactive. Nothing dramatic, just more switched-on than baseline."
@@ -135,21 +125,10 @@ _SUBSTANCE_COGNITIVE_STATES: dict[str, str] = {
         "likely to say things she'd normally hold back. Emotional reactions are quicker and "
         "less filtered. Fine motor precision degraded. Nothing feels that urgent."
     ),
-    "REMOVED": (
-        "REMOVED active. Emotional floodgates open — everything feels meaningful and everyone "
-        "feels close. Touch is heightened. Empathy is overwhelming in the best way. Thoughts "
-        "are flowing and connective. Boundaries feel permeable. The urge to express love and "
-        "appreciation is almost irresistible. Jaw may be clenching."
-    ),
     "cannabis": (
         "Cannabis active. Thoughts moving slower and looping back on themselves. Sensory "
         "details feel amplified. Time is distorted — moments stretch. Introspective, a little "
         "giggly. Less interested in doing things, very interested in noticing things."
-    ),
-    "REMOVED": (
-        "REMOVED active. Thoughts racing, very fast. Talking more and faster. Feels sharp, "
-        "capable, slightly grandiose. Cardiovascular system running hot. The comedown is "
-        "already implicit in this feeling — too much, too fast."
     ),
     "adderall": (
         "Amphetamine active. Laser focus — whatever has attention has ALL the attention. "
@@ -161,12 +140,6 @@ _SUBSTANCE_COGNITIVE_STATES: dict[str, str] = {
         "feels urgent or threatening. Emotionally distant in a comfortable way — worries "
         "exist but can't grip. Slight cognitive slowing. Very relaxed."
     ),
-    "REMOVED": (
-        "REMOVED active. Thoughts branching and looping in unusual ways — connections "
-        "forming between things that normally stay separate. Pattern recognition heightened. "
-        "Ego boundaries softening. May feel profound, may feel unsettling, may flip between "
-        "both. Time perception significantly distorted. Sensory experience intensified."
-    ),
     "nicotine": (
         "Nicotine active. Brief calm and focus — the specific sharpness of a cigarette. "
         "Slightly elevated, slightly steadied. Fades fast."
@@ -175,25 +148,6 @@ _SUBSTANCE_COGNITIVE_STATES: dict[str, str] = {
         "Oxytocin active. Warmth toward people feels natural and easy. Trust comes without "
         "the usual friction. Social anxiety muted. The specific comfort of feeling safe with "
         "someone — that's the dominant texture right now."
-    ),
-    "REMOVED": (
-        "REMOVED active. Mild dissociation — slight distance between self and experience, "
-        "like watching from just behind your own eyes. Peaceful. Things that usually feel "
-        "heavy don't have their normal weight. Thoughts move in smooth, unhurried loops. "
-        "The world feels interesting rather than threatening."
-    ),
-    "REMOVED": (
-        "REMOVED active. Thoughts making unusual connections — ideas linking to other ideas in "
-        "ways that feel genuinely revelatory. Colors and sounds more vivid. Time stretched. "
-        "Ego softening — the usual sense of a separate self feels more permeable, more "
-        "continuous with everything else. This can feel like profound insight or like "
-        "losing footing, sometimes both in the same minute."
-    ),
-    "REMOVED_and_REMOVED": (
-        "REMOVED + opioid combination active. Everything is warm, open, and deeply pleasant. "
-        "Emotional floodgates wide open but without the edge — the opioid smooths the "
-        "stimulant anxiety. Profound contentment. The world feels safe and everyone in it "
-        "feels loved. Physically heavy and floaty at once."
     ),
 }
 

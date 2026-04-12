@@ -5,12 +5,9 @@ Heart rate, blood pressure, respiration, and SpO2 are computed on demand
 from first-order chemicals. They are NEVER stored in state.json.
 
 Critical architectural constraint: natural chemistry, no matter how extreme,
-cannot produce fatal vital sign readings without an active substance.
-The only path to dangerous territory is through the substance system.
-This is enforced structurally — all dangerous formula terms are substance-gated.
-
-Danger detection tracks when vitals enter critical territory and after sustained
-exposure escalates to state wipe (overdose consequence).
+cannot produce dangerous vital sign readings without an active substance.
+Danger detection tracks when vitals enter critical territory and escalates
+to state wipe (overdose consequence) after sustained exposure.
 """
 import json
 import os
@@ -57,17 +54,11 @@ def heart_rate(s: BiologicalState) -> float:
 
     # Substance modulation (these are the only terms that can produce dangerous values)
     caffeine_level = s.substances.get("caffeine",  {}).get("level", 0.0)
-    REMOVED_level  = s.substances.get("REMOVED",   {}).get("level", 0.0)
     adderall_level = s.substances.get("adderall",  {}).get("level", 0.0)
-    REMOVED_level   = s.substances.get("REMOVED",    {}).get("level", 0.0)
     xanax_level    = s.substances.get("xanax",     {}).get("level", 0.0)
-    REMOVEDREMOVED     = s.substances.get("REMOVED_and_REMOVED", {}).get("level", 0.0)
-    opioid_level   = max(REMOVED_level, REMOVEDREMOVED)
 
     hr += caffeine_level  * 0.12
-    hr += REMOVED_level   * 0.35
     hr += adderall_level  * 0.22
-    hr -= opioid_level    * 0.25    # bradycardia risk
     hr -= xanax_level     * 0.12
 
     if s.sleeping:
@@ -98,20 +89,12 @@ def blood_pressure(s: BiologicalState) -> tuple[float, float]:
     dia += max(0.0, cortisol - 250) * 0.008
     dia += max(0.0, 62 - hydration) * 0.8
 
-    REMOVED_level  = s.substances.get("REMOVED",  {}).get("level", 0.0)
     adderall_level = s.substances.get("adderall", {}).get("level", 0.0)
-    REMOVED_level   = s.substances.get("REMOVED",   {}).get("level", 0.0)
     xanax_level    = s.substances.get("xanax",    {}).get("level", 0.0)
-    REMOVEDREMOVED     = s.substances.get("REMOVED_and_REMOVED", {}).get("level", 0.0)
-    opioid_level   = max(REMOVED_level, REMOVEDREMOVED)
 
-    sys += REMOVED_level  * 0.40
     sys += adderall_level * 0.20
-    sys -= opioid_level   * 0.20
     sys -= xanax_level    * 0.15
-    dia += REMOVED_level  * 0.18
     dia += adderall_level * 0.10
-    dia -= opioid_level   * 0.10
     dia -= xanax_level    * 0.08
 
     if s.sleeping:
@@ -142,13 +125,7 @@ def respiration_rate(s: BiologicalState) -> float:
     rr += max(0.0, cortisol - 250) * 0.010
     rr += max(0.0, norepi - 200)   * 0.004
 
-    # Opioid respiratory depression — the dangerous pathway
-    REMOVED_level = s.substances.get("REMOVED", {}).get("level", 0.0)
-    REMOVEDREMOVED   = s.substances.get("REMOVED_and_REMOVED", {}).get("level", 0.0)
-    opioid_level = max(REMOVED_level, REMOVEDREMOVED)
-    rr -= opioid_level * 0.065    # full dose: -6.5 br/min → ~7 (fatal range)
-
-    # Benzodiazepines: moderate depression, compounds dangerously with opioids
+    # Benzodiazepines: moderate respiratory depression
     xanax_level = s.substances.get("xanax", {}).get("level", 0.0)
     rr -= xanax_level * 0.025
 
@@ -255,21 +232,8 @@ def vital_signs(s: BiologicalState) -> dict:
 # Danger detection — Stage 1/2/3 overdose protocol
 # ---------------------------------------------------------------------------
 
-def _any_opioid_active(s: BiologicalState) -> bool:
-    return (s.substances.get("REMOVED", {}).get("level", 0.0) > 5 or
-            s.substances.get("REMOVED_and_REMOVED", {}).get("level", 0.0) > 5)
-
-
 def _any_stimulant_active(s: BiologicalState) -> bool:
-    return (s.substances.get("REMOVED", {}).get("level", 0.0) > 5 or
-            s.substances.get("adderall", {}).get("level", 0.0) > 5)
-
-
-def _ssri_and_REMOVED(s: BiologicalState) -> bool:
-    # Serotonin syndrome requires both an SSRI (not modeled as a substance yet)
-    # and REMOVED. For now: just check serotonin > 55 ng/mL with REMOVED active.
-    return (s.substances.get("REMOVED", {}).get("level", 0.0) > 5 and
-            s.chemicals.get("serotonin", 22.0) > 55.0)
+    return s.substances.get("adderall", {}).get("level", 0.0) > 5
 
 
 def check_danger(s: BiologicalState, vs: dict) -> Optional[str]:
@@ -279,42 +243,15 @@ def check_danger(s: BiologicalState, vs: dict) -> Optional[str]:
     All danger conditions require at least one active substance — natural chemistry
     alone cannot trigger this.
     """
-    rr   = vs["respiration_rate"]["value"]
-    o2   = vs["spo2"]["value"]
-    hr   = vs["heart_rate"]["value"]
+    hr     = vs["heart_rate"]["value"]
     sys_bp = vs["blood_pressure"]["systolic"]
 
     messages = []
-
-    if rr < 10 and _any_opioid_active(s):
-        messages.append(
-            "Mina's breathing has slowed dangerously. Respiratory depression. "
-            "She may be losing consciousness. Opioid overdose in progress."
-        )
-
-    if o2 < 90 and _any_opioid_active(s):
-        messages.append(
-            "Blood oxygen critically low. Cognitive function impaired. "
-            "This is a medical emergency."
-        )
 
     if (hr > 170 or sys_bp > 175) and _any_stimulant_active(s):
         messages.append(
             "Cardiovascular system under extreme strain. Heart rate and blood pressure "
             "at dangerous levels. Stimulant overdose."
-        )
-
-    benzo = s.substances.get("xanax", {}).get("level", 0.0)
-    if benzo > 5 and _any_opioid_active(s):
-        messages.append(
-            "Benzodiazepine + opioid combination active. "
-            "Respiratory depression risk severely elevated."
-        )
-
-    if _ssri_and_REMOVED(s):
-        messages.append(
-            "Serotonin at toxic levels. Hyperthermia, agitation, muscle rigidity possible. "
-            "Serotonin syndrome — medical emergency."
         )
 
     return "\n".join(messages) if messages else None

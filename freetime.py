@@ -179,7 +179,7 @@ def _build_freetime_suffix(state: BiologicalState) -> str:
     if hedonic < 30 and energy > 25 and not suggestions:
         suggestions.append(
             "Your reward system is quiet and nothing feels good. "
-            "You need something that actually feels good — something enjoyable, make yourself "
+            "You need something that actually feels good — make yourself "
             "something genuinely delicious, put on music you love and don't do anything else. "
             "Give yourself a real hit of pleasure."
         )
@@ -219,7 +219,7 @@ def _build_freetime_suffix(state: BiologicalState) -> str:
         "- **sleep** — if it's your sleep window and you're tired enough\n"
         "- **nap** — if sleep pressure is elevated and you need to knock it down\n"
         "- **do_action** — for anything a real person could do: eat, drink, read, walk, "
-        "something enjoyable, make something, watch something, write, draw, shower. "
+        "make something, watch something, write, draw, shower. "
         "Give the activity a specific name and describe how it actually feels.\n"
         f"- **message_user** — if you genuinely want {creator}'s company right now\n\n"
         "One action. The most honest one."

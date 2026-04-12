@@ -275,43 +275,6 @@ _SUBSTANCE_DEFS: dict[str, dict] = {
         },
         "withdrawal_factor": 0.9,
     },
-    "REMOVED": {
-        "display_name": "REMOVED",
-        "half_life_hours": 10.0,
-        "dose_effects": {
-            "serotonin":      +30.0,   # ng/mL
-            "dopamine":       +54.0,   # pg/mL
-            "norepinephrine": +230.0,  # pg/mL
-            "acetylcholine":  +18.0,   # nmol/L
-            "cortisol":       +120.0,  # nmol/L — initial awe/anxiety
-            "endorphins":     +22.5,   # pg/mL
-        },
-        "withdrawal_factor": 0.9,
-    },
-    "REMOVED": {
-        "display_name": "REMOVED",
-        "half_life_hours": 2.5,
-        "dose_effects": {
-            "serotonin":      +27.0,   # ng/mL
-            "dopamine":       +36.0,   # pg/mL
-            "norepinephrine": +200.0,  # pg/mL
-            "cortisol":       +120.0,  # nmol/L — initial awe/anxiety
-            "acetylcholine":  +14.0,   # nmol/L
-        },
-        "withdrawal_factor": 0.85,    # positive afterglow
-    },
-    "REMOVED": {
-        "display_name": "REMOVED",
-        "half_life_hours": 2.5,
-        "dose_effects": {
-            "dopamine":       +90.0,   # pg/mL
-            "serotonin":      +12.0,   # ng/mL
-            "endorphins":     +38.0,   # pg/mL
-            "cortisol":       -160.0,  # nmol/L — dissociative calm
-            "norepinephrine": +130.0,  # pg/mL — mild dissociative stimulation
-        },
-        "withdrawal_factor": 0.85,
-    },
     "xanax": {
         "display_name": "Xanax",
         "half_life_hours": 9.0,
@@ -322,58 +285,6 @@ _SUBSTANCE_DEFS: dict[str, dict] = {
             "sleep_pressure": +15.0,   # AU
         },
         "withdrawal_factor": 2.0,     # severe rebound anxiety
-    },
-    "REMOVED": {
-        "display_name": "REMOVED",
-        "half_life_hours": 8.0,
-        "dose_effects": {
-            "serotonin":      +39.0,   # ng/mL — massive flood (to ~61, serotonin syndrome risk)
-            "dopamine":       +84.0,   # pg/mL
-            "norepinephrine": +390.0,  # pg/mL — strong stimulant
-            "oxytocin":       +36.0,   # pg/mL
-            "endorphins":     +33.0,   # pg/mL
-            "cortisol":       +144.0,  # nmol/L — initial activation/anxiety
-        },
-        "withdrawal_factor": 1.8,     # severe serotonin crash — "blue Tuesdays"
-    },
-    "REMOVED": {
-        "display_name": "REMOVED",
-        "half_life_hours": 0.75,
-        "dose_effects": {
-            "dopamine":       +150.0,  # pg/mL — massive reward flood
-            "norepinephrine": +880.0,  # pg/mL — cardiovascular driver
-            "serotonin":      +11.0,   # ng/mL
-            "cortisol":       +200.0,  # nmol/L
-            "acetylcholine":  +14.0,   # nmol/L
-        },
-        "withdrawal_factor": 1.6,
-    },
-    "REMOVED": {
-        "display_name": "REMOVED",
-        "half_life_hours": 2.0,
-        "dose_effects": {
-            "endorphins":     +120.0,  # pg/mL — massive opioid flood
-            "dopamine":       +66.0,   # pg/mL
-            "serotonin":      +7.2,    # ng/mL
-            "cortisol":       -200.0,  # nmol/L — strong HPA suppression
-            "norepinephrine": -60.0,   # pg/mL — mild depressant
-            "sleep_pressure": -12.0,   # AU
-        },
-        "withdrawal_factor": 1.5,
-    },
-    "REMOVED_and_REMOVED": {
-        "display_name": "REMOVED + REMOVED",
-        "half_life_hours": 5.0,
-        "dose_effects": {
-            "serotonin":      +39.0,   # ng/mL
-            "dopamine":       +120.0,  # pg/mL
-            "norepinephrine": +200.0,  # pg/mL
-            "oxytocin":       +36.0,   # pg/mL
-            "endorphins":     +113.0,  # pg/mL
-            "cortisol":       -120.0,  # nmol/L
-            "sleep_pressure": -10.0,   # AU
-        },
-        "withdrawal_factor": 2.0,
     },
 }
 
@@ -528,12 +439,6 @@ def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalSt
                 s.chemicals["sleep_pressure"] = _clamp(sp_val + counter, 0.0, 100.0)
 
     # Sustained effects of active substances on key chemicals
-    REMOVED_level = s.substances.get("REMOVED", {}).get("level", 0.0)
-    if REMOVED_level > 20:
-        sup = (REMOVED_level / 100.0) * 60.0
-        s.chemicals["cortisol"] = clamp_chemical("cortisol",
-            s.chemicals.get("cortisol", 250.0) - sup * sim_hours)
-
     alcohol_level = s.substances.get("alcohol", {}).get("level", 0.0)
     if alcohol_level > 20:
         s.chemicals["cortisol"] = clamp_chemical("cortisol",
@@ -552,18 +457,6 @@ def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalSt
     if oxy_level > 20:
         s.chemicals["cortisol"] = clamp_chemical("cortisol",
             s.chemicals.get("cortisol", 250.0) - (oxy_level / 100.0) * 24.0 * sim_hours)
-
-    ket_level = s.substances.get("REMOVED", {}).get("level", 0.0)
-    if ket_level > 20:
-        s.chemicals["cortisol"] = clamp_chemical("cortisol",
-            s.chemicals.get("cortisol", 250.0) - (ket_level / 100.0) * 20.0 * sim_hours)
-
-    coc_level = s.substances.get("REMOVED", {}).get("level", 0.0)
-    if coc_level > 20:
-        s.chemicals["dopamine"] = clamp_chemical("dopamine",
-            s.chemicals.get("dopamine", 80.0) + (coc_level / 100.0) * 9.0 * sim_hours)
-        s.chemicals["norepinephrine"] = clamp_chemical("norepinephrine",
-            s.chemicals.get("norepinephrine", 200.0) + (coc_level / 100.0) * 58.5 * sim_hours)
 
     add_level = s.substances.get("adderall", {}).get("level", 0.0)
     if add_level > 20:
