@@ -463,6 +463,7 @@ async def run_freetime(force: bool = False) -> None:
         )
         if do_deltas:
             state = apply_deltas(state, do_deltas)
+            save_state(state)  # persist eating/drinking/activity deltas immediately
         try:
             from events import emit_tool
             emit_tool(
@@ -485,9 +486,7 @@ async def run_freetime(force: bool = False) -> None:
         response_deltas = await asyncio.to_thread(encode_response, state, free_time_text)
         if response_deltas:
             state = apply_deltas(state, response_deltas)
-
-    state = load_and_advance()
-    save_state(state)
+            save_state(state)  # persist response deltas
     _save_history(history)
 
     _log("Complete.")
