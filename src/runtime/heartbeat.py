@@ -13,9 +13,9 @@ Run directly to fire one tick (for testing):
 import asyncio
 import os
 
-from .config import PAUSED_FLAG
-from .log import log
-from .state import load_and_advance
+from ..infra.config import PAUSED_FLAG
+from ..infra.log import log
+from ..bio.state import load_and_advance
 
 
 async def bio_tick_loop() -> None:

@@ -16,8 +16,8 @@ import json
 import os
 import re
 
-from .client import get_client, MODEL
-from .config import PERSONALITY_FILE
+from ..infra.client import get_client, MODEL
+from ..infra.config import PERSONALITY_FILE
 from .state import BiologicalState
 
 # ---------------------------------------------------------------------------
@@ -104,7 +104,7 @@ def _apply_momentum(deltas: dict, state: BiologicalState) -> dict:
     Mutates state.encoder_momentum to accumulate applied amounts.
     Negative deltas pass through unchanged — pain/stress doesn't habituate like this.
     """
-    from .log import log
+    from ..infra.log import log
     momentum = state.encoder_momentum
     result = {}
     dampened_any = False
@@ -246,7 +246,7 @@ def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, 
     On JSON parse failure, retries once with the bad output and error appended.
     Falls back to ({}, False) on any error — never crashes a turn.
     """
-    from .log import log
+    from ..infra.log import log
     subtag = label.replace("encode_", "").upper()
 
     last_raw: list[str] = [""]  # captures raw LLM output as side effect for retry message
@@ -258,7 +258,7 @@ def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, 
             temperature=0.3,
             response_format={"type": "json_object"},
         )
-        from . import token_stats
+        from ..infra import token_stats
         token_stats.record_response(label, response)
         raw_content = response.choices[0].message.content or ""
         last_raw[0] = raw_content  # capture before any parsing so retry always has it
@@ -323,7 +323,7 @@ def _emit_event(
 ) -> None:
     """Emit a structured event to the log. Never crashes a turn."""
     try:
-        from .events import emit
+        from ..infra.events import emit
         emit(type, preview, display_deltas, event_override=event_override, momentum_dampened=momentum_dampened)
     except Exception:
         pass

@@ -15,7 +15,7 @@ import time
 from typing import Optional
 
 from .state import BiologicalState
-from .sim.constants import (
+from ..sim.constants import (
     DBP_BASELINE,
     BP_CORTISOL_THRESHOLD,
     BP_CORTISOL_SBP_RATE,
@@ -402,7 +402,7 @@ def _execute_state_wipe(reason: str) -> None:
     """
     import json as _json
     from .state import BiologicalState, save_state
-    from .hippocampus import write_kag
+    from ..memory.hippocampus import write_kag
 
     # Reset state to defaults
     save_state(BiologicalState())
@@ -415,7 +415,7 @@ def _execute_state_wipe(reason: str) -> None:
     except Exception:
         pass
 
-    from .log import log
+    from ..infra.log import log
     log("WIPE", f"Overdose — cause: {reason}")
     # RAG embeddings are not cleared here — that requires memory.py's clear function
     # which may not be available in all deployments. Log to let operator handle.

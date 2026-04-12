@@ -23,10 +23,10 @@ import discord
 from discord import app_commands
 from PIL import Image
 
-from .cortex import run_turn, load_history, save_history, touch_last_active, HISTORY_MAX
-from .heartbeat import bio_tick_loop
-from .freetime import run_freetime as _run_freetime
-from .log import log
+from ..runtime.cortex import run_turn, load_history, save_history, touch_last_active, HISTORY_MAX
+from ..runtime.heartbeat import bio_tick_loop
+from ..runtime.freetime import run_freetime as _run_freetime
+from ..infra.log import log
 
 # Suppress noisy-but-harmless WebSocket transport errors on reconnect
 class _SuppressResetError(logging.Filter):
@@ -35,8 +35,8 @@ class _SuppressResetError(logging.Filter):
 
 logging.getLogger("discord.client").addFilter(_SuppressResetError())
 logging.getLogger("discord.gateway").addFilter(_SuppressResetError())
-from .state import load_and_advance, save_state, load_state, apply_deltas, log_state, derived
-from .hippocampus import build_kag_context, build_rag_context, rag_wipe
+from ..bio.state import load_and_advance, save_state, load_state, apply_deltas, log_state, derived
+from ..memory.hippocampus import build_kag_context, build_rag_context, rag_wipe
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
@@ -195,7 +195,7 @@ async def _update_presence(state) -> None:
 
 async def _gateway_freetime_loop() -> None:
     """Periodically run Mina's autonomous freetime session."""
-    from .config import PAUSED_FLAG, load_config
+    from ..infra.config import PAUSED_FLAG, load_config
     while True:
         cfg = load_config()
         interval = int(cfg.get("heartbeat_interval_seconds", 1800))
@@ -215,7 +215,7 @@ async def _presence_loop() -> None:
     while True:
         await asyncio.sleep(60)
         try:
-            from .state import load_state as _load_state
+            from ..bio.state import load_state as _load_state
             await _update_presence(_load_state())
         except Exception as e:
             log("PRESENCE/ERROR", str(e))
@@ -493,7 +493,7 @@ tree = app_commands.CommandTree(client)
 
 @client.event
 async def on_ready():
-    from . import token_stats
+    from ..infra import token_stats
     token_stats.reset()
 
     cfg = _load_config()
@@ -681,7 +681,7 @@ async def cmd_reset(interaction: discord.Interaction):
 
 @tree.command(name="factory-reset", description="Nuclear reset: wipe everything including biomarkers.")
 async def cmd_factory_reset(interaction: discord.Interaction):
-    from .state import BiologicalState, save_state
+    from ..bio.state import BiologicalState, save_state
     await interaction.response.defer(ephemeral=True)
     try:
         wiped = _wipe_user_data()
@@ -715,7 +715,7 @@ async def cmd_history(interaction: discord.Interaction, n: int = 10):
 @tree.command(name="actions", description="Show Mina's recent tool calls and their effects.")
 @app_commands.describe(n="Number of actions to show (default 10)")
 async def cmd_actions(interaction: discord.Interaction, n: int = 10):
-    from .events import read_events
+    from ..infra.events import read_events
     all_events = read_events(limit=300)
     tool_events = [e for e in all_events if e.get("type") == "tool"][:n]
     if not tool_events:
@@ -773,7 +773,7 @@ async def cmd_actions(interaction: discord.Interaction, n: int = 10):
 
 @tree.command(name="state", description="Show Mina's current biological state.")
 async def cmd_state(interaction: discord.Interaction):
-    from .state import derived as _derived
+    from ..bio.state import derived as _derived
     s = load_and_advance()
     d = _derived(s)
     so = d["second_order"]
@@ -799,8 +799,8 @@ async def cmd_state(interaction: discord.Interaction):
 
 @tree.command(name="bioreport", description="Show Mina's current biological state.")
 async def cmd_bioreport(interaction: discord.Interaction):
-    from .chemicals import get_label
-    from .state import derived as _derived
+    from ..bio.chemicals import get_label
+    from ..bio.state import derived as _derived
     s = load_and_advance()
     d = _derived(s)
     so = d["second_order"]
@@ -839,7 +839,7 @@ async def cmd_bioreport(interaction: discord.Interaction):
     ]
 
     if s.substances:
-        from .sim.neuro.substances import SUBSTANCE_DEFS
+        from ..sim.neuro.substances import SUBSTANCE_DEFS
         lines.append("")
         lines.append("**Active substances**")
         for name, dose in s.substances.items():
@@ -865,7 +865,7 @@ async def cmd_compress(interaction: discord.Interaction, factor: float):
 @tree.command(name="sleep", description="Put Mina to sleep.")
 @app_commands.describe(hours="How many simulated hours to sleep")
 async def cmd_sleep(interaction: discord.Interaction, hours: float = 8.0):
-    from .tools import handle_sleep
+    from ..runtime.tools import handle_sleep
     s = load_and_advance()
     _, s = handle_sleep({"duration_hours": hours}, s)
     save_state(s)
@@ -891,7 +891,7 @@ async def cmd_wake(interaction: discord.Interaction):
 @tree.command(name="heartbeat", description="Manually trigger one heartbeat cycle.")
 async def cmd_heartbeat(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
-    from .freetime import run_freetime
+    from ..runtime.freetime import run_freetime
     try:
         await run_freetime()
         await interaction.followup.send("Heartbeat complete.", ephemeral=True)
@@ -1055,7 +1055,7 @@ async def cmd_context(interaction: discord.Interaction):
     role_str = "  ".join(f"{r}: {c}" for r, c in sorted(role_counts.items()))
 
     # --- Reflection ---
-    from .hippocampus import read_kag
+    from ..memory.hippocampus import read_kag
     reflection_text = read_kag("REFLECTION.md") or ""
     reflection_words = len(reflection_text.split()) if reflection_text else 0
     reflection_preview = (

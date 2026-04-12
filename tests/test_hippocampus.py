@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from src.hippocampus import (
+from src.memory.hippocampus import (
     _parse_json_robust,
     _extract_tag,
     _parse_consolidation_output,

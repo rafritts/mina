@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from src.cortex import (
+from src.runtime.cortex import (
     api_messages,
     apply_ts_label,
     _compact_history,
@@ -165,7 +165,7 @@ def _mock_llm_response(content: str):
     return resp
 
 
-@patch("src.cortex.get_client")
+@patch("src.runtime.cortex.get_client")
 def test_compact_history_returns_original_on_llm_error(mock_client):
     mock_client.return_value.chat.completions.create.side_effect = Exception("API down")
     history = [{"role": "user", "content": f"msg {i}"} for i in range(25)]
@@ -174,7 +174,7 @@ def test_compact_history_returns_original_on_llm_error(mock_client):
     assert len(result) >= HISTORY_KEEP
 
 
-@patch("src.cortex.get_client")
+@patch("src.runtime.cortex.get_client")
 def test_compact_history_produces_compact_summary_plus_recent(mock_client):
     mock_client.return_value.chat.completions.create.return_value = _mock_llm_response(
         "- Talked about X\n- Discussed Y"
@@ -193,7 +193,7 @@ def test_compact_history_produces_compact_summary_plus_recent(mock_client):
 # ---------------------------------------------------------------------------
 
 def test_save_history_truncates_at_max(tmp_path, monkeypatch):
-    monkeypatch.setattr("src.cortex.HISTORY_FILE", str(tmp_path / "conv.json"))
+    monkeypatch.setattr("src.runtime.cortex.HISTORY_FILE", str(tmp_path / "conv.json"))
     history = [{"role": "user", "content": f"msg {i}"} for i in range(HISTORY_MAX + 50)]
     save_history(history)
     with open(tmp_path / "conv.json") as f:

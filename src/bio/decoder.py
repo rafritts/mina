@@ -16,8 +16,8 @@ import os
 import re
 import time
 
-from .client import get_client, MODEL
-from .config import PERSONALITY_FILE, INJECT_FILE
+from ..infra.client import get_client, MODEL
+from ..infra.config import PERSONALITY_FILE, INJECT_FILE
 from .state import BiologicalState, derived, _CHEMICAL_DEFAULTS
 from .chemicals import REGISTRY, get_label
 
@@ -229,7 +229,7 @@ def biological_report(state: BiologicalState) -> str:
             lines.append(f"TOLERANCE: {substance} = {val:.2f}")
 
     if state.substances:
-        from .sim.neuro.substances import SUBSTANCE_DEFS
+        from ..sim.neuro.substances import SUBSTANCE_DEFS
         lines.append(SEP)
         for name, dose in state.substances.items():
             level = dose.get("level", 0)
@@ -453,9 +453,9 @@ def build_memory_context(
     - MINA.md is always included directly — not left to LLM discretion.
     - The LLM pass filters KAG/RAG for what's actually relevant to the current context.
     """
-    from .log import log
-    from . import token_stats
-    from .hippocampus import read_identity
+    from ..infra.log import log
+    from ..infra import token_stats
+    from ..memory.hippocampus import read_identity
 
     # Identity always goes in, unconditionally.
     identity_parts = [p for p in [read_identity("MINA.md"), read_identity("CUSTOMIZATION.md")] if p]
@@ -767,8 +767,8 @@ def build_system_prompt(
     Input: biological report (ground truth) only.
     Output: assembled system prompt string.
     """
-    from .log import log
-    from . import token_stats
+    from ..infra.log import log
+    from ..infra import token_stats
 
     injection = _consume_injection()
     personality_block = _load_personality_block()

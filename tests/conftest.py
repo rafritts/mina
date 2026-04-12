@@ -16,6 +16,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 @pytest.fixture(autouse=True)
 def mock_token_stats():
     """Prevent any test from writing to the real token_stats.json file."""
-    with patch("src.token_stats.record_response"), \
-         patch("src.token_stats.increment_turns"):
+    with patch("src.infra.token_stats.record_response"), \
+         patch("src.infra.token_stats.increment_turns"):
         yield
