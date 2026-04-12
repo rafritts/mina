@@ -839,11 +839,11 @@ async def cmd_bioreport(interaction: discord.Interaction):
     ]
 
     if s.substances:
-        from state import _SUBSTANCE_DEFS
+        from src.sim.neuro.substances import SUBSTANCE_DEFS
         lines.append("")
         lines.append("**Active substances**")
         for name, dose in s.substances.items():
-            sub = _SUBSTANCE_DEFS.get(name, {})
+            sub = SUBSTANCE_DEFS.get(name, {})
             level = dose.get("level", 0)
             lines.append(f"{sub.get('display_name', name)}: {level:.0f}/100")
 

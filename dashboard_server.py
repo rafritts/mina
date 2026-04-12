@@ -380,10 +380,10 @@ def get_tokens(request: Request):
 @app.get("/api/substance")
 def get_substances(request: Request):
     _check_auth(request)
-    from state import load_state, _SUBSTANCE_DEFS
+    from src.sim.neuro.substances import SUBSTANCE_DEFS
     s = load_state()
     result = {}
-    for name, sub in _SUBSTANCE_DEFS.items():
+    for name, sub in SUBSTANCE_DEFS.items():
         dose = s.substances.get(name, {})
         result[name] = {
             "display_name": sub["display_name"],
@@ -397,9 +397,9 @@ def get_substances(request: Request):
 @app.post("/api/substance/{name}/dose")
 def dose_substance(name: str, request: Request):
     _check_auth(request)
-    from state import load_state, save_state, advance, _SUBSTANCE_DEFS
+    from src.sim.neuro.substances import SUBSTANCE_DEFS
 
-    sub = _SUBSTANCE_DEFS.get(name)
+    sub = SUBSTANCE_DEFS.get(name)
     if not sub:
         raise HTTPException(status_code=404, detail=f"Unknown substance: {name}")
 

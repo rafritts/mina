@@ -249,6 +249,8 @@ def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, 
     from log import log
     subtag = label.replace("encode_", "").upper()
 
+    last_raw: list[str] = [""]  # captures raw LLM output as side effect for retry message
+
     def _attempt(msgs: list[dict]) -> tuple[dict, bool]:
         response = get_client().chat.completions.create(
             model=MODEL,
@@ -257,9 +259,20 @@ def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, 
         )
         import token_stats
         token_stats.record_response(label, response)
-        content = response.choices[0].message.content or ""
-        content = re.sub(r"^```(?:json)?\s*", "", content.strip())
+        raw_content = response.choices[0].message.content or ""
+        last_raw[0] = raw_content  # capture before any parsing so retry always has it
+        content = re.sub(r"^```(?:json)?\s*", "", raw_content.strip())
         content = re.sub(r"\s*```$", "", content)
+        # Fallback: extract first JSON object by brace matching (handles prose before/after)
+        if not content.strip().startswith("{"):
+            start = content.find("{")
+            end = content.rfind("}")
+            if start != -1 and end != -1:
+                content = content[start:end + 1]
+        # Strip inline // comments — LLM sometimes copies the format template literally
+        content = re.sub(r"\s*//[^\n\"]*$", "", content, flags=re.MULTILINE)
+        # Strip trailing commas before } or ] — LLM often produces these
+        content = re.sub(r",\s*([}\]])", r"\1", content)
         parsed = json.loads(content)
         reasoning = parsed.pop("reasoning", "")
         no_external = bool(parsed.pop("no_external_deltas", False))
@@ -277,14 +290,14 @@ def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, 
     try:
         return _attempt(messages)
     except json.JSONDecodeError as e:
-        # Retry once: show the LLM its bad output and ask it to fix it
+        # Retry once: show the LLM its actual bad output so it can correct it
         log(f"ENCODER/{subtag}/RETRY", f"JSON parse error: {e} — retrying")
         retry_messages = messages + [
-            {"role": "assistant", "content": "<previous response had invalid JSON>"},
+            {"role": "assistant", "content": last_raw[0] or "<unavailable>"},
             {"role": "user", "content": (
                 f"Your previous response could not be parsed as JSON. "
                 f"Error: {e}\n\n"
-                f"Respond with valid JSON only, no prose, no markdown fences."
+                f"Respond with valid JSON only — no prose, no markdown fences, no comments."
             )},
         ]
         try:

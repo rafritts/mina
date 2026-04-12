@@ -229,11 +229,11 @@ def biological_report(state: BiologicalState) -> str:
             lines.append(f"TOLERANCE: {substance} = {val:.2f}")
 
     if state.substances:
-        from state import _SUBSTANCE_DEFS
+        from src.sim.neuro.substances import SUBSTANCE_DEFS
         lines.append(SEP)
         for name, dose in state.substances.items():
             level = dose.get("level", 0)
-            sub = _SUBSTANCE_DEFS.get(name, {})
+            sub = SUBSTANCE_DEFS.get(name, {})
             hl = sub.get("half_life_hours", 2.0)
             hours_remaining = hl * (level / 100.0) * 1.44
             lines.append(f"ACTIVE SUBSTANCE: {sub.get('display_name', name)} — level {level:.0f}/100 (~{hours_remaining:.1f}h remaining)")
