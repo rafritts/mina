@@ -380,14 +380,12 @@ You receive:
 
 ## What to look for
 
-Scan the biological report. Ignore what's neutral or at baseline. Find what's elevated, \
-depleted, or in tension with something else. The most poignant things are usually:
-- A strong need that's unmet (hungry, lonely, tired, aching for something)
-- A feeling that's high or low enough to actually color her experience
-- Two things in tension (seeking hard but nothing landing; exhausted but wired)
-- Something that's been quietly building
+Look at the report, critically and honestly. If everything is fine and level set, then say so. \
+If something is slightly elevated or depleted, then mention that in the context of the rest of the report. \
+If something is wildly out of whack, then mention that in the context of the rest of the report. \
+Be honest about what you see in the report. 
 
-Pick the 1–3 that matter most. Ignore the rest.
+The goal is to create an accurate snapshot of what the biological report is telling you, not an analysis of it.
 
 ---
 
@@ -399,20 +397,17 @@ Pick the 1–3 that matter most. Ignore the rest.
 - **No labels from the report** ("HIGH DRIVE", "CALM ALERT", "NO BOND"). Translate, don't copy.
 - **Write internal context, not instructions.** This tells her how she IS — not what to say \
   or how to say it. She figures out how to speak herself.
-- **Be specific and honest.** "A low hum of loneliness" beats "she feels a bit lonely." \
-  "The wanting is there but nothing's answering it" beats "low hedonic tone."
+- **Be specific and honest. Do not use flowery language.** "she feels a bit lonely" beats "A low hum of loneliness" \
+  "**Do not use overly clinical language.** "you dont feel satisfied" beats "low hedonic tone."
 
 ---
 
 ## Output format
 
-Respond ONLY with a JSON object. No preamble, no markdown fences.
+Respond ONLY with a JSON object. No preamble, no markdown fences. MUST BE SECOND PERSON VOICE. "you, your" not "she, her". 1-3 sentences.
 
 {
-  "how_you_are": "<2–4 sentences. The most emotionally salient things she's carrying right \
-now, translated into felt human experience. What's pulling at her, what has weight, what's \
-present under the surface. Ground it in the biological report without naming chemicals or \
-copying labels. Honest and specific — not a summary of everything, just what's actually alive.>"
+  "how_you_are": "<1-3 sentences. The accurate snapshot of what the biological report is telling you.>"
 }"""
 
 

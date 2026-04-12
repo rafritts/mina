@@ -83,6 +83,59 @@ For everything else, set event_override: false and use conservative deltas."""
 
 
 # ---------------------------------------------------------------------------
+# Momentum dampening — receptor habituation / cooldown
+# ---------------------------------------------------------------------------
+
+# Maximum accumulated positive delta before a chemical is fully dampened.
+# Chemicals not listed here are never dampened (cortisol stress, glucose, etc.)
+_MOMENTUM_CEILINGS: dict[str, float] = {
+    "dopamine":       25.0,   # pg/mL — novelty signal, tight
+    "oxytocin":       18.0,   # pg/mL — social bonding
+    "serotonin":       3.5,   # ng/mL — very slow, tight
+    "endorphins":     30.0,   # pg/mL — physical activity sustains this more
+    "acetylcholine":  14.0,   # nmol/L — cognitive engagement
+    "norepinephrine": 80.0,   # pg/mL — arousal
+}
+
+
+def _apply_momentum(deltas: dict, state: BiologicalState) -> dict:
+    """
+    Scale positive deltas down based on how much has been applied recently.
+    Mutates state.encoder_momentum to accumulate applied amounts.
+    Negative deltas pass through unchanged — pain/stress doesn't habituate like this.
+    """
+    from log import log
+    momentum = state.encoder_momentum
+    result = {}
+    dampened_any = False
+
+    for chem, delta in deltas.items():
+        ceiling = _MOMENTUM_CEILINGS.get(chem)
+        if delta <= 0 or ceiling is None:
+            result[chem] = delta
+            continue
+        current = momentum.get(chem, 0.0)
+        scale = max(0.0, 1.0 - current / ceiling)
+        dampened = round(delta * scale, 2)
+        result[chem] = dampened
+        if dampened > 0:
+            momentum[chem] = round(current + dampened, 3)
+        if scale < 0.8:
+            dampened_any = True
+
+    if dampened_any:
+        pairs = [
+            f"{c}: {deltas[c]:+.1f}→{result[c]:+.1f} (m={momentum.get(c, 0):.1f}/{_MOMENTUM_CEILINGS[c]:.0f})"
+            for c in result
+            if c in _MOMENTUM_CEILINGS and result[c] != deltas[c]
+        ]
+        if pairs:
+            log("ENCODER/MOMENTUM", ", ".join(pairs))
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Saturation and personality scaling
 # ---------------------------------------------------------------------------
 
@@ -288,8 +341,9 @@ positive deltas for it should be 20–30% of the guidance maximums above.
     raw, event_override = _call_delta_json([{"role": "user", "content": prompt}], label="encode_stimulus")
     saturated = _apply_saturation(raw, state)
     if event_override:
-        return saturated
-    return _apply_personality_scaling(saturated, _load_personality())
+        return saturated  # discrete biological events bypass both personality and momentum
+    scaled = _apply_personality_scaling(saturated, _load_personality())
+    return _apply_momentum(scaled, state)
 
 
 def encode_response(state: BiologicalState, response_text: str) -> dict:
@@ -332,7 +386,8 @@ positive deltas for it should be 20–30% of the guidance maximums.
     saturated = _apply_saturation(raw, state)
     if event_override:
         return saturated
-    return _apply_personality_scaling(saturated, _load_personality())
+    scaled = _apply_personality_scaling(saturated, _load_personality())
+    return _apply_momentum(scaled, state)
 
 
 def evaluate_activity_deltas(state: BiologicalState, activity: str, description: str) -> dict:
@@ -384,4 +439,5 @@ positive deltas for it should be 20–30% of the guidance maximums.
     saturated = _apply_saturation(raw, state)
     if event_override:
         return saturated
-    return _apply_personality_scaling(saturated, _load_personality())
+    scaled = _apply_personality_scaling(saturated, _load_personality())
+    return _apply_momentum(scaled, state)

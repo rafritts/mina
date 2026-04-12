@@ -92,6 +92,10 @@ class BiologicalState:
     sleep_start: Optional[float] = None
     sleep_expected_wake: Optional[float] = None
 
+    # Accumulated recent positive encoder deltas per chemical — decays over real time.
+    # Used to dampen repeated hits on the same chemical (habituation / receptor cooldown).
+    encoder_momentum: dict = field(default_factory=dict)
+
     # ---------------------------------------------------------------------------
     # Convenience property accessors — read-only, allow old call sites to work
     # All write operations must use s.chemicals[name] directly
@@ -567,6 +571,18 @@ def advance(state: BiologicalState, now: Optional[float] = None) -> BiologicalSt
             s.chemicals.get("dopamine", 80.0) + (add_level / 100.0) * 6.0 * sim_hours)
         s.chemicals["norepinephrine"] = clamp_chemical("norepinephrine",
             s.chemicals.get("norepinephrine", 200.0) + (add_level / 100.0) * 39.0 * sim_hours)
+
+    # --- Encoder momentum decay (real time, not sim time) ---
+    # Half-life ~1800 s (30 min). Decays based on wall-clock elapsed time so that
+    # rapid conversation accumulates cooldown but a natural pause resets it.
+    real_elapsed = now - state.last_updated
+    if real_elapsed > 0 and s.encoder_momentum:
+        decay = 0.5 ** (real_elapsed / 1800.0)
+        s.encoder_momentum = {
+            k: v * decay
+            for k, v in s.encoder_momentum.items()
+            if v * decay > 0.05  # prune near-zero values
+        }
 
     # --- Tolerance decay ---
     for substance in list(s.tolerance.keys()):
