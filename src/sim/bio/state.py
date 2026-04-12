@@ -123,9 +123,30 @@ class BiologicalState:
 
     @property
     def sleep_pressure(self) -> float:
-        # v2 backward compat: reads from chemicals["sleep_pressure"].
-        # SPEC-21 will migrate this to derive from body["adenosine"].
-        return self.chemicals.get("sleep_pressure", CHEMICAL_DEFAULTS["sleep_pressure"])
+        """
+        Sleep pressure in AU (0–100). Derived from body["adenosine"].
+        adenosine 20 nmol/L → 0 AU (fully rested)
+        adenosine 80 nmol/L → 100 AU (exhausted)
+
+        Adenosine receptor sensitivity modulates the effective sleep signal:
+        caffeine blocks A1/A2A so adenosine builds but doesn't register as sleepiness.
+        """
+        raw = (self.body["adenosine"] - 20.0) / 0.60
+        raw = min(100.0, max(0.0, raw))
+
+        # Caffeine receptor block: A1/A2A sensitivity is transiently reduced
+        # while caffeine is active. Read directly from substances to avoid circular imports.
+        caffeine_level = self.substances.get("caffeine", {}).get("level", 0.0)
+        a1_sens  = self.receptor_sensitivity.get("adenosine", {}).get("A1",  1.0)
+        a2a_sens = self.receptor_sensitivity.get("adenosine", {}).get("A2A", 1.0)
+        if caffeine_level > 0.5:
+            # Block scales with dose: at 100 level, full 0.7× block
+            block_factor = 1.0 - 0.3 * min(1.0, caffeine_level / 100.0)
+            a1_sens  = a1_sens  * block_factor
+            a2a_sens = a2a_sens * block_factor
+
+        mean_receptor_sens = (a1_sens + a2a_sens) / 2.0
+        return raw * mean_receptor_sens
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -150,17 +171,23 @@ def apply_deltas(s: BiologicalState, deltas: dict) -> BiologicalState:
     """
     Apply subconscious-issued delta dict to state. Clamps all values.
 
-    Valid delta keys: any key in REGISTRY (chemicals), plus "tolerance" dict.
-    sleep_pressure is a valid key — maps directly to chemicals["sleep_pressure"]
-    until SPEC-21 migrates it to body["adenosine"].
+    Valid delta keys:
+      - Any key in REGISTRY (chemicals dict), except sleep_pressure (see below)
+      - "sleep_pressure": redirected to body["adenosine"] (Δadenonsine = Δsp × 0.6)
+      - "tolerance" dict: substance tolerance scalars
     """
     from src.sim.chem.registry import REGISTRY
     from src.sim.chem.units import clamp_chemical
 
-    _delta_fields = set(REGISTRY.keys())
+    _chemical_fields = set(REGISTRY.keys()) - {"sleep_pressure"}
 
     for key, val in deltas.items():
-        if key in _delta_fields:
+        if key == "sleep_pressure":
+            # SPEC-21: sleep_pressure is now derived from body["adenosine"].
+            # Translate: Δadenonsine = Δsleep_pressure × 0.6
+            current_a = s.body.get("adenosine", 38.0)
+            s.body["adenosine"] = max(15.0, min(100.0, current_a + float(val) * 0.6))
+        elif key in _chemical_fields:
             current = s.chemicals.get(key, CHEMICAL_DEFAULTS.get(key, 0.0))
             s.chemicals[key] = clamp_chemical(key, current + float(val))
         elif key == "tolerance" and isinstance(val, dict):

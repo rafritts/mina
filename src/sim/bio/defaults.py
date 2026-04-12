@@ -27,7 +27,10 @@ def chemical_defaults() -> dict[str, float]:
         "melatonin":         5.0,   # pg/mL — daytime low
         "glucose":          85.0,   # mg/dL — normal fasting
         "hydration":        62.0,   # % TBW
-        "sleep_pressure":   30.0,   # AU — kept for v2 backward compat; SPEC-21 migrates to adenosine
+        # SPEC-21: sleep_pressure removed from chemicals; now derived from body["adenosine"].
+        # gaba/glutamate added as first-class chemicals.
+        "gaba":              3.0,   # µmol/L — CSF proxy resting baseline
+        "glutamate":         4.0,   # µmol/L — CSF proxy resting baseline
     }
     try:
         pf = os.path.join(_PROJECT_ROOT, "personality.json")

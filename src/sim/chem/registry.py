@@ -13,7 +13,11 @@ Real units per chemical:
   melatonin:       pg/mL    (plasma; pure circadian)
   glucose:         mg/dL    (blood glucose; US clinical standard)
   hydration:       % TBW    (total body water as % of body weight)
-  sleep_pressure:  AU       (adenosine proxy; stays relative, 0–100)
+  sleep_pressure:  AU       (derived from body["adenosine"]; kept for label/normalize compat)
+  gaba:            µmol/L   (CSF proxy; primary inhibitory neurotransmitter)
+  glutamate:       µmol/L   (CSF proxy; primary excitatory neurotransmitter)
+  anandamide:      nM       (body["anandamide"]; endocannabinoid 1 — FAAH degraded)
+  two_ag:          nM       (body["two_ag"]; endocannabinoid 2 — MAGL degraded)
 """
 from __future__ import annotations
 
@@ -60,6 +64,51 @@ def _norepi_baseline_fn(hour: float, ctx: dict) -> float:
     if ctx.get("hydration", 62.0) < 56.0:
         base += 30.0
     return base
+
+
+def _gaba_baseline_fn(hour: float, ctx: dict) -> float:
+    """GABA baseline — suppressed by cortisol stress, elevated during sleep, reciprocal with glutamate."""
+    base = 3.0
+    # High cortisol suppresses GABAergic interneurons
+    base -= max(0.0, ctx.get("cortisol", 250.0) - 450.0) * 0.002
+    # Sleep promotes GABA activity (promotes SWS)
+    if ctx.get("sleeping", False):
+        base += 0.8
+    # Glutamate reciprocally inhibits GABA (E/I balance)
+    glu = ctx.get("glutamate", 4.0)
+    if glu > 6.0:
+        base -= (glu - 6.0) * 0.15
+    return max(0.8, base)
+
+
+def _glutamate_baseline_fn(hour: float, ctx: dict) -> float:
+    """Glutamate baseline — elevated by stress/arousal, cleared by sleep, reciprocal with GABA."""
+    base = 4.0
+    # Arousal/stress drives glutamate release
+    base += max(0.0, ctx.get("cortisol", 250.0) - 400.0) * 0.003
+    # Sleep clears excess glutamate (glymphatic system)
+    if ctx.get("sleeping", False):
+        base -= 1.2
+    # Reciprocal with GABA
+    gaba = ctx.get("gaba", 3.0)
+    if gaba < 2.0:
+        base += (2.0 - gaba) * 0.4
+    return max(1.0, base)
+
+
+def _anandamide_baseline_fn(hour: float, ctx: dict) -> float:
+    """Anandamide baseline — suppressed by stress, elevated by oxytocin/social bonding."""
+    base = 1.5
+    base -= max(0.0, ctx.get("cortisol", 250.0) - 500.0) * 0.001
+    base += max(0.0, ctx.get("oxytocin", 4.0) - 20.0) * 0.01
+    return max(0.3, base)
+
+
+def _two_ag_baseline_fn(hour: float, ctx: dict) -> float:
+    """2-AG baseline — stable, slightly elevated by pain (retrograde pain modulation)."""
+    base = 8.0
+    base += ctx.get("pain_intensity", 0.0) * 0.05
+    return max(2.0, base)
 
 
 def _ach_baseline_fn(hour: float, ctx: dict) -> float:
@@ -337,6 +386,112 @@ REGISTRY: dict[str, ChemicalProfile] = {
             (60.0,   "LOW",            "Thirsty. Mildly impaired."),
             (64.0,   "NORMAL",         "Comfortable. No impairment."),
             (9999.0, "WELL HYDRATED",  "Good fluid status."),
+        ],
+    ),
+
+    "gaba": ChemicalProfile(
+        name="gaba",
+        display_name="GABA",
+        unit="µmol/L",
+        resting_baseline=3.0,
+        approach_rate=0.12,
+        baseline_fn=_gaba_baseline_fn,
+        resting_low=1.8,
+        resting_high=5.0,
+        critical_low=0.5,
+        critical_high=12.0,
+        display_min=0.5,
+        display_max=10.0,
+        soft_ceiling=7.0,
+        hard_ceiling=10.0,
+        interactions=[
+            Interaction("cortisol",       "above", 5.0, -3.0,
+                        "GABAergic tone suppresses HPA axis"),
+            Interaction("norepinephrine", "above", 5.0, -15.0,
+                        "GABA reduces sympathetic tone"),
+        ],
+        labels=[
+            (0.8,  "DEPLETED", "Seizure risk. Uncontrolled excitatory activity. Extreme agitation."),
+            (1.8,  "LOW",      "Anxiety-prone. Easily startled. Hyperreactive."),
+            (4.0,  "NORMAL",   "Healthy inhibitory tone. Calm baseline."),
+            (6.5,  "ELEVATED", "Sedated. Relaxed. Slightly slowed cognition."),
+            (9.0,  "HIGH",     "Significantly sedated. Slurred thought. Drowsy."),
+            (99.0, "FLOODED",  "Near-anesthetic. Cannot maintain wakefulness. Respiratory risk."),
+        ],
+    ),
+
+    "glutamate": ChemicalProfile(
+        name="glutamate",
+        display_name="Glutamate",
+        unit="µmol/L",
+        resting_baseline=4.0,
+        approach_rate=0.15,
+        baseline_fn=_glutamate_baseline_fn,
+        resting_low=2.5,
+        resting_high=8.0,
+        critical_low=0.5,
+        critical_high=20.0,
+        display_min=0.5,
+        display_max=15.0,
+        soft_ceiling=12.0,
+        hard_ceiling=16.0,
+        interactions=[],  # cross-tier effects (il6, synaptic_potentiation) handled in amino_acids.py
+        labels=[
+            (1.5,  "DEPLETED",    "Severely under-excited. Dissociation. Inability to form memories."),
+            (3.0,  "LOW",         "Slowed. Difficulty concentrating. Ketamine-like blunting."),
+            (6.0,  "NORMAL",      "Healthy excitatory tone. Learning enabled."),
+            (9.0,  "ELEVATED",    "Hyperexcitable. Racing thoughts. Light hypersensitivity."),
+            (13.0, "EXCITOTOXIC", "Dangerous. Neuron damage risk. Seizure territory."),
+            (99.0, "CRISIS",      "Status epilepticus risk. Extreme distress."),
+        ],
+    ),
+
+    "anandamide": ChemicalProfile(
+        name="anandamide",
+        display_name="Anandamide",
+        unit="nM",
+        resting_baseline=1.5,
+        approach_rate=2.8,          # fast FAAH enzymatic degradation (~15 min half-life)
+        baseline_fn=_anandamide_baseline_fn,
+        resting_low=0.5,
+        resting_high=5.0,
+        critical_low=0.0,
+        critical_high=15.0,
+        display_min=0.0,
+        display_max=10.0,
+        soft_ceiling=8.0,
+        hard_ceiling=15.0,
+        interactions=[],  # cross-tier effects (pain, cortisol) handled in endocannabinoids.py
+        labels=[
+            (0.5,  "DEPLETED", "Stress-dominant. Pain amplified. Emotional volatility."),
+            (1.5,  "LOW",      "Below baseline. Reduced mood buffer."),
+            (3.5,  "NORMAL",   "Healthy tone. Mood buffered. Pain gated."),
+            (6.0,  "ELEVATED", "Mild bliss. Pain suppressed. Appetite increased."),
+            (99.0, "FLOODED",  "Intense euphoria. Memory consolidation impaired."),
+        ],
+    ),
+
+    "two_ag": ChemicalProfile(
+        name="two_ag",
+        display_name="2-AG",
+        unit="nM",
+        resting_baseline=8.0,
+        approach_rate=0.8,          # slower MAGL degradation
+        baseline_fn=_two_ag_baseline_fn,
+        resting_low=3.0,
+        resting_high=20.0,
+        critical_low=0.0,
+        critical_high=50.0,
+        display_min=0.0,
+        display_max=40.0,
+        soft_ceiling=35.0,
+        hard_ceiling=50.0,
+        interactions=[],  # CB2 immune effects handled in endocannabinoids.py
+        labels=[
+            (3.0,  "LOW",      "Below baseline. Reduced CB2 anti-inflammatory tone."),
+            (15.0, "NORMAL",   "Healthy CB1/CB2 tone. Immune and pain balanced."),
+            (25.0, "ELEVATED", "Strong cannabinoid tone. Anti-inflammatory active."),
+            (99.0, "HIGH",     "Very high 2-AG. Strong retrograde signaling."),
         ],
     ),
 
