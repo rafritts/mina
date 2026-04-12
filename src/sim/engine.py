@@ -32,6 +32,11 @@ from src.sim.physio.hpa import advance_hpa
 from src.sim.physio.endocrine import advance_endocrine
 from src.sim.physio.metabolic import advance_metabolic
 
+# SPEC-23 subsystems
+from src.sim.physio.immune import advance_immune
+from src.sim.physio.pain import advance_pain
+from src.sim.physio.autonomic import advance_autonomic
+
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
 
@@ -236,6 +241,17 @@ def advance(state: BiologicalState,
         s.chemicals["dopamine"] = clamp_chemical(
             "dopamine", s.chemicals.get("dopamine", 80.0) - 1.5 * sim_hours
         )
+
+    # --- SPEC-23 Phase Immune: cytokines, sickness behavior ---
+    # Runs after Phase 1/2 so cortisol and glutamate reflect the current tick.
+    s = advance_immune(s, sim_hours, event_bus)
+
+    # --- SPEC-23 Phase Pain: Substance P, PGE2, gate control, central sensitization ---
+    # Runs after immune so IL-1β / TNF-α are current; uses last-tick anandamide (one-tick lag).
+    s = advance_pain(s, sim_hours, event_bus)
+
+    # --- SPEC-23 Phase Autonomic: vagal tone + HRV (derived, no dynamics) ---
+    s = advance_autonomic(s, sim_hours, event_bus)
 
     # --- SPEC-21 Phase B: endocannabinoids ---
     s = advance_endocannabinoids(s, sim_hours, event_bus)
