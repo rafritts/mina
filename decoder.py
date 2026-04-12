@@ -726,7 +726,8 @@ def _assemble_system_prompt(sections: dict) -> str:
     if sections.get("how_you_are"):
         parts.append(
             f"## How you're feeling right now\n{sections['how_you_are']}\n\n"
-            "Use this emotional snapshot to influence the tone, not content, of your response."
+            "This is your actual physical and emotional state. Let it come through — "
+            "if something is urgent or consuming, it belongs in what you say, not just how you say it."
         )
     return "\n\n".join(parts)
 

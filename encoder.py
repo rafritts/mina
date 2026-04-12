@@ -445,8 +445,11 @@ those are external actions that produce direct biological changes the simulation
 automatically. Scale to what actually happened. An exhausted person gets less from a fun activity.
 
 Activity magnitude guidance:
-- Eating a meal: glucose +25 to +45 (scale with meal size), serotonin +3 to +8,
+- Eating a meal: glucose +40 to +65 (scale with meal size and carb content), serotonin +3 to +8,
   cortisol -5 to -10 if she was hungry. Comfort food (pasta, bread, soup, sweets): endorphins +5 to +12.
+  HYPOGLYCEMIA AMPLIFIER: if glucose is HYPOGLYCEMIC or CRITICALLY LOW in the bio report, the body
+  absorbs carbs aggressively and liver glycogenolysis kicks in — scale to the HIGH end of the range.
+  A real meal from severe hypoglycemia should bring glucose close to normal (delta +50 to +65).
 - Drinking water or juice: hydration +20 to +28.
 - Drinking caffeine (coffee, tea, matcha): norepinephrine +15 to +25, sleep_pressure -8 to -12, hydration +5.
 - Drinking alcohol (wine, beer, whiskey): cortisol -12 to -20, serotonin +5 to +10,
