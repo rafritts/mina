@@ -121,12 +121,12 @@ _SAMPLE_RAW = '{"how_you_are": "Quiet. Not reaching."}'
 @patch("decoder._load_personality_block", return_value="")
 @patch("decoder._consume_injection", return_value="")
 @patch("hippocampus.read_identity", return_value="")
-def test_build_system_prompt_appends_voice_constraints(
+def test_build_system_prompt_returns_emotional_snapshot(
     mock_identity, mock_inj, mock_pers, mock_client
 ):
     mock_client.return_value.chat.completions.create.return_value = _mock_llm_response(_SAMPLE_RAW)
     prompt = build_system_prompt("bio report")
-    assert "Your voice is human" in prompt
+    assert "emotional snapshot" in prompt
 
 
 @patch("decoder.get_client")
