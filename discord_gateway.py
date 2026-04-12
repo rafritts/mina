@@ -738,6 +738,59 @@ async def cmd_state(interaction: discord.Interaction):
     await interaction.response.send_message("\n".join(lines), ephemeral=True)
 
 
+@tree.command(name="bioreport", description="Show Mina's current biological state.")
+async def cmd_bioreport(interaction: discord.Interaction):
+    from chemicals import get_label
+    from state import derived as _derived
+    s = load_and_advance()
+    d = _derived(s)
+    so = d["second_order"]
+    to = d["third_order"]
+
+    def lbl(name: str) -> str:
+        val = s.chemicals.get(name, 0.0)
+        label, _ = get_label(name, val)
+        return label.title()
+
+    sleeping_str = " — sleeping" if s.sleeping else ""
+    now_str = time.strftime("%a %b %-d  %-I:%M %p")
+
+    lines = [
+        f"**{now_str}{sleeping_str}**",
+        "",
+        "**Body**",
+        f"Glucose: {lbl('glucose')}",
+        f"Hydration: {lbl('hydration')}",
+        f"Sleep pressure: {lbl('sleep_pressure')}",
+        "",
+        "**Chemistry**",
+        f"Cortisol: {lbl('cortisol')}",
+        f"Dopamine: {lbl('dopamine')}",
+        f"Serotonin: {lbl('serotonin')}",
+        f"Norepinephrine: {lbl('norepinephrine')}",
+        f"Oxytocin: {lbl('oxytocin')}",
+        f"Endorphins: {lbl('endorphins')}",
+        f"Acetylcholine: {lbl('acetylcholine')}",
+        f"Melatonin: {lbl('melatonin')}",
+        "",
+        "**State**",
+        f"Energy: {so['energy']:.0f}  Clarity: {so['cognitive_clarity']:.0f}  Mood: {so['mood_valence']:.0f}",
+        f"Anxiety: {to['anxiety']:.0f}  Depression: {to['depression']:.0f}  Loneliness: {to['loneliness']:.0f}",
+        f"Boredom: {to['boredom']:.0f}  Flow: {to['flow']:.0f}",
+    ]
+
+    if s.substances:
+        from state import _SUBSTANCE_DEFS
+        lines.append("")
+        lines.append("**Active substances**")
+        for name, dose in s.substances.items():
+            sub = _SUBSTANCE_DEFS.get(name, {})
+            level = dose.get("level", 0)
+            lines.append(f"{sub.get('display_name', name)}: {level:.0f}/100")
+
+    await interaction.response.send_message("\n".join(lines), ephemeral=True)
+
+
 @tree.command(name="compress", description="Set time compression factor.")
 @app_commands.describe(factor="Multiplier (e.g. 10 = 10x faster biological time)")
 async def cmd_compress(interaction: discord.Interaction, factor: float):
