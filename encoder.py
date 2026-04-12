@@ -297,6 +297,33 @@ def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, 
 
 
 # ---------------------------------------------------------------------------
+# Event emission
+# ---------------------------------------------------------------------------
+
+def _emit_event(
+    type: str,
+    preview: str,
+    deltas: dict,
+    scaled_before_momentum: dict | None,
+    event_override: bool,
+) -> None:
+    """Emit a structured event to the log. Never crashes a turn."""
+    try:
+        from events import emit
+        momentum_dampened = False
+        if scaled_before_momentum is not None:
+            momentum_dampened = any(
+                k in _MOMENTUM_CEILINGS
+                and scaled_before_momentum.get(k, 0) > 0
+                and deltas.get(k, 0) < scaled_before_momentum.get(k, 0) - 0.01
+                for k in scaled_before_momentum
+            )
+        emit(type, preview, deltas, event_override=event_override, momentum_dampened=momentum_dampened)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # Public encode functions
 # ---------------------------------------------------------------------------
 
@@ -341,9 +368,12 @@ positive deltas for it should be 20–30% of the guidance maximums above.
     raw, event_override = _call_delta_json([{"role": "user", "content": prompt}], label="encode_stimulus")
     saturated = _apply_saturation(raw, state)
     if event_override:
-        return saturated  # discrete biological events bypass both personality and momentum
+        _emit_event("stimulus", stimulus_text, saturated, None, event_override=True)
+        return saturated
     scaled = _apply_personality_scaling(saturated, _load_personality())
-    return _apply_momentum(scaled, state)
+    final = _apply_momentum(scaled, state)
+    _emit_event("stimulus", stimulus_text, final, scaled, event_override=False)
+    return final
 
 
 def encode_response(state: BiologicalState, response_text: str) -> dict:
@@ -385,9 +415,12 @@ positive deltas for it should be 20–30% of the guidance maximums.
     raw, event_override = _call_delta_json([{"role": "user", "content": prompt}], label="encode_response")
     saturated = _apply_saturation(raw, state)
     if event_override:
+        _emit_event("response", response_text, saturated, None, event_override=True)
         return saturated
     scaled = _apply_personality_scaling(saturated, _load_personality())
-    return _apply_momentum(scaled, state)
+    final = _apply_momentum(scaled, state)
+    _emit_event("response", response_text, final, scaled, event_override=False)
+    return final
 
 
 def evaluate_activity_deltas(state: BiologicalState, activity: str, description: str) -> dict:
@@ -438,6 +471,9 @@ positive deltas for it should be 20–30% of the guidance maximums.
     raw, event_override = _call_delta_json([{"role": "user", "content": prompt}], label="encode_activity")
     saturated = _apply_saturation(raw, state)
     if event_override:
+        _emit_event("activity", f"{activity}: {description}", saturated, None, event_override=True)
         return saturated
     scaled = _apply_personality_scaling(saturated, _load_personality())
-    return _apply_momentum(scaled, state)
+    final = _apply_momentum(scaled, state)
+    _emit_event("activity", f"{activity}: {description}", final, scaled, event_override=False)
+    return final

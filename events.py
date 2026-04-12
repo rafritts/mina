@@ -1,0 +1,72 @@
+"""
+Structured event log — encoder deltas with message context.
+
+Events are written to run/events.jsonl (newline-delimited JSON).
+Each event captures the type, a message preview, and the final
+computed deltas so the dashboard can display them per-message.
+
+Called from encoder.py after delta computation.
+"""
+import json
+import time
+from pathlib import Path
+
+_EVENTS_FILE = Path(__file__).parent / "run" / "events.jsonl"
+_MAX_EVENTS = 300  # rotate: keep last N
+
+
+def emit(
+    type: str,
+    preview: str,
+    deltas: dict,
+    event_override: bool = False,
+    momentum_dampened: bool = False,
+) -> None:
+    """
+    Append one encoder event to the log.
+
+    type: "stimulus" | "response" | "activity"
+    preview: truncated message/response/activity text for context
+    deltas: final computed deltas (after all scaling)
+    """
+    if not deltas:
+        return  # nothing to show
+
+    event = {
+        "ts": time.time(),
+        "type": type,
+        "preview": preview[:180].strip(),
+        "deltas": {k: round(v, 2) for k, v in deltas.items() if v != 0},
+        "event_override": event_override,
+        "momentum_dampened": momentum_dampened,
+    }
+
+    _EVENTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(_EVENTS_FILE, "a") as f:
+        f.write(json.dumps(event) + "\n")
+
+    # Rotate: trim to last MAX_EVENTS
+    try:
+        lines = _EVENTS_FILE.read_text().splitlines()
+        if len(lines) > _MAX_EVENTS:
+            _EVENTS_FILE.write_text("\n".join(lines[-_MAX_EVENTS:]) + "\n")
+    except Exception:
+        pass
+
+
+def read_events(limit: int = 150) -> list[dict]:
+    """Read the last `limit` events, newest first."""
+    try:
+        lines = _EVENTS_FILE.read_text().splitlines()
+        events = []
+        for line in reversed(lines[-limit:]):
+            line = line.strip()
+            if line:
+                try:
+                    events.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+        return events
+    except FileNotFoundError:
+        return []

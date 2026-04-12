@@ -65,6 +65,7 @@
     { href: '/admin',        label: 'Admin' },
     { href: '/substances',   label: 'Substances' },
     { href: '/relationship', label: 'Relationship' },
+    { href: '/events',       label: 'Logs' },
   ];
 
   let pageTitle = $derived(

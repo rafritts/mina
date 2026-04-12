@@ -369,6 +369,20 @@ def clear_substance(name: str, request: Request):
 
 
 # ---------------------------------------------------------------------------
+# Encoder events
+# ---------------------------------------------------------------------------
+
+_EVENTS_FILE = _PROJECT_ROOT / "run" / "events.jsonl"
+
+
+@app.get("/api/events")
+def get_events(request: Request, limit: int = 150):
+    _check_auth(request)
+    from events import read_events
+    return read_events(limit=min(limit, 300))
+
+
+# ---------------------------------------------------------------------------
 # REVELATION — writes creator relationship directly into Mina's memory
 # ---------------------------------------------------------------------------
 
