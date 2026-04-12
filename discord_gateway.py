@@ -891,9 +891,9 @@ async def cmd_wake(interaction: discord.Interaction):
 @tree.command(name="heartbeat", description="Manually trigger one heartbeat cycle.")
 async def cmd_heartbeat(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
-    from heartbeat import run_heartbeat
+    from freetime import run_freetime
     try:
-        await run_heartbeat()
+        await run_freetime()
         await interaction.followup.send("Heartbeat complete.", ephemeral=True)
     except Exception as e:
         await interaction.followup.send(f"Heartbeat error: {e}", ephemeral=True)

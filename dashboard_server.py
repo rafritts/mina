@@ -316,8 +316,8 @@ async def trigger_heartbeat(request: Request):
         raise HTTPException(status_code=409, detail="Heartbeat already running")
     _heartbeat_running = True
     try:
-        from heartbeat import run_heartbeat
-        await run_heartbeat(force=True)
+        from freetime import run_freetime
+        await run_freetime(force=True)
         return {"ok": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
