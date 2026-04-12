@@ -5,6 +5,7 @@ SPEC-20: monolithic logic migrated from root state.py.
 SPEC-21: amino_acids, endocannabinoids, receptors, substances extracted to subsystems.
          Adenosine (sleep_pressure) migrated to body tier via circadian.py.
 SPEC-22+: HPA/endocrine/metabolic/immune/pain extraction.
+SPEC-24: allostatic load, BDNF, orexin, core temp; two-process sleep onset.
 """
 from __future__ import annotations
 
@@ -36,6 +37,10 @@ from src.sim.physio.metabolic import advance_metabolic
 from src.sim.physio.immune import advance_immune
 from src.sim.physio.pain import advance_pain
 from src.sim.physio.autonomic import advance_autonomic
+
+# SPEC-24 subsystems
+from src.sim.psych.allostatic import advance_allostatic
+from src.sim.physio.circadian import _advance_core_temp, _advance_orexin, compute_sleep_propensity
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
@@ -85,10 +90,17 @@ def _make_context(state: BiologicalState, hour: float) -> dict:
         "leptin":       state.neuroendocrine.get("leptin",       15.0),
         "vasopressin":  state.neuroendocrine.get("vasopressin",  2.0),
         "prolactin":    state.neuroendocrine.get("prolactin",    8.0),
-        # Immune — for HPA-immune axis
-        "il6":          state.immune.get("il6", 3.0),
+        # Immune — for HPA-immune axis and BDNF suppression
+        "il6":               state.immune.get("il6",               3.0),
+        "inflammation_index": state.immune.get("inflammation_index", 0.0),
         # Pain — for 2-AG baseline
-        "pain_intensity": state.pain.get("pain_intensity", 0.0),
+        "pain_intensity":    state.pain.get("pain_intensity",       0.0),
+        # Neuroplasticity — for serotonin/dopamine baseline modulation
+        "bdnf":              state.neuroplasticity.get("bdnf",    9000.0),
+        "allostatic_load":   state.neuroplasticity.get("allostatic_load", 0.0),
+        # Body — for BDNF, orexin, and ACh baselines
+        "adenosine":         state.body.get("adenosine",           25.0),
+        "growth_hormone":    state.neuroendocrine.get("growth_hormone", 1.0),
     }
 
 
@@ -253,6 +265,16 @@ def advance(state: BiologicalState,
     # --- SPEC-23 Phase Autonomic: vagal tone + HRV (derived, no dynamics) ---
     s = advance_autonomic(s, sim_hours, event_bus)
 
+    # --- SPEC-24 Phase Allostatic: BDNF, allostatic load, synaptic potentiation ---
+    # Runs after immune and pain so current-tick inflammation and pain are captured.
+    s = advance_allostatic(s, sim_hours, event_bus)
+
+    # --- SPEC-24 Phase Circadian: orexin + core temperature ---
+    # Orexin advances toward its circadian baseline (adenosine/cortisol-modulated).
+    # Core temp follows circadian curve + fever from current-tick cytokines.
+    s = _advance_orexin(s, sim_hours, hour_of_day)
+    s = _advance_core_temp(s, sim_hours, hour_of_day)
+
     # --- SPEC-21 Phase B: endocannabinoids ---
     s = advance_endocannabinoids(s, sim_hours, event_bus)
 
@@ -303,13 +325,22 @@ def advance(state: BiologicalState,
                 s.chemicals.get("endorphins", 12.0) + random.uniform(3, 12),
             )
 
-    # --- Auto-sleep onset ---
-    if not s.sleeping and s.chemicals.get("melatonin", 0.0) >= 195.0:
-        sleep_start_hour = float(cfg.get("sleep_window_start", 4))
-        sleep_end_hour   = float(cfg.get("sleep_window_end", 8))
-        in_window = sleep_start_hour <= hour_of_day < sleep_end_hour
-        if in_window:
-            s.sleeping   = True
+    # --- Auto-sleep onset (SPEC-24: two-process propensity model) ---
+    # Replaces the old melatonin >= 195 threshold with a physiologically grounded
+    # sleep propensity score that integrates both Process S (adenosine) and
+    # Process C (melatonin vs orexin).
+    if not s.sleeping:
+        propensity = compute_sleep_propensity(s)
+        sleep_start_hour = float(cfg.get("sleep_window_start", 1.0))
+        sleep_end_hour   = float(cfg.get("sleep_window_end", 9.0))
+        in_window = (sleep_start_hour <= hour_of_day < sleep_end_hour or
+                     hour_of_day < sleep_end_hour)
+
+        # In window: 70 is sufficient; any time: 90 overrides (exhaustion collapse)
+        threshold = 70.0 if in_window else 90.0
+
+        if propensity >= threshold:
+            s.sleeping    = True
             s.sleep_start = now
             lt = time.localtime(now)
             wake = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday,
@@ -320,9 +351,11 @@ def advance(state: BiologicalState,
             s.sleep_expected_wake = wake
             try:
                 from log import log
-                log("SLEEP", f"Auto-onset at {time.strftime('%H:%M')} "
-                    f"(melatonin={s.chemicals.get('melatonin', 0):.0f} pg/mL) — wake at "
-                    f"{time.strftime('%H:%M', time.localtime(wake))}")
+                log("SLEEP", f"Auto-onset: propensity={propensity:.1f} "
+                    f"(adenosine={s.body['adenosine']:.1f} nmol/L, "
+                    f"melatonin={s.chemicals.get('melatonin', 0):.0f} pg/mL, "
+                    f"orexin={s.neuroendocrine.get('orexin', 300):.0f} pg/mL) — "
+                    f"wake at {time.strftime('%H:%M', time.localtime(wake))}")
             except ImportError:
                 pass
 

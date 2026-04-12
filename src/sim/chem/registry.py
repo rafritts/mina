@@ -74,8 +74,9 @@ def _norepi_baseline_fn(hour: float, ctx: dict) -> float:
 
 def _serotonin_baseline_fn(hour: float, ctx: dict) -> float:
     """
-    Serotonin baseline modulated by T3 (thyroid) and estradiol (sex hormone).
+    Serotonin baseline modulated by T3 (thyroid), estradiol, and BDNF.
     SPEC-22: neuroendocrine hormones feed into ctx and shift the serotonin set-point.
+    SPEC-24: BDNF modulates serotonin system capacity (low BDNF = depression-like blunting).
     """
     base = 22.0
     # T3 potentiates serotonin synthesis (low T3 = depression-like blunting)
@@ -87,6 +88,10 @@ def _serotonin_baseline_fn(hour: float, ctx: dict) -> float:
     # Low estradiol (menstrual / late luteal) → direct serotonin deficit
     if est < 50.0:
         base -= 2.0
+    # BDNF modulates serotonin system effectiveness (critical low BDNF → blunted baseline)
+    # Most antidepressants work partly by increasing BDNF over 2-4 weeks
+    bdnf_factor = min(1.5, ctx.get("bdnf", 9000.0) / 9000.0)
+    base *= max(0.5, bdnf_factor)  # BDNF 3000 → serotonin baseline ~11 ng/mL
     return max(5.0, base)
 
 

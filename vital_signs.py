@@ -197,12 +197,38 @@ def _o2_label(o2: float) -> str:
 # Public interface
 # ---------------------------------------------------------------------------
 
+def heart_rate_variability(s: BiologicalState) -> float:
+    """
+    HRV (RMSSD ms) derived from vagal tone.
+    Range: vagal_tone 0 → ~10ms, vagal_tone 100 → ~80ms.
+    """
+    vagal_tone = s.body.get("vagal_tone", 55.0)
+    return round(10.0 + vagal_tone * 0.70, 1)
+
+
+def core_temperature(s: BiologicalState) -> float:
+    """Core body temperature in °C. Normal: 36.3–37.2°C. Fever: >38.0°C."""
+    return round(s.body.get("core_temp", 37.0), 2)
+
+
+def is_fevered(s: BiologicalState) -> bool:
+    """True when core temperature is above fever threshold (38.0°C)."""
+    return s.body.get("core_temp", 37.0) > 38.0
+
+
+def pain_level(s: BiologicalState) -> float:
+    """Subjective pain intensity 0–100 AU."""
+    return s.pain.get("pain_intensity", 0.0)
+
+
 def vital_signs(s: BiologicalState) -> dict:
     """Compute all vital signs from current chemical state."""
     hr          = heart_rate(s)
     sys_bp, dia = blood_pressure(s)
     rr          = respiration_rate(s)
     o2          = spo2(s, rr)
+    hrv         = heart_rate_variability(s)
+    temp        = core_temperature(s)
     return {
         "heart_rate": {
             "value": hr,
@@ -224,6 +250,16 @@ def vital_signs(s: BiologicalState) -> dict:
             "value": o2,
             "unit":  "%",
             "label": _o2_label(o2),
+        },
+        "hrv_rmssd": {
+            "value": hrv,
+            "unit":  "ms",
+            "label": "HIGH" if hrv > 55 else "NORMAL" if hrv > 30 else "LOW",
+        },
+        "core_temp": {
+            "value": temp,
+            "unit":  "°C",
+            "label": "FEVER" if temp > 38.0 else "ELEVATED" if temp > 37.5 else "NORMAL",
         },
     }
 

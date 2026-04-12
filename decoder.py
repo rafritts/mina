@@ -243,14 +243,64 @@ def biological_report(state: BiologicalState) -> str:
                     lines.append(f"  COGNITIVE STATE: {note}")
         lines.append("NOTE: Biomarker values are chemically induced, not her natural state.")
 
+    # --- Immune section ---
+    try:
+        im   = state.immune
+        infl = im.get("inflammation_index", 0.0)
+        if infl > 5.0 or im.get("il6", 3.0) > 5.0:
+            infl_label = ("QUIESCENT" if infl < 10 else "MILD" if infl < 25
+                          else "MODERATE" if infl < 45 else "ACTIVE")
+            lines.append(SEP)
+            lines.append(f"  [IMMUNE]  Inflammation: {infl:.1f}/100 ({infl_label})")
+            lines.append(
+                f"  IL-1β={im.get('il1b',2.0):.1f}  IL-6={im.get('il6',3.0):.1f}"
+                f"  TNF-α={im.get('tnf_alpha',3.0):.1f}  CRP={im.get('crp',0.5):.1f}"
+            )
+    except Exception:
+        pass
+
+    # --- Pain section ---
+    try:
+        p        = state.pain
+        pain_int = p.get("pain_intensity", 0.0)
+        if pain_int > 5.0:
+            pain_label = ("MILD" if pain_int < 25 else "MODERATE" if pain_int < 45
+                          else "SIGNIFICANT")
+            lines.append(SEP)
+            lines.append(f"  [PAIN]  Intensity: {pain_int:.0f}/100 ({pain_label})")
+            lines.append(
+                f"  Substance P={p.get('substance_p',30.0):.0f} pg/mL"
+                f"  PGE2={p.get('pge2',80.0):.0f} pg/mL"
+            )
+            if p.get("central_sensitization", 0.0) > 20:
+                lines.append(f"  Central sensitization: {p['central_sensitization']:.0f}/100")
+    except Exception:
+        pass
+
+    # --- Neuroplasticity section ---
+    try:
+        np_ = state.neuroplasticity
+        al  = np_.get("allostatic_load", 0.0)
+        al_label = ("LOW" if al < 20 else "MODERATE" if al < 40
+                    else "HIGH" if al < 60 else "SEVERE")
+        lines.append(SEP)
+        lines.append(f"  [NEUROPLASTICITY]")
+        lines.append(f"  BDNF: {np_.get('bdnf',9000.0):.0f} pg/mL"
+                     f"  Allostatic load: {al:.1f}/100 ({al_label})")
+        lines.append(f"  Synaptic potentiation: {np_.get('synaptic_potentiation',50.0):.0f}/100")
+    except Exception:
+        pass
+
     try:
         from vital_signs import vital_signs as _vitals
         vs = _vitals(state)
         lines.append(SEP)
-        hr = vs["heart_rate"]
-        bp = vs["blood_pressure"]
-        rr = vs["respiration_rate"]
-        o2 = vs["spo2"]
+        hr   = vs["heart_rate"]
+        bp   = vs["blood_pressure"]
+        rr   = vs["respiration_rate"]
+        o2   = vs["spo2"]
+        hrv  = vs.get("hrv_rmssd", {})
+        temp = vs.get("core_temp", {})
 
         def _warn(label_str: str) -> str:
             danger_labels = {"BRADYCARDIA", "DANGEROUS", "CRITICALLY DEPRESSED", "CRITICAL"}
@@ -260,6 +310,11 @@ def biological_report(state: BiologicalState) -> str:
         lines.append(f"{_warn(bp['label'])}Blood Press   {bp['systolic']:.0f}/{bp['diastolic']:.0f} mmHg   {bp['label']}")
         lines.append(f"{_warn(rr['label'])}Respiration   {rr['value']:>5.1f} br/min   {rr['label']}")
         lines.append(f"{_warn(o2['label'])}SpO2          {o2['value']:>5.1f} %        {o2['label']}")
+        if hrv:
+            lines.append(f"  HRV (RMSSD) {hrv['value']:>5.1f} ms       {hrv['label']}")
+        if temp:
+            warn = "⚠ " if temp["label"] == "FEVER" else "  "
+            lines.append(f"{warn}Core Temp   {temp['value']:>5.2f} °C       {temp['label']}")
     except Exception:
         pass
 
