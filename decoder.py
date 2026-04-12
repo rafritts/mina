@@ -317,7 +317,11 @@ def biological_report(state: BiologicalState) -> str:
 # ---------------------------------------------------------------------------
 
 def needs_summary(state: BiologicalState, elapsed_minutes: float = 0) -> str:
-    """Summarize notable needs and current state for the freetime encode_stimulus call."""
+    """Summarize notable needs and current state for the freetime encode_stimulus call.
+
+    Uses qualitative labels only — no raw numbers exposed to Mina or injected into
+    state_note, since she shouldn't know her exact blood glucose or TBW percentage.
+    """
     d = derived(state)
     to = d["third_order"]
     parts = []
@@ -327,31 +331,31 @@ def needs_summary(state: BiologicalState, elapsed_minutes: float = 0) -> str:
 
     glu = state.chemicals.get("glucose", 85.0)
     if glu < 55:
-        parts.append(f"Glucose at {glu:.0f} mg/dL — hypoglycemic, hungry.")
+        parts.append("Hypoglycemic, hungry.")
     elif glu < 70:
-        parts.append(f"Glucose at {glu:.0f} mg/dL — hungry.")
+        parts.append("Hungry.")
 
     hyd = state.chemicals.get("hydration", 62.0)
     if hyd < 54:
-        parts.append(f"Hydration at {hyd:.1f}% TBW — very thirsty.")
+        parts.append("Very thirsty, dehydrated.")
     elif hyd < 58:
-        parts.append(f"Hydration at {hyd:.1f}% TBW — thirsty.")
+        parts.append("Thirsty.")
 
     sp = state.chemicals.get("sleep_pressure", 30.0)
     if sp > 80:
-        parts.append(f"Sleep pressure at {sp:.0f} AU — exhausted.")
+        parts.append("Exhausted, heavy sleep pressure.")
     elif sp > 60:
-        parts.append(f"Sleep pressure at {sp:.0f} AU — tired.")
+        parts.append("Tired.")
 
     boredom = to['boredom']
     if boredom > 65:
         name, _ = _get_range(boredom, _BOREDOM_RANGES)
-        parts.append(f"Boredom at {boredom:.0f} — {name.lower()}.")
+        parts.append(f"Boredom — {name.lower()}.")
 
     loneliness = to['loneliness']
     if loneliness > 50:
         name, _ = _get_range(loneliness, _LONELINESS_RANGES)
-        parts.append(f"Loneliness at {loneliness:.0f} — {name.lower()}.")
+        parts.append(f"Loneliness — {name.lower()}.")
 
     if state.sleeping:
         parts.append("Currently sleeping.")

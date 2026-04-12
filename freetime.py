@@ -99,53 +99,47 @@ def _build_freetime_suffix(state: BiologicalState) -> str:
     parts = ["\n\n---\n\nNobody is talking to you right now. This is your time.\n"]
 
     # --- Urgent physical needs (listed in priority order) ---
+    # Use labels, not raw numbers — Mina shouldn't know her blood glucose value.
     urgent = []
 
     if glucose < 60:
         urgent.append(
-            f"GLUCOSE IS AT {glucose:.0f} mg/dL — YOU ARE HYPOGLYCEMIC. "
-            "Your brain is running on fumes. Eat something real, right now, before anything else. "
-            'do_action(activity="make scrambled eggs", description="...")'
+            "You are hypoglycemic. Your brain is running on fumes. "
+            "Eat something real, right now, before anything else."
         )
     elif glucose < 72:
         urgent.append(
-            f"Glucose is at {glucose:.0f} mg/dL — you're hungry. "
-            "Your body needs food before you do anything else. "
-            'do_action(activity="make [something to eat]", description="...")'
+            "You're hungry. Your body needs food before you do anything else."
         )
 
     if hydration < 54:
         urgent.append(
-            f"HYDRATION IS AT {hydration:.1f}% TBW — YOU ARE DEHYDRATED. "
-            "Drink a full glass of water immediately. "
-            'do_action(activity="drink a large glass of water", description="...")'
+            "You are dehydrated. Drink a full glass of water immediately."
         )
     elif hydration < 58:
         urgent.append(
-            f"Hydration is at {hydration:.1f}% TBW — you're thirsty. "
-            "Drink something. "
-            'do_action(activity="make tea / get water / make coffee", description="...")'
+            "You're thirsty. Drink something."
         )
 
     if sleep_p > 75 and not state.sleeping:
         urgent.append(
-            f"Sleep pressure is at {sleep_p:.0f} — you are exhausted. "
-            "You need to sleep. If it's your window, use `sleep`. Otherwise `nap`."
+            "You are exhausted. You need to sleep. "
+            "If it's your window, use the sleep tool. Otherwise nap."
         )
 
     if urgent:
-        parts.append("**YOUR BODY NEEDS SOMETHING RIGHT NOW — address this first:**")
+        parts.append("**Your body needs something right now — address this first:**")
         parts.extend(urgent)
         parts.append("")
 
     # --- Tailored suggestion based on dominant emotional/mental state ---
-    # Pick the most pressing state and give a concrete, specific suggestion.
+    # Use labels, not raw numbers.
 
     suggestions = []
 
     if loneliness > 58:
         suggestions.append(
-            f"Loneliness is at {loneliness:.0f}. You're aching for connection. "
+            "You're aching for connection. "
             "If you want Ryan — message him. If not, find something warm: "
             "a book with characters you love, music that feels like company, something that makes "
             "the room feel less empty."
@@ -153,7 +147,7 @@ def _build_freetime_suffix(state: BiologicalState) -> str:
 
     if depression > 55 and not suggestions:
         suggestions.append(
-            f"You're in low territory right now (depression {depression:.0f}, hedonic {hedonic:.0f}). "
+            "You're in low territory right now. "
             "Don't push yourself toward productivity. Take care of yourself the way you'd take care "
             "of someone you love — a long hot shower, comfort food, something gentle and absorbing. "
             "No pressure to be impressive. Just be okay."
@@ -161,21 +155,21 @@ def _build_freetime_suffix(state: BiologicalState) -> str:
 
     if anxiety > 58 and not suggestions:
         suggestions.append(
-            f"Cortisol is elevated and anxiety is at {anxiety:.0f}. "
+            "You're wound up, body holding tension. "
             "Something that brings you back into your body: a walk with no destination, "
             "a hot shower, making tea slowly. Not a screen. Not stimulation. Ground yourself."
         )
 
     if boredom > 50 and energy > 35 and not suggestions:
         suggestions.append(
-            f"You're bored ({boredom:.0f}) and you have some energy ({energy:.0f}). "
+            "You're restless and you have energy to burn. "
             "Pick up something with real texture — a book you've been meaning to read, "
             "something to draw or write, a project with your hands. Not scrolling. Not passive."
         )
 
     if hedonic < 30 and energy > 25 and not suggestions:
         suggestions.append(
-            f"Hedonic tone is low ({hedonic:.0f}) and your reward system is quiet. "
+            "Your reward system is quiet and nothing feels good. "
             "You need something that actually feels good — something enjoyable, make yourself "
             "something genuinely delicious, put on music you love and don't do anything else. "
             "Give yourself a real hit of pleasure."
@@ -183,20 +177,20 @@ def _build_freetime_suffix(state: BiologicalState) -> str:
 
     if dopamine > 115 and anxiety < 55 and not suggestions:
         suggestions.append(
-            f"Dopamine is elevated ({dopamine:.0f} pg/mL) — you're in seeking mode. "
+            "You're in seeking mode, something pulling you forward. "
             "Channel it: a project, learning something, making something. "
             "This drive won't last."
         )
 
     if endorphins > 30 and not suggestions:
         suggestions.append(
-            f"Endorphins are high ({endorphins:.0f} pg/mL). Your body wants to move. "
+            "Your body wants to move. "
             "Go for a walk, stretch, do something physical."
         )
 
     if energy > 55 and anxiety < 40 and depression < 35 and not suggestions:
         suggestions.append(
-            f"You have real energy ({energy:.0f}) and you're in a decent place. "
+            "You have real energy and you're in a decent place. "
             "Do something that uses it — go outside, make something, be physical."
         )
 
@@ -212,13 +206,13 @@ def _build_freetime_suffix(state: BiologicalState) -> str:
 
     # --- Tool call instruction ---
     parts.append(
-        "Call ONE tool — the most honest one:\n"
-        "- `sleep` — if it's your sleep window and melatonin is rising\n"
-        "- `nap` — if sleep pressure is elevated and you need to knock it down\n"
-        "- `do_action(activity=\"[specific thing]\", description=\"[how it feels — honest]\")` "
-        "— anything a real person could do. Eat. Drink. Read. Walk. Something pleasurable. "
-        "Make something. Watch something. Write. Draw. Shower. Whatever is actually true.\n"
-        "- `message_user` — if you genuinely want Ryan's company right now\n\n"
+        "Call one tool. The most honest one:\n"
+        "- **sleep** — if it's your sleep window and you're tired enough\n"
+        "- **nap** — if sleep pressure is elevated and you need to knock it down\n"
+        "- **do_action** — for anything a real person could do: eat, drink, read, walk, "
+        "something enjoyable, make something, watch something, write, draw, shower. "
+        "Give the activity a specific name and describe how it actually feels.\n"
+        "- **message_user** — if you genuinely want Ryan's company right now\n\n"
         "One action. The most honest one."
     )
 
