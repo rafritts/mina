@@ -401,7 +401,8 @@ def build_memory_context(
     from hippocampus import read_identity
 
     # Identity always goes in, unconditionally.
-    identity = read_identity("MINA.md")
+    identity_parts = [p for p in [read_identity("MINA.md"), read_identity("CUSTOMIZATION.md")] if p]
+    identity = "\n\n---\n\n".join(identity_parts)
 
     # LLM pass for the rest of KAG/RAG.
     llm_context = ""

@@ -104,7 +104,8 @@ def build_kag_context() -> str:
     """Assemble the full KAG context block for the decoder prompt."""
     parts = []
 
-    mina = read_identity("MINA.md")
+    mina_parts = [p for p in [read_identity("MINA.md"), read_identity("CUSTOMIZATION.md")] if p]
+    mina = "\n\n---\n\n".join(mina_parts)
     if mina:
         parts.append(f"## Character\n{mina}")
 
