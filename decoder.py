@@ -633,6 +633,64 @@ def _consume_injection() -> str:
 
 
 # ---------------------------------------------------------------------------
+# Decoder state history — rolling trajectory for context
+# ---------------------------------------------------------------------------
+
+_DECODER_HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run", "decoder_history.jsonl")
+_DECODER_HISTORY_MAX  = 20  # keep last 20 entries, pass last 3 to decoder
+
+
+def _load_decoder_history(n: int = 3) -> list[dict]:
+    """Return the last n decoder entries, oldest first."""
+    try:
+        lines = open(_DECODER_HISTORY_FILE).read().splitlines()
+        entries = []
+        for line in lines[-n:]:
+            line = line.strip()
+            if line:
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+        return entries
+    except FileNotFoundError:
+        return []
+
+
+def _append_decoder_history(how_you_are: str) -> None:
+    """Append a new entry and rotate to keep last _DECODER_HISTORY_MAX."""
+    entry = {"ts": time.time(), "how_you_are": how_you_are}
+    os.makedirs(os.path.dirname(_DECODER_HISTORY_FILE), exist_ok=True)
+    with open(_DECODER_HISTORY_FILE, "a") as f:
+        f.write(json.dumps(entry) + "\n")
+    try:
+        lines = open(_DECODER_HISTORY_FILE).read().splitlines()
+        if len(lines) > _DECODER_HISTORY_MAX:
+            with open(_DECODER_HISTORY_FILE, "w") as f:
+                f.write("\n".join(lines[-_DECODER_HISTORY_MAX:]) + "\n")
+    except Exception:
+        pass
+
+
+def _format_history_block(entries: list[dict]) -> str:
+    """Format decoder history entries as a trajectory block for the decoder."""
+    if not entries:
+        return ""
+    now = time.time()
+    lines = []
+    for e in entries:
+        delta = now - e.get("ts", now)
+        if delta < 3600:
+            age = f"{int(delta / 60)}m ago"
+        elif delta < 86400:
+            age = f"{int(delta / 3600)}h ago"
+        else:
+            age = f"{int(delta / 86400)}d ago"
+        lines.append(f"[{age}] {e['how_you_are']}")
+    return "[STATE TRAJECTORY — how you were feeling, oldest to most recent]\n" + "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Output parser
 # ---------------------------------------------------------------------------
 
@@ -692,12 +750,16 @@ def build_system_prompt(
     injection = _consume_injection()
     personality_block = _load_personality_block()
 
+    history_entries = _load_decoder_history(n=3)
+    history_block   = _format_history_block(history_entries)
+
     user_content_parts = [
         f"[BIOLOGICAL STATE — ground truth, do not contradict]\n{biological_report_text}",
     ]
+    if history_block:
+        user_content_parts.append(history_block)
     if personality_block:
         user_content_parts.append(personality_block)
-
     if injection:
         user_content_parts.append(
             f"[SUBCONSCIOUS INJECTION — integrate this into her current state of mind]\n{injection}"
@@ -730,6 +792,9 @@ def build_system_prompt(
             log("DECODER/JSON/ERR", f"attempt {attempt}/{max_attempts}: {exc} — raw: {raw[:200]}")
             if attempt == max_attempts:
                 log("DECODER/JSON/ERR", "all retries exhausted — falling back to identity only")
+
+    if sections and sections.get("how_you_are"):
+        _append_decoder_history(sections["how_you_are"])
 
     dynamic = _assemble_system_prompt(sections) if sections else ""
 
