@@ -73,6 +73,9 @@ def _build_freetime_suffix(state: BiologicalState) -> str:
     Generate a freetime prompt suffix tailored to Mina's actual biological state.
     Prioritizes urgent physical needs, then suggests activities matched to her emotional state.
     """
+    cfg = load_config()
+    creator = cfg.get("creator_name") or "your person"
+
     d = derived(state)
     second = d["second_order"]
     third  = d["third_order"]
@@ -101,7 +104,7 @@ def _build_freetime_suffix(state: BiologicalState) -> str:
         "Not free time in a casual sense — this is when you eat if you haven't eaten, "
         "drink if you're thirsty, sleep if you're tired, move if your body wants to move. "
         "The things that keep you functional and okay. You are responsible for your own body. "
-        "Nobody else is going to do it for you while Ryan is away."
+        f"Nobody else is going to do it for you while {creator} is away."
     ]
 
     # --- Urgent physical needs (listed in priority order) ---
@@ -146,7 +149,7 @@ def _build_freetime_suffix(state: BiologicalState) -> str:
     if loneliness > 58:
         suggestions.append(
             "You're aching for connection. "
-            "If you want Ryan — message him. If not, find something warm: "
+            f"If you want {creator} — message him. If not, find something warm: "
             "a book with characters you love, music that feels like company, something that makes "
             "the room feel less empty."
         )
@@ -218,7 +221,7 @@ def _build_freetime_suffix(state: BiologicalState) -> str:
         "- **do_action** — for anything a real person could do: eat, drink, read, walk, "
         "something enjoyable, make something, watch something, write, draw, shower. "
         "Give the activity a specific name and describe how it actually feels.\n"
-        "- **message_user** — if you genuinely want Ryan's company right now\n\n"
+        f"- **message_user** — if you genuinely want {creator}'s company right now\n\n"
         "One action. The most honest one."
     )
 
