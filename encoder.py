@@ -256,6 +256,7 @@ def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, 
             model=MODEL,
             messages=msgs,
             temperature=0.3,
+            response_format={"type": "json_object"},
         )
         import token_stats
         token_stats.record_response(label, response)
