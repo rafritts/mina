@@ -337,6 +337,19 @@ async def run_turn(
         state = apply_deltas(state, stimulus_deltas)
         save_state(state)
 
+    # [1b] Danger detection — every turn so overdose can trigger during active sessions
+    try:
+        from vital_signs import vital_signs as _vs, process_danger as _pd
+        from config import INJECT_FILE as _INJECT
+        _danger = _pd(state, _vs(state))
+        if _danger:
+            log("DANGER", _danger[:120])
+            os.makedirs(os.path.dirname(_INJECT), exist_ok=True)
+            with open(_INJECT, "w") as _f:
+                _f.write(_danger)
+    except Exception as _e:
+        log("DANGER/ERROR", str(_e))
+
     # [2] biological_report — deterministic, from updated state
     report = biological_report(state)
     log("BIO/REPORT", f"\n{report}")

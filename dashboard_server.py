@@ -344,11 +344,10 @@ def dose_substance(name: str, request: Request):
 
     s = advance(load_state())  # advance first so decay is current
 
-    # Apply immediate dose effects directly — bypasses saturation ceilings
-    from chemicals import REGISTRY, clamp_chemical
+    # Apply immediate dose effects directly — no ceilings, substances can push into danger
     for marker, delta in sub["dose_effects"].items():
         if marker in s.chemicals:
-            s.chemicals[marker] = clamp_chemical(marker, s.chemicals[marker] + float(delta))
+            s.chemicals[marker] = max(0.0, s.chemicals[marker] + float(delta))
 
     # Stack level (re-dose while active adds up, capped at 100)
     current_level = s.substances.get(name, {}).get("level", 0)

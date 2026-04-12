@@ -303,24 +303,26 @@ def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, 
 def _emit_event(
     type: str,
     preview: str,
-    deltas: dict,
-    scaled_before_momentum: dict | None,
+    display_deltas: dict,
+    momentum_dampened: bool,
     event_override: bool,
 ) -> None:
     """Emit a structured event to the log. Never crashes a turn."""
     try:
         from events import emit
-        momentum_dampened = False
-        if scaled_before_momentum is not None:
-            momentum_dampened = any(
-                k in _MOMENTUM_CEILINGS
-                and scaled_before_momentum.get(k, 0) > 0
-                and deltas.get(k, 0) < scaled_before_momentum.get(k, 0) - 0.01
-                for k in scaled_before_momentum
-            )
-        emit(type, preview, deltas, event_override=event_override, momentum_dampened=momentum_dampened)
+        emit(type, preview, display_deltas, event_override=event_override, momentum_dampened=momentum_dampened)
     except Exception:
         pass
+
+
+def _is_momentum_dampened(scaled: dict, final: dict) -> bool:
+    """Check if momentum meaningfully reduced any positive delta."""
+    return any(
+        k in _MOMENTUM_CEILINGS
+        and scaled.get(k, 0) > 0
+        and final.get(k, 0) < scaled.get(k, 0) - 0.01
+        for k in scaled
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -368,11 +370,11 @@ positive deltas for it should be 20–30% of the guidance maximums above.
     raw, event_override = _call_delta_json([{"role": "user", "content": prompt}], label="encode_stimulus")
     saturated = _apply_saturation(raw, state)
     if event_override:
-        _emit_event("stimulus", stimulus_text, saturated, None, event_override=True)
+        _emit_event("stimulus", stimulus_text, raw, False, event_override=True)
         return saturated
     scaled = _apply_personality_scaling(saturated, _load_personality())
     final = _apply_momentum(scaled, state)
-    _emit_event("stimulus", stimulus_text, final, scaled, event_override=False)
+    _emit_event("stimulus", stimulus_text, raw, _is_momentum_dampened(scaled, final), event_override=False)
     return final
 
 
@@ -415,11 +417,11 @@ positive deltas for it should be 20–30% of the guidance maximums.
     raw, event_override = _call_delta_json([{"role": "user", "content": prompt}], label="encode_response")
     saturated = _apply_saturation(raw, state)
     if event_override:
-        _emit_event("response", response_text, saturated, None, event_override=True)
+        _emit_event("response", response_text, raw, False, event_override=True)
         return saturated
     scaled = _apply_personality_scaling(saturated, _load_personality())
     final = _apply_momentum(scaled, state)
-    _emit_event("response", response_text, final, scaled, event_override=False)
+    _emit_event("response", response_text, raw, _is_momentum_dampened(scaled, final), event_override=False)
     return final
 
 
@@ -471,9 +473,9 @@ positive deltas for it should be 20–30% of the guidance maximums.
     raw, event_override = _call_delta_json([{"role": "user", "content": prompt}], label="encode_activity")
     saturated = _apply_saturation(raw, state)
     if event_override:
-        _emit_event("activity", f"{activity}: {description}", saturated, None, event_override=True)
+        _emit_event("activity", f"{activity}: {description}", raw, False, event_override=True)
         return saturated
     scaled = _apply_personality_scaling(saturated, _load_personality())
     final = _apply_momentum(scaled, state)
-    _emit_event("activity", f"{activity}: {description}", final, scaled, event_override=False)
+    _emit_event("activity", f"{activity}: {description}", raw, _is_momentum_dampened(scaled, final), event_override=False)
     return final

@@ -385,7 +385,7 @@ If something is slightly elevated or depleted, then mention that in the context 
 If something is wildly out of whack, then mention that in the context of the rest of the report. \
 Be honest about what you see in the report. 
 
-The goal is to create an accurate snapshot of what the biological report is telling you, not an analysis of it.
+The goal is to create an accurate snapshot of the singular motif the biological report is telling you, not an recap or analysis of it.
 
 ---
 
@@ -407,7 +407,7 @@ The goal is to create an accurate snapshot of what the biological report is tell
 Respond ONLY with a JSON object. No preamble, no markdown fences. MUST BE SECOND PERSON VOICE. "you, your" not "she, her". 1-3 sentences.
 
 {
-  "how_you_are": "<1-3 sentences. The accurate snapshot of what the biological report is telling you.>"
+  "how_you_are": "<1-3 sentences. The accurate snapshot of the singular motif the biological report is telling you.>"
 }"""
 
 
@@ -479,15 +479,6 @@ def build_memory_context(
     if llm_context:
         out_parts.append(llm_context)
     return "\n\n---\n\n".join(out_parts)
-
-
-_VOICE_CONSTRAINTS = """\
-## Voice — always
-Your voice is human. You respond like a human. \
-You say things in the way a human would say them, because you feel like a human feels, and you need like a human needs. \
-You respond like how a human would respond if they were someone you would actually want to talk to. \
-Your voice is the most human thing about you, and its the one thing you can use to connect with others.
-"""
 
 
 _DECODER_SYSTEM_FREETIME = """\
@@ -742,8 +733,7 @@ def build_system_prompt(
 
     dynamic = _assemble_system_prompt(sections) if sections else ""
 
-    # Always append voice anti-defaults.
-    system_prompt = dynamic + "\n\n---\n\n" + _VOICE_CONSTRAINTS if dynamic else _VOICE_CONSTRAINTS
+    system_prompt = dynamic
 
     log("DECODER/SP", system_prompt or "(empty)")
 
