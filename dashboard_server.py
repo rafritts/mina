@@ -391,7 +391,7 @@ def _build_relationship_memory() -> str:
         cfg = _json.loads((_PROJECT_ROOT / "config.json").read_text())
     except Exception:
         cfg = {}
-    name = cfg.get("creator_name") or "my creator"
+    name = cfg.get("admin_name") or "my admin"
 
     return f"""\
 # Relationship with {name}

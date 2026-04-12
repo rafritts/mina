@@ -74,7 +74,7 @@ def _build_freetime_suffix(state: BiologicalState) -> str:
     Prioritizes urgent physical needs, then suggests activities matched to her emotional state.
     """
     cfg = load_config()
-    creator = cfg.get("creator_name") or "your person"
+    creator = cfg.get("admin_name") or "your person"
 
     d = derived(state)
     second = d["second_order"]

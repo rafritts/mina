@@ -5,5 +5,5 @@
   "sleep_window_start": 4,
   "sleep_window_end": 8,
   "naps_enabled": false,
-  "creator_name": "Ryan"
+  "admin_name": "Ryan"
 }
