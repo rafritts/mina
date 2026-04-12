@@ -13,16 +13,16 @@ import os
 import re
 import time
 
-from client import get_client, MODEL
-from config import (
+from .client import get_client, MODEL
+from .config import (
     HISTORY_FILE, LAST_ACTIVE_FILE, ADMIN_FILE, PAUSED_FLAG, load_config
 )
-from log import log
-from decoder import biological_report, build_system_prompt, build_memory_context, needs_summary
-from hippocampus import build_kag_context, build_rag_context
-from encoder import encode_stimulus, encode_response, evaluate_activity_deltas
-from state import apply_deltas, load_and_advance, load_state, save_state
-from tools import TOOLS, call_tool, handle_generate_image
+from .log import log
+from .decoder import biological_report, build_system_prompt, build_memory_context, needs_summary
+from .hippocampus import build_kag_context, build_rag_context
+from .encoder import encode_stimulus, encode_response, evaluate_activity_deltas
+from .state import apply_deltas, load_and_advance, load_state, save_state
+from .tools import TOOLS, call_tool, handle_generate_image
 
 HISTORY_MAX = 200
 HISTORY_KEEP = 10
@@ -137,7 +137,7 @@ def _compact_history(history: list[dict]) -> list[dict]:
             temperature=0.3,
             max_tokens=400,
         )
-        import token_stats as _ts
+        from . import token_stats as _ts
         _ts.record_response("compact", response)
         summary = response.choices[0].message.content or ""
     except Exception as e:
@@ -226,7 +226,7 @@ async def _mina_turn(
     messages = api_messages(history, system_prompt, state_note)
     new_entries: list[dict] = []
     image_paths: list[str] = []
-    import token_stats as _ts
+    from . import token_stats as _ts
 
     max_tool_rounds = 5
     for round_num in range(max_tool_rounds):
@@ -295,7 +295,7 @@ async def _mina_turn(
                         log("DO/DELTA", str(do_deltas))
 
             try:
-                from events import emit_tool
+                from .events import emit_tool
                 emit_tool(name, args, str(result), source="cortex", deltas=tool_deltas)
             except Exception:
                 pass
@@ -347,8 +347,8 @@ async def run_turn(
 
     # [1b] Danger detection — every turn so overdose can trigger during active sessions
     try:
-        from vital_signs import vital_signs as _vs, process_danger as _pd
-        from config import INJECT_FILE as _INJECT
+        from .vital_signs import vital_signs as _vs, process_danger as _pd
+        from .config import INJECT_FILE as _INJECT
         _danger = _pd(state, _vs(state))
         if _danger:
             log("DANGER", _danger[:120])
@@ -432,7 +432,7 @@ async def run_turn(
         history = await asyncio.to_thread(_compact_history, history)
     save_history(history)
 
-    import token_stats as _ts
+    from . import token_stats as _ts
     _ts.increment_turns()
 
     touch_last_active()

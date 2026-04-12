@@ -9,7 +9,7 @@ import json
 import time
 from pathlib import Path
 
-_STATS_FILE = Path(__file__).parent / "run" / "token_stats.json"
+_STATS_FILE = Path(__file__).parent.parent / "run" / "token_stats.json"
 
 
 def reset() -> None:

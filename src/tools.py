@@ -13,8 +13,8 @@ import os
 import time
 from typing import Any
 
-from config import OUTBOX_FILE, load_config
-from state import BiologicalState, save_state
+from .config import OUTBOX_FILE, load_config
+from .state import BiologicalState, save_state
 
 _BASE_URL_SEARCH = os.getenv("BASE_URL", "https://api.x.ai/v1")
 _API_KEY_SEARCH  = os.getenv("XAI_API_KEY", os.getenv("OPENAI_API_KEY", ""))
@@ -315,7 +315,7 @@ def handle_x_search(args: dict) -> str:
 async def handle_generate_image(args: dict) -> str:
     """Generate an image via ComfyUI. Returns path or error string."""
     from skills.comfyui.comfyui_skill import generate_image
-    from hippocampus import read_identity
+    from .hippocampus import read_identity
 
     prompt          = args.get("prompt", "")
     dimensions      = args.get("dimensions", "832x1216")
@@ -335,7 +335,7 @@ async def handle_generate_image(args: dict) -> str:
     if appearance_tags and appearance_tags not in prompt:
         prompt = f"{appearance_tags}, {prompt}"
 
-    from log import log
+    from .log import log
     log("COMFY", f"workflow={workflow} dimensions={dimensions} seed={seed}")
     log("COMFY", f"prompt={prompt[:200]}")
     if negative_prompt:

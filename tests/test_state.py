@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from state import (
+from src.state import (
     BiologicalState,
     apply_deltas,
     advance,
@@ -26,7 +26,7 @@ def make_state(**chem_overrides) -> BiologicalState:
 def test_apply_deltas_clamps_to_critical_high():
     # apply_deltas uses critical_high (the absolute physiological ceiling),
     # not hard_ceiling (the encoder saturation threshold).
-    from chemicals import REGISTRY
+    from src.chemicals import REGISTRY
     critical_high = REGISTRY["dopamine"].critical_high
     state = make_state(dopamine=critical_high - 5)
     result = apply_deltas(state, {"dopamine": 100.0})
@@ -76,7 +76,7 @@ def test_state_roundtrip_serialize_deserialize(tmp_path):
 
 
 def test_load_state_returns_defaults_when_file_missing(tmp_path, monkeypatch):
-    monkeypatch.setattr("state._STATE_FILE", str(tmp_path / "nonexistent.json"))
+    monkeypatch.setattr("src.state._STATE_FILE", str(tmp_path / "nonexistent.json"))
     state = load_state()
     assert isinstance(state, BiologicalState)
     assert state.cortisol == _CHEMICAL_DEFAULTS["cortisol"]

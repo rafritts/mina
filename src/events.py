@@ -13,7 +13,7 @@ import json
 import time
 from pathlib import Path
 
-_EVENTS_FILE = Path(__file__).parent / "run" / "events.jsonl"
+_EVENTS_FILE = Path(__file__).parent.parent / "run" / "events.jsonl"
 _MAX_EVENTS = 300  # rotate: keep last N
 
 

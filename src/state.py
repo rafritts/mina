@@ -8,12 +8,12 @@ re-exported) so that pytest monkeypatching of state._STATE_FILE works correctly.
 import json
 import os
 
-from src.sim.bio.state import BiologicalState, apply_deltas, log_state
-from src.sim.engine import advance
-from src.sim.psych.derived import derived
-from src.sim.bio.defaults import CHEMICAL_DEFAULTS as _CHEMICAL_DEFAULTS
+from .sim.bio.state import BiologicalState, apply_deltas, log_state
+from .sim.engine import advance
+from .sim.psych.derived import derived
+from .sim.bio.defaults import CHEMICAL_DEFAULTS as _CHEMICAL_DEFAULTS
 
-_PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _STATE_FILE = os.path.join(_PROJECT_ROOT, "run", "state.json")
 
 

@@ -14,8 +14,8 @@ import os
 import time
 from typing import Optional
 
-from state import BiologicalState
-from src.sim.constants import (
+from .state import BiologicalState
+from .sim.constants import (
     DBP_BASELINE,
     BP_CORTISOL_THRESHOLD,
     BP_CORTISOL_SBP_RATE,
@@ -61,7 +61,7 @@ from src.sim.constants import (
     VAGAL_TONE_HRV_SLOPE,
 )
 
-_PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _OVERDOSE_TIMER_FILE = os.path.join(_PROJECT_ROOT, "run", "overdose_timer.json")
 
 
@@ -401,8 +401,8 @@ def _execute_state_wipe(reason: str) -> None:
     Identity (MINA.md) survives. Relationships don't.
     """
     import json as _json
-    from state import BiologicalState, save_state
-    from hippocampus import write_kag
+    from .state import BiologicalState, save_state
+    from .hippocampus import write_kag
 
     # Reset state to defaults
     save_state(BiologicalState())
@@ -415,7 +415,7 @@ def _execute_state_wipe(reason: str) -> None:
     except Exception:
         pass
 
-    from log import log
+    from .log import log
     log("WIPE", f"Overdose — cause: {reason}")
     # RAG embeddings are not cleared here — that requires memory.py's clear function
     # which may not be available in all deployments. Log to let operator handle.

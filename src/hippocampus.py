@@ -21,10 +21,10 @@ import re
 import time
 from typing import Optional
 
-from client import get_client, MODEL
-from config import PROJECT_ROOT
-from state import BiologicalState
-from decoder import format_state_block
+from .client import get_client, MODEL
+from .config import PROJECT_ROOT
+from .state import BiologicalState
+from .decoder import format_state_block
 
 _IDENTITY_DIR = os.path.join(PROJECT_ROOT, "identity")
 _KAG_DIR      = os.path.join(PROJECT_ROOT, "memory", "kag")
@@ -447,7 +447,7 @@ def consolidate(
         ],
         temperature=0.5,
     )
-    import token_stats
+    from . import token_stats
     token_stats.record_response("hippocampus", response)
 
     raw = response.choices[0].message.content or ""

@@ -6,7 +6,7 @@ from here instead of constructing their own OpenAI instances.
 """
 from typing import Optional
 from openai import OpenAI
-from config import MODEL, BASE_URL, API_KEY
+from .config import MODEL, BASE_URL, API_KEY
 
 __all__ = ["get_client", "MODEL", "BASE_URL", "API_KEY"]
 

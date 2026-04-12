@@ -16,9 +16,9 @@ import json
 import os
 import re
 
-from client import get_client, MODEL
-from config import PERSONALITY_FILE
-from state import BiologicalState
+from .client import get_client, MODEL
+from .config import PERSONALITY_FILE
+from .state import BiologicalState
 
 # ---------------------------------------------------------------------------
 # Prompt constants
@@ -104,7 +104,7 @@ def _apply_momentum(deltas: dict, state: BiologicalState) -> dict:
     Mutates state.encoder_momentum to accumulate applied amounts.
     Negative deltas pass through unchanged — pain/stress doesn't habituate like this.
     """
-    from log import log
+    from .log import log
     momentum = state.encoder_momentum
     result = {}
     dampened_any = False
@@ -145,7 +145,7 @@ def _apply_saturation(deltas: dict, state: BiologicalState) -> dict:
     Uses quadratic decay in the soft→hard zone — aggressive near ceiling.
     Substances bypass this; only encoder-issued deltas are saturated.
     """
-    from chemicals import REGISTRY
+    from .chemicals import REGISTRY
     result = {}
     for field, delta in deltas.items():
         p = REGISTRY.get(field)
@@ -246,7 +246,7 @@ def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, 
     On JSON parse failure, retries once with the bad output and error appended.
     Falls back to ({}, False) on any error — never crashes a turn.
     """
-    from log import log
+    from .log import log
     subtag = label.replace("encode_", "").upper()
 
     last_raw: list[str] = [""]  # captures raw LLM output as side effect for retry message
@@ -258,7 +258,7 @@ def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, 
             temperature=0.3,
             response_format={"type": "json_object"},
         )
-        import token_stats
+        from . import token_stats
         token_stats.record_response(label, response)
         raw_content = response.choices[0].message.content or ""
         last_raw[0] = raw_content  # capture before any parsing so retry always has it
@@ -323,7 +323,7 @@ def _emit_event(
 ) -> None:
     """Emit a structured event to the log. Never crashes a turn."""
     try:
-        from events import emit
+        from .events import emit
         emit(type, preview, display_deltas, event_override=event_override, momentum_dampened=momentum_dampened)
     except Exception:
         pass
@@ -348,7 +348,7 @@ def encode_stimulus(state: BiologicalState, stimulus_text: str) -> dict:
     Determine biological deltas from an incoming stimulus (message, event).
     Called before building the system prompt each turn.
     """
-    from decoder import biological_report
+    from .decoder import biological_report
     report = biological_report(state)
 
     prompt = f"""{report}
@@ -397,7 +397,7 @@ def encode_response(state: BiologicalState, response_text: str) -> dict:
     Determine biological deltas from what Mina just expressed.
     Called after Mina's response, closing the loop.
     """
-    from decoder import biological_report
+    from .decoder import biological_report
     report = biological_report(state)
 
     prompt = f"""{report}
@@ -444,7 +444,7 @@ def evaluate_activity_deltas(state: BiologicalState, activity: str, description:
     Determine biological deltas from a do_action activity.
     Used by both cortex.py and freetime.py after a do_action tool call.
     """
-    from decoder import biological_report
+    from .decoder import biological_report
     report = biological_report(state)
 
     prompt = f"""{report}

@@ -18,21 +18,21 @@ import time
 
 from openai import OpenAI
 
-from config import HISTORY_FILE, PAUSED_FLAG, PROJECT_ROOT, load_config
-from client import get_client, MODEL
-from cortex import apply_ts_label
-from log import log as _log_raw
-from decoder import biological_report, build_system_prompt, build_memory_context, needs_summary
-from encoder import encode_stimulus, encode_response, evaluate_activity_deltas
-from hippocampus import build_kag_context, build_rag_context, rag_add, write_kag, consolidate
-from state import (
+from .config import HISTORY_FILE, PAUSED_FLAG, PROJECT_ROOT, load_config
+from .client import get_client, MODEL
+from .cortex import apply_ts_label
+from .log import log as _log_raw
+from .decoder import biological_report, build_system_prompt, build_memory_context, needs_summary
+from .encoder import encode_stimulus, encode_response, evaluate_activity_deltas
+from .hippocampus import build_kag_context, build_rag_context, rag_add, write_kag, consolidate
+from .state import (
     BiologicalState,
     apply_deltas,
     derived,
     load_and_advance,
     save_state,
 )
-from tools import HEARTBEAT_TOOLS, call_tool, handle_generate_image
+from .tools import HEARTBEAT_TOOLS, call_tool, handle_generate_image
 
 _LAST_ACTIVE_FILE = os.path.join(PROJECT_ROOT, ".last_user_active")
 
@@ -318,7 +318,7 @@ async def _run_mina_free_time(
                 result = await handle_generate_image(args)
                 tool_result = result if result else "[Image blocked or failed]"
                 try:
-                    from events import emit_tool
+                    from .events import emit_tool
                     emit_tool(name, args, tool_result, source="freetime")
                 except Exception:
                     pass
@@ -329,7 +329,7 @@ async def _run_mina_free_time(
                     # do_action deltas emitted in Phase 3 once we have them
                 else:
                     try:
-                        from events import emit_tool
+                        from .events import emit_tool
                         emit_tool(name, args, tool_result, source="freetime")
                     except Exception:
                         pass
@@ -408,7 +408,7 @@ async def run_freetime(force: bool = False) -> None:
 
     # Danger detection
     try:
-        from vital_signs import vital_signs, process_danger
+        from .vital_signs import vital_signs, process_danger
         _INJECT_FILE = os.path.join(PROJECT_ROOT, "run", "subconscious_inject.md")
         vs = vital_signs(state)
         danger_text = process_danger(state, vs)
@@ -465,7 +465,7 @@ async def run_freetime(force: bool = False) -> None:
             state = apply_deltas(state, do_deltas)
             save_state(state)  # persist eating/drinking/activity deltas immediately
         try:
-            from events import emit_tool
+            from .events import emit_tool
             emit_tool(
                 "do_action",
                 {"activity": activity, "description": description},

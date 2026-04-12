@@ -6,8 +6,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from state import BiologicalState
-from vital_signs import vital_signs
+from src.state import BiologicalState
+from src.vital_signs import vital_signs
 
 
 def make_state(**chem_overrides) -> BiologicalState:
@@ -37,7 +37,7 @@ def test_heart_rate_cannot_reach_dangerous_level_without_substances():
     fatal vital sign readings. The only path to dangerous territory is through substances.
     """
     # Max out every stimulating chemical to natural limits
-    from chemicals import REGISTRY
+    from src.chemicals import REGISTRY
     state = BiologicalState()
     for name in ["norepinephrine", "cortisol", "dopamine"]:
         if name in REGISTRY and REGISTRY[name].hard_ceiling is not None:

@@ -7,7 +7,7 @@ redefining _PROJECT_ROOT and _load_config() themselves.
 import json
 import os
 
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Runtime directory — all ephemeral files live here
 RUN_DIR = os.path.join(PROJECT_ROOT, "run")

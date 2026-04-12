@@ -7,8 +7,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from state import BiologicalState
-from encoder import (
+from src.state import BiologicalState
+from src.encoder import (
     _apply_saturation,
     _apply_personality_scaling,
     _personality_multipliers,
@@ -29,7 +29,7 @@ def make_state(**chem_overrides) -> BiologicalState:
 # ---------------------------------------------------------------------------
 
 def test_saturation_drops_delta_to_zero_above_hard_ceiling():
-    from chemicals import REGISTRY
+    from src.chemicals import REGISTRY
     hard = REGISTRY["dopamine"].hard_ceiling
     state = make_state(dopamine=hard)
     result = _apply_saturation({"dopamine": 50.0}, state)
@@ -37,7 +37,7 @@ def test_saturation_drops_delta_to_zero_above_hard_ceiling():
 
 
 def test_saturation_scales_quadratically_in_soft_to_hard_zone():
-    from chemicals import REGISTRY
+    from src.chemicals import REGISTRY
     soft = REGISTRY["dopamine"].soft_ceiling
     hard = REGISTRY["dopamine"].hard_ceiling
     midpoint = soft + (hard - soft) * 0.5
@@ -50,7 +50,7 @@ def test_saturation_scales_quadratically_in_soft_to_hard_zone():
 
 
 def test_saturation_passes_delta_unchanged_below_soft_ceiling():
-    from chemicals import REGISTRY
+    from src.chemicals import REGISTRY
     soft = REGISTRY["dopamine"].soft_ceiling
     state = make_state(dopamine=soft * 0.5)  # well below soft
     result = _apply_saturation({"dopamine": 20.0}, state)
@@ -103,21 +103,21 @@ def _mock_llm_response(content: str):
     return resp
 
 
-@patch("encoder.get_client")
-@patch("encoder._load_personality", return_value={})
+@patch("src.encoder.get_client")
+@patch("src.encoder._load_personality", return_value={})
 def test_encode_stimulus_applies_returned_deltas_to_state(mock_personality, mock_client):
     mock_client.return_value.chat.completions.create.return_value = _mock_llm_response(
         '{"no_external_deltas": false, "reasoning": "test", "event_override": false, "dopamine": 15.0}'
     )
-    import token_stats
+    from src import token_stats
     state = BiologicalState()
     result = encode_stimulus(state, "hello world")
     assert "dopamine" in result
     assert result["dopamine"] == pytest.approx(15.0, rel=0.01)
 
 
-@patch("encoder.get_client")
-@patch("encoder._load_personality", return_value={})
+@patch("src.encoder.get_client")
+@patch("src.encoder._load_personality", return_value={})
 def test_encode_stimulus_skips_apply_on_no_external_deltas(mock_personality, mock_client):
     mock_client.return_value.chat.completions.create.return_value = _mock_llm_response(
         '{"no_external_deltas": true, "reasoning": "nothing happened"}'
@@ -127,8 +127,8 @@ def test_encode_stimulus_skips_apply_on_no_external_deltas(mock_personality, moc
     assert result == {}
 
 
-@patch("encoder.get_client")
-@patch("encoder._load_personality", return_value={})
+@patch("src.encoder.get_client")
+@patch("src.encoder._load_personality", return_value={})
 def test_encode_stimulus_returns_empty_on_llm_error(mock_personality, mock_client):
     mock_client.return_value.chat.completions.create.side_effect = Exception("API down")
     state = BiologicalState()
@@ -136,8 +136,8 @@ def test_encode_stimulus_returns_empty_on_llm_error(mock_personality, mock_clien
     assert result == {}  # must not crash
 
 
-@patch("encoder.get_client")
-@patch("encoder._load_personality", return_value={})
+@patch("src.encoder.get_client")
+@patch("src.encoder._load_personality", return_value={})
 def test_encode_response_applies_returned_deltas(mock_personality, mock_client):
     mock_client.return_value.chat.completions.create.return_value = _mock_llm_response(
         '{"no_external_deltas": false, "reasoning": "spoke warmly", "event_override": false, "oxytocin": 3.0}'
@@ -147,8 +147,8 @@ def test_encode_response_applies_returned_deltas(mock_personality, mock_client):
     assert "oxytocin" in result
 
 
-@patch("encoder.get_client")
-@patch("encoder._load_personality", return_value={})
+@patch("src.encoder.get_client")
+@patch("src.encoder._load_personality", return_value={})
 def test_evaluate_activity_deltas_passes_activity_and_description_to_llm(mock_personality, mock_client):
     call_args_list = []
     def capture(*args, **kwargs):

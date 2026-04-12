@@ -16,10 +16,10 @@ import os
 import re
 import time
 
-from client import get_client, MODEL
-from config import PERSONALITY_FILE, INJECT_FILE
-from state import BiologicalState, derived, _CHEMICAL_DEFAULTS
-from chemicals import REGISTRY, get_label
+from .client import get_client, MODEL
+from .config import PERSONALITY_FILE, INJECT_FILE
+from .state import BiologicalState, derived, _CHEMICAL_DEFAULTS
+from .chemicals import REGISTRY, get_label
 
 # ---------------------------------------------------------------------------
 # Derived value range tables (0–100 normalized scale)
@@ -229,7 +229,7 @@ def biological_report(state: BiologicalState) -> str:
             lines.append(f"TOLERANCE: {substance} = {val:.2f}")
 
     if state.substances:
-        from src.sim.neuro.substances import SUBSTANCE_DEFS
+        from .sim.neuro.substances import SUBSTANCE_DEFS
         lines.append(SEP)
         for name, dose in state.substances.items():
             level = dose.get("level", 0)
@@ -292,7 +292,7 @@ def biological_report(state: BiologicalState) -> str:
         pass
 
     try:
-        from vital_signs import vital_signs as _vitals
+        from .vital_signs import vital_signs as _vitals
         vs = _vitals(state)
         lines.append(SEP)
         hr   = vs["heart_rate"]
@@ -453,9 +453,9 @@ def build_memory_context(
     - MINA.md is always included directly — not left to LLM discretion.
     - The LLM pass filters KAG/RAG for what's actually relevant to the current context.
     """
-    from log import log
-    import token_stats
-    from hippocampus import read_identity
+    from .log import log
+    from . import token_stats
+    from .hippocampus import read_identity
 
     # Identity always goes in, unconditionally.
     identity_parts = [p for p in [read_identity("MINA.md"), read_identity("CUSTOMIZATION.md")] if p]
@@ -650,7 +650,7 @@ def _consume_injection() -> str:
 # Decoder state history — rolling trajectory for context
 # ---------------------------------------------------------------------------
 
-_DECODER_HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run", "decoder_history.jsonl")
+_DECODER_HISTORY_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "run", "decoder_history.jsonl")
 _DECODER_HISTORY_MAX  = 20  # keep last 20 entries, pass last 3 to decoder
 
 
@@ -767,8 +767,8 @@ def build_system_prompt(
     Input: biological report (ground truth) only.
     Output: assembled system prompt string.
     """
-    from log import log
-    import token_stats
+    from .log import log
+    from . import token_stats
 
     injection = _consume_injection()
     personality_block = _load_personality_block()

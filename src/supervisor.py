@@ -16,7 +16,7 @@ import sys
 import threading
 import time
 
-_PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _RUN_DIR = os.path.join(_PROJECT_ROOT, "run")
 _LOG_DIR = os.path.join(_PROJECT_ROOT, "logs")
 _LOG_FILE = os.path.join(_LOG_DIR, "mina.log")
