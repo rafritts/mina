@@ -272,6 +272,7 @@ async def _mina_turn(
 
             log("TOOL", f"{name}({args})")
 
+            tool_deltas: dict = {}
             if name == "generate_image":
                 result = await handle_generate_image(args)
                 if result and result.endswith(".png") and os.path.exists(result):
@@ -288,9 +289,16 @@ async def _mina_turn(
                         evaluate_activity_deltas, state, activity, description
                     )
                     if do_deltas:
+                        tool_deltas = do_deltas
                         state = apply_deltas(state, do_deltas)
                         save_state(state)
                         log("DO/DELTA", str(do_deltas))
+
+            try:
+                from events import emit_tool
+                emit_tool(name, args, str(result), source="cortex", deltas=tool_deltas)
+            except Exception:
+                pass
 
             new_entries.append({
                 "role": "tool",

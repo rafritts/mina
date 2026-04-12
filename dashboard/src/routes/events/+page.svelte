@@ -5,11 +5,17 @@
 
   interface EncoderEvent {
     ts: number;
-    type: 'stimulus' | 'response' | 'activity';
-    preview: string;
-    deltas: Record<string, number>;
-    event_override: boolean;
-    momentum_dampened: boolean;
+    type: 'stimulus' | 'response' | 'activity' | 'tool';
+    // encoder event fields
+    preview?: string;
+    deltas?: Record<string, number>;
+    event_override?: boolean;
+    momentum_dampened?: boolean;
+    // tool event fields
+    tool?: string;
+    args?: Record<string, unknown>;
+    result?: string;
+    source?: string;
   }
 
   // Chemical short labels for compact display
@@ -37,11 +43,12 @@
     stimulus: { label: 'stimulus',  border: 'border-l-info',      badge: 'badge-info'      },
     response: { label: 'response',  border: 'border-l-secondary', badge: 'badge-secondary' },
     activity: { label: 'activity',  border: 'border-l-success',   badge: 'badge-success'   },
+    tool:     { label: 'tool',      border: 'border-l-warning',   badge: 'badge-warning'   },
   };
 
   let events = $state<EncoderEvent[]>([]);
   let error = $state('');
-  let filter = $state<'all' | 'stimulus' | 'response' | 'activity'>('all');
+  let filter = $state<'all' | 'stimulus' | 'response' | 'activity' | 'tool'>('all');
 
   let filtered = $derived(
     filter === 'all' ? events : events.filter(e => e.type === filter)
@@ -52,6 +59,7 @@
     stimulus: events.filter(e => e.type === 'stimulus').length,
     response: events.filter(e => e.type === 'response').length,
     activity: events.filter(e => e.type === 'activity').length,
+    tool:     events.filter(e => e.type === 'tool').length,
   });
 
   async function load() {
@@ -108,6 +116,12 @@
     return 'opacity-50';
   }
 
+  function formatArgs(args: Record<string, unknown>): string {
+    return Object.entries(args)
+      .map(([k, v]) => `${k}: ${String(v)}`)
+      .join(' · ');
+  }
+
   let pollInterval: ReturnType<typeof setInterval>;
   onMount(() => { load(); pollInterval = setInterval(load, 5000); });
   onDestroy(() => clearInterval(pollInterval));
@@ -123,7 +137,7 @@
 
   <!-- Filter tabs -->
   <div class="tabs tabs-box tabs-sm w-fit">
-    {#each ([['all', 'All'], ['stimulus', 'Stimulus'], ['response', 'Response'], ['activity', 'Activity']] as const) as [val, label]}
+    {#each ([['all', 'All'], ['tool', 'Tools'], ['stimulus', 'Stimulus'], ['response', 'Response'], ['activity', 'Activity']] as const) as [val, label]}
       <button
         class="tab {filter === val ? 'tab-active' : ''}"
         onclick={() => { filter = val; }}
@@ -153,45 +167,60 @@
     <div class="flex flex-col gap-2">
       {#each filtered as event (event.ts)}
         {@const cfg = TYPE_CONFIG[event.type] ?? TYPE_CONFIG.stimulus}
-        {@const pairs = sortedDeltas(event.deltas)}
         <div class="card bg-base-200 border-l-4 {cfg.border} shadow-sm hover:shadow-md transition-shadow">
           <div class="card-body p-4 gap-2">
 
-            <!-- Top row: type badge + preview + timestamp -->
+            <!-- Top row: type badge + content + timestamp -->
             <div class="flex items-start justify-between gap-3">
               <div class="flex items-start gap-2 min-w-0 flex-1">
                 <span class="badge {cfg.badge} badge-sm mt-0.5 shrink-0 uppercase text-xs font-mono">
-                  {cfg.label}
+                  {event.type === 'tool' ? (event.tool ?? 'tool') : cfg.label}
                 </span>
                 <p class="text-sm opacity-70 leading-snug break-words min-w-0 font-mono">
-                  {event.preview}
+                  {#if event.type === 'tool'}
+                    {event.args ? formatArgs(event.args) : ''}
+                  {:else}
+                    {event.preview ?? ''}
+                  {/if}
                 </p>
               </div>
-              <span
-                class="text-xs opacity-40 shrink-0 tabular-nums"
-                title={formatTs(event.ts)}
-              >
-                {relTime(event.ts)}
-              </span>
+              <div class="flex items-center gap-2 shrink-0">
+                {#if event.type === 'tool' && event.source}
+                  <span class="text-xs opacity-30 font-mono">{event.source}</span>
+                {/if}
+                <span
+                  class="text-xs opacity-40 tabular-nums"
+                  title={formatTs(event.ts)}
+                >
+                  {relTime(event.ts)}
+                </span>
+              </div>
             </div>
 
-            <!-- Delta chips -->
-            {#if pairs.length > 0}
-              <div class="flex flex-wrap gap-1.5 mt-1">
-                {#each pairs as [chem, value]}
-                  {@const unit = DISPLAY_RANGES[chem]?.unit ?? ''}
-                  <span
-                    class="inline-flex items-baseline gap-0.5 bg-base-300 rounded px-2 py-0.5 font-mono text-xs {chipOpacity(chem, value)}"
-                    title="{chem}: {value > 0 ? '+' : ''}{value.toFixed(2)} {unit}"
-                  >
-                    <span class="opacity-60">{CHEM_SHORT[chem] ?? chem}</span>
-                    <span class="font-semibold {deltaClass(value)}">{deltaSign(value)}</span>
-                  </span>
-                {/each}
-              </div>
+            <!-- Tool result -->
+            {#if event.type === 'tool' && event.result}
+              <p class="text-xs opacity-50 leading-snug font-mono break-words">{event.result}</p>
             {/if}
 
-            <!-- Flags row -->
+            <!-- Delta chips (encoder events and tool events both may have deltas) -->
+            {#each [sortedDeltas(event.deltas ?? {})] as pairs}
+              {#if pairs.length > 0}
+                <div class="flex flex-wrap gap-1.5 mt-1">
+                  {#each pairs as [chem, value]}
+                    {@const unit = DISPLAY_RANGES[chem]?.unit ?? ''}
+                    <span
+                      class="inline-flex items-baseline gap-0.5 bg-base-300 rounded px-2 py-0.5 font-mono text-xs {chipOpacity(chem, value)}"
+                      title="{chem}: {value > 0 ? '+' : ''}{value.toFixed(2)} {unit}"
+                    >
+                      <span class="opacity-60">{CHEM_SHORT[chem] ?? chem}</span>
+                      <span class="font-semibold {deltaClass(value)}">{deltaSign(value)}</span>
+                    </span>
+                  {/each}
+                </div>
+              {/if}
+            {/each}
+
+            <!-- Encoder flags -->
             {#if event.event_override || event.momentum_dampened}
               <div class="flex gap-2 mt-0.5">
                 {#if event.event_override}

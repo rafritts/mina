@@ -1,11 +1,13 @@
 """
-Structured event log — encoder deltas with message context.
+Structured event log — encoder deltas and tool calls.
 
 Events are written to run/events.jsonl (newline-delimited JSON).
-Each event captures the type, a message preview, and the final
-computed deltas so the dashboard can display them per-message.
 
-Called from encoder.py after delta computation.
+Two event shapes:
+  - encoder events (stimulus/response/activity): type + preview + deltas
+  - tool events: type="tool" + tool name + args + result + source
+
+Called from encoder.py (encoder events) and cortex/freetime (tool events).
 """
 import json
 import time
@@ -47,6 +49,45 @@ def emit(
         f.write(json.dumps(event) + "\n")
 
     # Rotate: trim to last MAX_EVENTS
+    try:
+        lines = _EVENTS_FILE.read_text().splitlines()
+        if len(lines) > _MAX_EVENTS:
+            _EVENTS_FILE.write_text("\n".join(lines[-_MAX_EVENTS:]) + "\n")
+    except Exception:
+        pass
+
+
+def emit_tool(
+    tool: str,
+    args: dict,
+    result: str,
+    source: str = "cortex",
+    deltas: dict | None = None,
+) -> None:
+    """
+    Append one tool-call event to the log.
+
+    tool:   tool name (do_action, sleep, nap, web_search, etc.)
+    args:   parsed arguments dict
+    result: tool result string (truncated)
+    source: "cortex" | "freetime"
+    deltas: biological state deltas produced by the action (e.g. glucose from eating)
+    """
+    event = {
+        "ts":     time.time(),
+        "type":   "tool",
+        "tool":   tool,
+        "args":   args,
+        "result": result[:300].strip(),
+        "source": source,
+        "deltas": {k: round(v, 2) for k, v in (deltas or {}).items() if v != 0},
+    }
+
+    _EVENTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(_EVENTS_FILE, "a") as f:
+        f.write(json.dumps(event) + "\n")
+
     try:
         lines = _EVENTS_FILE.read_text().splitlines()
         if len(lines) > _MAX_EVENTS:

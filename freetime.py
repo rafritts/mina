@@ -317,10 +317,22 @@ async def _run_mina_free_time(
             if name == "generate_image":
                 result = await handle_generate_image(args)
                 tool_result = result if result else "[Image blocked or failed]"
+                try:
+                    from events import emit_tool
+                    emit_tool(name, args, tool_result, source="freetime")
+                except Exception:
+                    pass
             else:
                 tool_result, state, extra = call_tool(name, args, state)
                 if name == "do_action" and extra:
                     pending_dos.append(extra)
+                    # do_action deltas emitted in Phase 3 once we have them
+                else:
+                    try:
+                        from events import emit_tool
+                        emit_tool(name, args, tool_result, source="freetime")
+                    except Exception:
+                        pass
 
             tool_entry = {
                 "role": "tool",
@@ -451,6 +463,17 @@ async def run_freetime(force: bool = False) -> None:
         )
         if do_deltas:
             state = apply_deltas(state, do_deltas)
+        try:
+            from events import emit_tool
+            emit_tool(
+                "do_action",
+                {"activity": activity, "description": description},
+                f"You {activity}. {description}".strip(),
+                source="freetime",
+                deltas=do_deltas or {},
+            )
+        except Exception:
+            pass
 
     free_time_text = ""
     for entry in reversed(new_entries):

@@ -712,6 +712,65 @@ async def cmd_history(interaction: discord.Interaction, n: int = 10):
     await interaction.response.send_message("\n".join(lines)[:1900], ephemeral=True)
 
 
+@tree.command(name="actions", description="Show Mina's recent tool calls and their effects.")
+@app_commands.describe(n="Number of actions to show (default 10)")
+async def cmd_actions(interaction: discord.Interaction, n: int = 10):
+    from events import read_events
+    all_events = read_events(limit=300)
+    tool_events = [e for e in all_events if e.get("type") == "tool"][:n]
+    if not tool_events:
+        await interaction.response.send_message("No tool calls recorded yet.", ephemeral=True)
+        return
+
+    lines = []
+    for e in tool_events:
+        tool = e.get("tool", "?")
+        args = e.get("args", {})
+        result = e.get("result", "")
+        deltas = e.get("deltas", {})
+        source = e.get("source", "")
+        ts = e.get("ts", 0)
+
+        delta = time.time() - ts
+        if delta < 60:    age = "just now"
+        elif delta < 3600: age = f"{int(delta/60)}m ago"
+        elif delta < 86400: age = f"{int(delta/3600)}h ago"
+        else:              age = f"{int(delta/86400)}d ago"
+
+        # Format args as a readable summary
+        if tool == "do_action":
+            summary = args.get("activity", "")
+        elif tool == "sleep":
+            summary = f"{args.get('duration_hours', '?')}h"
+        elif tool in ("web_search", "x_search"):
+            summary = args.get("query", "")
+        else:
+            summary = ", ".join(f"{k}={v}" for k, v in args.items()) if args else ""
+
+        # Format deltas
+        delta_str = ""
+        if deltas:
+            CHEM_SHORT = {
+                "cortisol": "cort", "norepinephrine": "norepi", "dopamine": "dopa",
+                "serotonin": "sero", "oxytocin": "oxy", "endorphins": "endo",
+                "acetylcholine": "ach", "melatonin": "mela", "glucose": "gluc",
+                "hydration": "hydr", "sleep_pressure": "sleep",
+            }
+            parts = []
+            for k, v in deltas.items():
+                short = CHEM_SHORT.get(k, k)
+                sign = "+" if v > 0 else ""
+                parts.append(f"{short}{sign}{v:.1f}")
+            delta_str = f" `{' '.join(parts)}`"
+
+        src_tag = f" _{source}_" if source else ""
+        lines.append(f"**{tool}** {summary}{src_tag} · {age}{delta_str}")
+        if result and tool not in ("generate_image",):
+            lines.append(f"  ↳ {result[:120]}")
+
+    await interaction.response.send_message("\n".join(lines)[:1900], ephemeral=True)
+
+
 @tree.command(name="state", description="Show Mina's current biological state.")
 async def cmd_state(interaction: discord.Interaction):
     from state import derived as _derived
