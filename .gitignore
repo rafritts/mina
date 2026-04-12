@@ -24,6 +24,9 @@ memory/kag/
 # Generated images
 memory/images/
 
+# Identity customization (personal — not for version control)
+identity/CUSTOMIZATION.md
+
 # Secrets
 .env
 *.key
