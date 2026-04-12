@@ -11,6 +11,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from src.sim.bio.state import BiologicalState
+from src.sim.constants import (
+    DRIVE_FATIGUE_ADENOSINE_THRESHOLD,
+    DRIVE_FATIGUE_URGENCY_DIVISOR,
+    DRIVE_HUNGER_GHRELIN_THRESHOLD,
+    DRIVE_HUNGER_GLUCOSE_THRESHOLD,
+    DRIVE_HUNGER_URGENCY_DIVISOR,
+    DRIVE_HUNGER_URGENCY_FLOOR,
+    DRIVE_PAIN_THRESHOLD,
+    DRIVE_SICKNESS_THRESHOLD,
+    DRIVE_SOCIAL_OXYTOCIN_THRESHOLD,
+    DRIVE_SOCIAL_SEROTONIN_THRESHOLD,
+    DRIVE_SOCIAL_URGENCY_DIVISOR,
+    DRIVE_THIRST_THRESHOLD,
+    DRIVE_THIRST_URGENCY_DIVISOR,
+)
 
 
 @dataclass
@@ -32,23 +47,24 @@ def compute_behavioral_drives(s: BiologicalState) -> list[BiologicalDrive]:
     # --- Hunger ---
     ghrelin = s.neuroendocrine.get("ghrelin", 400.0)
     glucose = s.chemicals.get("glucose",       85.0)
-    if ghrelin > 700.0 or glucose < 65.0:
-        # Urgency from whichever signal is stronger
+    if ghrelin > DRIVE_HUNGER_GHRELIN_THRESHOLD or glucose < DRIVE_HUNGER_GLUCOSE_THRESHOLD:
         urgency = min(1.0, max(
-            (ghrelin - 700.0) / 300.0 if ghrelin > 700.0 else 0.0,
-            (65.0 - glucose)  / 20.0  if glucose < 65.0  else 0.0,
+            (ghrelin - DRIVE_HUNGER_GHRELIN_THRESHOLD) / DRIVE_HUNGER_URGENCY_DIVISOR
+            if ghrelin > DRIVE_HUNGER_GHRELIN_THRESHOLD else 0.0,
+            (DRIVE_HUNGER_GLUCOSE_THRESHOLD - glucose) / 20.0
+            if glucose < DRIVE_HUNGER_GLUCOSE_THRESHOLD else 0.0,
         ))
         drives.append(BiologicalDrive(
             drive_type="hunger",
-            urgency=max(0.3, urgency),
+            urgency=max(DRIVE_HUNGER_URGENCY_FLOOR, urgency),
             description=f"Ghrelin={ghrelin:.0f} pg/mL, glucose={glucose:.0f} mg/dL — hungry",
             suggested_action="eat",
         ))
 
     # --- Thirst ---
     hydration = s.chemicals.get("hydration", 62.0)
-    if hydration < 59.0:
-        urgency = (59.0 - hydration) / 14.0   # 0 at 59%, 1.0 at 45%
+    if hydration < DRIVE_THIRST_THRESHOLD:
+        urgency = (DRIVE_THIRST_THRESHOLD - hydration) / DRIVE_THIRST_URGENCY_DIVISOR
         drives.append(BiologicalDrive(
             drive_type="thirst",
             urgency=min(1.0, urgency),
@@ -58,8 +74,8 @@ def compute_behavioral_drives(s: BiologicalState) -> list[BiologicalDrive]:
 
     # --- Fatigue / Sleep ---
     adenosine = s.body.get("adenosine", 25.0)
-    if adenosine > 60.0 and not s.sleeping:
-        urgency = (adenosine - 60.0) / 40.0   # 0 at adenosine 60, 1.0 at adenosine 100
+    if adenosine > DRIVE_FATIGUE_ADENOSINE_THRESHOLD and not s.sleeping:
+        urgency = (adenosine - DRIVE_FATIGUE_ADENOSINE_THRESHOLD) / DRIVE_FATIGUE_URGENCY_DIVISOR
         drives.append(BiologicalDrive(
             drive_type="fatigue",
             urgency=min(1.0, urgency),
@@ -69,7 +85,7 @@ def compute_behavioral_drives(s: BiologicalState) -> list[BiologicalDrive]:
 
     # --- Pain ---
     pain_int = s.pain.get("pain_intensity", 0.0)
-    if pain_int > 40.0:
+    if pain_int > DRIVE_PAIN_THRESHOLD:
         drives.append(BiologicalDrive(
             drive_type="pain",
             urgency=pain_int / 100.0,
@@ -79,7 +95,7 @@ def compute_behavioral_drives(s: BiologicalState) -> list[BiologicalDrive]:
 
     # --- Sickness ---
     infl_index = s.immune.get("inflammation_index", 0.0)
-    if infl_index > 45.0:
+    if infl_index > DRIVE_SICKNESS_THRESHOLD:
         drives.append(BiologicalDrive(
             drive_type="sickness",
             urgency=infl_index / 100.0,
@@ -90,8 +106,8 @@ def compute_behavioral_drives(s: BiologicalState) -> list[BiologicalDrive]:
     # --- Social deficit ---
     oxytocin  = s.chemicals.get("oxytocin",  4.0)
     serotonin = s.chemicals.get("serotonin", 22.0)
-    if oxytocin < 10.0 and serotonin < 14.0:
-        urgency = min(0.8, (10.0 - oxytocin) / 20.0)
+    if oxytocin < DRIVE_SOCIAL_OXYTOCIN_THRESHOLD and serotonin < DRIVE_SOCIAL_SEROTONIN_THRESHOLD:
+        urgency = min(0.8, (DRIVE_SOCIAL_OXYTOCIN_THRESHOLD - oxytocin) / DRIVE_SOCIAL_URGENCY_DIVISOR)
         drives.append(BiologicalDrive(
             drive_type="social",
             urgency=urgency,

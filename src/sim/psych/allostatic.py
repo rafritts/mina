@@ -11,6 +11,26 @@ from __future__ import annotations
 import time
 
 from src.sim.bio.state import BiologicalState
+from src.sim.constants import (
+    ALLOSTATIC_ADENOSINE_LOAD_THRESHOLD,
+    ALLOSTATIC_ADENOSINE_LOAD_RATE,
+    ALLOSTATIC_BASELINE_RECOVERY_RATE,
+    ALLOSTATIC_BOND_RECOVERY_THRESHOLD,
+    ALLOSTATIC_BOND_RECOVERY_RATE,
+    ALLOSTATIC_CORTISOL_LOAD_THRESHOLD,
+    ALLOSTATIC_CORTISOL_LOAD_RATE,
+    ALLOSTATIC_EVENT_THRESHOLD,
+    ALLOSTATIC_IMMUNE_LOAD_RATE,
+    ALLOSTATIC_PAIN_LOAD_RATE,
+    ALLOSTATIC_SLEEP_RECOVERY_RATE,
+    BDNF_ADENOSINE_SUPPRESS_THRESHOLD,
+    BDNF_ADENOSINE_SUPPRESS_RATE,
+    BDNF_APPROACH_RATE,
+    BDNF_CORTISOL_SUPPRESS_THRESHOLD,
+    BDNF_CORTISOL_SUPPRESS_RATE,
+    BDNF_GH_BOOST_RATE,
+    BDNF_INFLAMMATION_SUPPRESS_RATE,
+)
 from src.sim.events import BiologicalEvent, EventBus
 
 
@@ -26,21 +46,21 @@ def _bdnf_baseline_fn(hour: float, ctx: dict) -> float:
     base = 9000.0
 
     # Cortisol suppresses BDNF synthesis (primary mechanism of stress-induced depression)
-    if ctx.get("cortisol", 250.0) > 450.0:
-        base -= (ctx["cortisol"] - 450.0) * 3.0   # −3000 at cortisol 1450
+    if ctx.get("cortisol", 250.0) > BDNF_CORTISOL_SUPPRESS_THRESHOLD:
+        base -= (ctx["cortisol"] - BDNF_CORTISOL_SUPPRESS_THRESHOLD) * BDNF_CORTISOL_SUPPRESS_RATE
 
     # Inflammation suppresses BDNF
-    base -= ctx.get("inflammation_index", 0.0) * 30.0   # −3000 at index 100
+    base -= ctx.get("inflammation_index", 0.0) * BDNF_INFLAMMATION_SUPPRESS_RATE
 
     # Sleep deprivation suppresses BDNF
     adenosine = ctx.get("adenosine", 25.0)
-    if adenosine > 60.0:
-        base -= (adenosine - 60.0) * 40.0   # −1600 at adenosine 100
+    if adenosine > BDNF_ADENOSINE_SUPPRESS_THRESHOLD:
+        base -= (adenosine - BDNF_ADENOSINE_SUPPRESS_THRESHOLD) * BDNF_ADENOSINE_SUPPRESS_RATE
 
     # GH during sleep boosts BDNF synthesis
     if ctx.get("sleeping", False):
         gh = ctx.get("growth_hormone", 1.0)
-        base += gh * 100.0   # +800 at GH 8 (deep sleep pulse)
+        base += gh * BDNF_GH_BOOST_RATE
 
     return max(1000.0, min(20000.0, base))
 
@@ -119,16 +139,17 @@ def advance_allostatic(s: BiologicalState, sim_hours: float,
 
     # --- Allostatic load accumulation ---
 
-    cortisol_load = max(0.0, cortisol  - 500.0) * 0.002   # chronic high cortisol
-    sleep_load    = max(0.0, adenosine -  60.0) * 0.01    # sleep deprivation
-    immune_load   = infl_index * 0.005                    # inflammation
-    pain_load     = pain_int   * 0.003                    # pain
+    cortisol_load = max(0.0, cortisol  - ALLOSTATIC_CORTISOL_LOAD_THRESHOLD) * ALLOSTATIC_CORTISOL_LOAD_RATE
+    sleep_load    = max(0.0, adenosine - ALLOSTATIC_ADENOSINE_LOAD_THRESHOLD) * ALLOSTATIC_ADENOSINE_LOAD_RATE
+    immune_load   = infl_index * ALLOSTATIC_IMMUNE_LOAD_RATE
+    pain_load     = pain_int   * ALLOSTATIC_PAIN_LOAD_RATE
     total_load_rate = cortisol_load + sleep_load + immune_load + pain_load
 
     # Recovery contributions (reduce load)
-    sleep_recovery    = 0.3 * sim_hours if s.sleeping else 0.0
-    bond_recovery     = max(0.0, oxytocin - 30.0) * 0.002 * sim_hours  # social buffer
-    baseline_recovery = 0.01 * sim_hours if total_load_rate < 0.01 else 0.0
+    sleep_recovery    = ALLOSTATIC_SLEEP_RECOVERY_RATE * sim_hours if s.sleeping else 0.0
+    bond_recovery     = (max(0.0, oxytocin - ALLOSTATIC_BOND_RECOVERY_THRESHOLD)
+                         * ALLOSTATIC_BOND_RECOVERY_RATE * sim_hours)
+    baseline_recovery = ALLOSTATIC_BASELINE_RECOVERY_RATE * sim_hours if total_load_rate < 0.01 else 0.0
     total_recovery    = sleep_recovery + bond_recovery + baseline_recovery
 
     al = max(0.0, min(100.0, al + total_load_rate * sim_hours - total_recovery))
@@ -139,7 +160,7 @@ def advance_allostatic(s: BiologicalState, sim_hours: float,
     ctx = _make_allostatic_ctx(s)
     bdnf_target = _bdnf_baseline_fn(0.0, ctx)
     s.neuroplasticity["bdnf"] = round(
-        max(500.0, bdnf + (bdnf_target - bdnf) * min(1.0, 0.01 * sim_hours)), 1
+        max(500.0, bdnf + (bdnf_target - bdnf) * min(1.0, BDNF_APPROACH_RATE * sim_hours)), 1
     )
 
     # --- Synaptic potentiation ---
@@ -150,7 +171,7 @@ def advance_allostatic(s: BiologicalState, sim_hours: float,
     )
 
     # --- Emit events for significant allostatic load ---
-    if al > 50.0:
+    if al > ALLOSTATIC_EVENT_THRESHOLD:
         event_bus.emit(BiologicalEvent(
             event_type="threshold_crossed",
             system="psych",

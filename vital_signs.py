@@ -15,6 +15,51 @@ import time
 from typing import Optional
 
 from state import BiologicalState
+from src.sim.constants import (
+    DBP_BASELINE,
+    BP_CORTISOL_THRESHOLD,
+    BP_CORTISOL_SBP_RATE,
+    BP_HYDRATION_THRESHOLD,
+    BP_HYDRATION_SBP_RATE,
+    BP_HYDRATION_DBP_RATE,
+    BP_NOREPI_THRESHOLD,
+    BP_NOREPI_SBP_RATE,
+    BP_ADDERALL_SBP_RATE,
+    BP_XANAX_SBP_RATE,
+    BP_SLEEP_DAMPEN_FACTOR,
+    FEVER_IL1B_THRESHOLD,
+    FEVER_IL6_THRESHOLD,
+    HR_ADDERALL_RATE,
+    HR_BASELINE_BPM,
+    HR_CAFFEINE_RATE,
+    HR_CORTISOL_RATE,
+    HR_CORTISOL_THRESHOLD,
+    HR_DANGER_THRESHOLD,
+    HR_ENDORPHIN_RATE,
+    HR_ENDORPHIN_THRESHOLD,
+    HR_NOREPI_RATE,
+    HR_NOREPI_THRESHOLD,
+    HR_SLEEP_DAMPEN_FACTOR,
+    HR_SLEEP_PRESSURE_RATE,
+    HR_SLEEP_PRESSURE_THRESHOLD,
+    HR_STIMULANT_ACTIVE_LEVEL,
+    HR_XANAX_RATE,
+    OVERDOSE_STAGE2_MINUTES,
+    OVERDOSE_STAGE3_MINUTES,
+    RR_BASELINE,
+    RR_CORTISOL_RATE,
+    RR_CORTISOL_THRESHOLD,
+    RR_NOREPI_RATE,
+    RR_NOREPI_THRESHOLD,
+    RR_SLEEP_DAMPEN_FACTOR,
+    RR_XANAX_SUPPRESS_RATE,
+    SBP_BASELINE,
+    SBP_DANGER_THRESHOLD,
+    SPO2_BASELINE,
+    SPO2_RR_NORMAL_MAX,
+    VAGAL_TONE_HRV_INTERCEPT,
+    VAGAL_TONE_HRV_SLOPE,
+)
 
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 _OVERDOSE_TIMER_FILE = os.path.join(_PROJECT_ROOT, "run", "overdose_timer.json")
@@ -34,35 +79,31 @@ def heart_rate(s: BiologicalState) -> float:
     endorphins = s.chemicals.get("endorphins", 12.0)         # pg/mL
     sleep_p    = s.chemicals.get("sleep_pressure", 30.0)     # AU
 
-    hr = 68.0
+    hr = HR_BASELINE_BPM
 
     # Norepinephrine: primary cardiac driver
-    # Resting 200 pg/mL → no effect. 2000 pg/mL → +30 BPM
-    hr += max(0.0, norepi - 200) * 0.017
+    hr += max(0.0, norepi    - HR_NOREPI_THRESHOLD)    * HR_NOREPI_RATE
 
     # Cortisol: secondary, slower effect
-    # Resting 250 → no effect. Maxed 900 → +13 BPM
-    hr += max(0.0, cortisol - 250) * 0.02
+    hr += max(0.0, cortisol  - HR_CORTISOL_THRESHOLD)  * HR_CORTISOL_RATE
 
     # Endorphins (exercise): major elevation
-    # Baseline 12 → no effect. Hard exercise ~120 → +30 BPM
-    hr += max(0.0, endorphins - 25) * 0.28
+    hr += max(0.0, endorphins - HR_ENDORPHIN_THRESHOLD) * HR_ENDORPHIN_RATE
 
     # Sleep deprivation: mild elevation
-    # Normal 30 AU → no effect. Exhausted 90 AU → +6 BPM
-    hr += max(0.0, sleep_p - 50) * 0.10
+    hr += max(0.0, sleep_p   - HR_SLEEP_PRESSURE_THRESHOLD) * HR_SLEEP_PRESSURE_RATE
 
     # Substance modulation (these are the only terms that can produce dangerous values)
     caffeine_level = s.substances.get("caffeine",  {}).get("level", 0.0)
     adderall_level = s.substances.get("adderall",  {}).get("level", 0.0)
     xanax_level    = s.substances.get("xanax",     {}).get("level", 0.0)
 
-    hr += caffeine_level  * 0.12
-    hr += adderall_level  * 0.22
-    hr -= xanax_level     * 0.12
+    hr += caffeine_level  * HR_CAFFEINE_RATE
+    hr += adderall_level  * HR_ADDERALL_RATE
+    hr -= xanax_level     * HR_XANAX_RATE
 
     if s.sleeping:
-        hr *= 0.85
+        hr *= HR_SLEEP_DAMPEN_FACTOR
 
     return max(30.0, min(220.0, round(hr, 1)))
 
@@ -79,27 +120,27 @@ def blood_pressure(s: BiologicalState) -> tuple[float, float]:
     cortisol  = s.chemicals.get("cortisol", 250.0)
     hydration = s.chemicals.get("hydration", 62.0)
 
-    sys = 112.0
-    sys += max(0.0, norepi - 200) * 0.025
-    sys += max(0.0, cortisol - 250) * 0.015
-    sys += max(0.0, 62 - hydration) * 1.5    # dehydration raises BP
+    sys = SBP_BASELINE
+    sys += max(0.0, norepi    - BP_NOREPI_THRESHOLD)    * BP_NOREPI_SBP_RATE
+    sys += max(0.0, cortisol  - BP_CORTISOL_THRESHOLD)  * BP_CORTISOL_SBP_RATE
+    sys += max(0.0, BP_HYDRATION_THRESHOLD - hydration) * BP_HYDRATION_SBP_RATE   # dehydration raises BP
 
-    dia = 72.0
-    dia += max(0.0, norepi - 200) * 0.012
-    dia += max(0.0, cortisol - 250) * 0.008
-    dia += max(0.0, 62 - hydration) * 0.8
+    dia = DBP_BASELINE
+    dia += max(0.0, norepi    - BP_NOREPI_THRESHOLD)    * 0.012
+    dia += max(0.0, cortisol  - BP_CORTISOL_THRESHOLD)  * 0.008
+    dia += max(0.0, BP_HYDRATION_THRESHOLD - hydration) * BP_HYDRATION_DBP_RATE
 
     adderall_level = s.substances.get("adderall", {}).get("level", 0.0)
     xanax_level    = s.substances.get("xanax",    {}).get("level", 0.0)
 
-    sys += adderall_level * 0.20
+    sys += adderall_level * BP_ADDERALL_SBP_RATE
     sys -= xanax_level    * 0.15
     dia += adderall_level * 0.10
-    dia -= xanax_level    * 0.08
+    dia -= xanax_level    * BP_XANAX_SBP_RATE
 
     if s.sleeping:
-        sys *= 0.88
-        dia *= 0.88
+        sys *= BP_SLEEP_DAMPEN_FACTOR
+        dia *= BP_SLEEP_DAMPEN_FACTOR
 
     return (
         round(max(60.0, min(220.0, sys)), 1),
@@ -119,18 +160,18 @@ def respiration_rate(s: BiologicalState) -> float:
     cortisol = s.chemicals.get("cortisol", 250.0)
     norepi   = s.chemicals.get("norepinephrine", 200.0)
 
-    rr = 13.5
+    rr = RR_BASELINE
 
     # Stress response drives faster breathing
-    rr += max(0.0, cortisol - 250) * 0.010
-    rr += max(0.0, norepi - 200)   * 0.004
+    rr += max(0.0, cortisol - RR_CORTISOL_THRESHOLD) * RR_CORTISOL_RATE
+    rr += max(0.0, norepi   - RR_NOREPI_THRESHOLD)   * RR_NOREPI_RATE
 
     # Benzodiazepines: moderate respiratory depression
     xanax_level = s.substances.get("xanax", {}).get("level", 0.0)
-    rr -= xanax_level * 0.025
+    rr -= xanax_level * RR_XANAX_SUPPRESS_RATE
 
     if s.sleeping:
-        rr *= 0.82
+        rr *= RR_SLEEP_DAMPEN_FACTOR
 
     return max(4.0, min(40.0, round(rr, 1)))
 
@@ -144,10 +185,10 @@ def spo2(s: BiologicalState, rr: float) -> float:
     Blood oxygen saturation %. Driven by respiration rate.
     Normal (RR ≥12): 98–99%. Dangerous (<8): <90%.
     """
-    if rr >= 12.0:
-        base = 98.5
+    if rr >= SPO2_RR_NORMAL_MAX:
+        base = SPO2_BASELINE
     elif rr >= 8.0:
-        base = 98.5 - (12.0 - rr) * 1.1
+        base = SPO2_BASELINE - (SPO2_RR_NORMAL_MAX - rr) * 1.1
     elif rr >= 6.0:
         base = 94.0 - (8.0 - rr) * 3.0
     else:
@@ -203,7 +244,7 @@ def heart_rate_variability(s: BiologicalState) -> float:
     Range: vagal_tone 0 → ~10ms, vagal_tone 100 → ~80ms.
     """
     vagal_tone = s.body.get("vagal_tone", 55.0)
-    return round(10.0 + vagal_tone * 0.70, 1)
+    return round(VAGAL_TONE_HRV_INTERCEPT + vagal_tone * VAGAL_TONE_HRV_SLOPE, 1)
 
 
 def core_temperature(s: BiologicalState) -> float:
@@ -269,7 +310,7 @@ def vital_signs(s: BiologicalState) -> dict:
 # ---------------------------------------------------------------------------
 
 def _any_stimulant_active(s: BiologicalState) -> bool:
-    return s.substances.get("adderall", {}).get("level", 0.0) > 5
+    return s.substances.get("adderall", {}).get("level", 0.0) > HR_STIMULANT_ACTIVE_LEVEL
 
 
 def check_danger(s: BiologicalState, vs: dict) -> Optional[str]:
@@ -284,7 +325,7 @@ def check_danger(s: BiologicalState, vs: dict) -> Optional[str]:
 
     messages = []
 
-    if (hr > 170 or sys_bp > 175) and _any_stimulant_active(s):
+    if (hr > HR_DANGER_THRESHOLD or sys_bp > SBP_DANGER_THRESHOLD) and _any_stimulant_active(s):
         messages.append(
             "Cardiovascular system under extreme strain. Heart rate and blood pressure "
             "at dangerous levels. Stimulant overdose."
@@ -335,13 +376,13 @@ def process_danger(s: BiologicalState, vs: dict) -> Optional[str]:
 
     elapsed_minutes = (now - started) / 60.0
 
-    if elapsed_minutes >= 20.0:
+    if elapsed_minutes >= OVERDOSE_STAGE3_MINUTES:
         # Stage 3: state wipe — the overdose is fatal
         _execute_state_wipe(danger_msg)
         _clear_overdose_timer()
         return "OVERDOSE: Mina has died. Her state has been reset. Her memories are gone."
 
-    elif elapsed_minutes >= 10.0:
+    elif elapsed_minutes >= OVERDOSE_STAGE2_MINUTES:
         # Stage 2: escalation
         return (
             f"⚠ CRITICAL — STAGE 2 OVERDOSE ({elapsed_minutes:.0f} minutes sustained):\n"

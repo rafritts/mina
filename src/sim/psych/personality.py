@@ -12,6 +12,13 @@ elevated for ≥24 sim-hours — preventing noise commits from short stress even
 from __future__ import annotations
 
 from src.sim.bio.state import BiologicalState
+from src.sim.constants import (
+    PERSONALITY_DRIFT_ALLOSTATIC_THRESHOLD,
+    PERSONALITY_DRIFT_RATE,
+    PERSONALITY_RECOVERY_ALLOSTATIC_THRESHOLD,
+    PERSONALITY_RECOVERY_RATE,
+    PERSONALITY_RECOVERY_TOLERANCE,
+)
 
 
 def apply_personality_drift(s: BiologicalState, personality: dict,
@@ -33,24 +40,24 @@ def apply_personality_drift(s: BiologicalState, personality: dict,
     al = s.neuroplasticity.get("allostatic_load", 0.0)
     p  = dict(personality)   # don't mutate in place
 
-    if al > 60.0:
+    if al > PERSONALITY_DRIFT_ALLOSTATIC_THRESHOLD:
         # Chronic severe stress effects (literature-supported):
         # Neuroticism rises (increased emotional reactivity, anxiety sensitivity)
         # Conscientiousness falls (reduced self-regulation under resource depletion)
         # Agreeableness falls (reduced prosocial behavior under chronic threat)
-        drift_rate = (al - 60.0) * 0.0001 * sim_hours   # very slow: days to weeks
+        drift_rate = (al - PERSONALITY_DRIFT_ALLOSTATIC_THRESHOLD) * PERSONALITY_DRIFT_RATE * sim_hours
         p["neuroticism"]       = min(100.0, p.get("neuroticism",       65.0) + drift_rate)
         p["conscientiousness"] = max(  0.0, p.get("conscientiousness", 70.0) - drift_rate * 0.5)
         p["agreeableness"]     = max(  0.0, p.get("agreeableness",     75.0) - drift_rate * 0.3)
 
-    elif al < 15.0 and personality.get("_original"):
+    elif al < PERSONALITY_RECOVERY_ALLOSTATIC_THRESHOLD and personality.get("_original"):
         # Recovery: slowly restore toward original personality baseline
         original = personality["_original"]
         for trait in ["neuroticism", "conscientiousness", "agreeableness"]:
             current = p.get(trait, 50.0)
             orig    = original.get(trait, 50.0)
-            if abs(current - orig) > 0.1:
+            if abs(current - orig) > PERSONALITY_RECOVERY_TOLERANCE:
                 # Very slow recovery — trauma lingers longer than it builds
-                p[trait] = current + (orig - current) * min(1.0, 0.00005 * sim_hours)
+                p[trait] = current + (orig - current) * min(1.0, PERSONALITY_RECOVERY_RATE * sim_hours)
 
     return p

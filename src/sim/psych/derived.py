@@ -7,11 +7,102 @@ All outputs normalized to 0-100 for compatibility with existing formulas.
 SPEC-24: Updated to incorporate BDNF, allostatic load, inflammation, pain,
 T3 (thyroid), ghrelin (hunger), vasopressin, anandamide, and receptor
 sensitivity adjustments for all major neurotransmitter pathways.
+SPEC-25: All numeric literals replaced with named constants.
 """
 from __future__ import annotations
 
 from src.sim.chem.units import normalize as _normalize_chem
 from src.sim.bio.defaults import CHEMICAL_DEFAULTS
+from src.sim.constants import (
+    ANXIETY_AROUSAL_WEIGHT,
+    ANXIETY_CLARITY_WEIGHT,
+    ANXIETY_EI_SCALE,
+    ANXIETY_GABA_WEIGHT,
+    ANXIETY_OFFSET,
+    ANXIETY_PAIN_WEIGHT,
+    ANXIETY_WARMTH_WEIGHT,
+    AROUSAL_ADENOSINE_WEIGHT,
+    AROUSAL_CORTISOL_WEIGHT,
+    AROUSAL_EI_BALANCE_SCALE,
+    AROUSAL_GABA_WEIGHT,
+    AROUSAL_MELATONIN_DRAG_FACTOR,
+    AROUSAL_NOREPI_WEIGHT,
+    AROUSAL_OFFSET,
+    BOREDOM_AROUSAL_WEIGHT,
+    BOREDOM_CLARITY_WEIGHT,
+    BOREDOM_ENERGY_WEIGHT,
+    BOREDOM_HEDONIC_WEIGHT,
+    BOREDOM_OFFSET,
+    CLARITY_ACH_WEIGHT,
+    CLARITY_ADENOSINE_WEIGHT,
+    CLARITY_BDNF_WEIGHT,
+    CLARITY_CORTISOL_WEIGHT,
+    CLARITY_GLUCOSE_WEIGHT,
+    CLARITY_MELATONIN_DRAG_FACTOR,
+    CLARITY_OFFSET,
+    CLARITY_PAIN_WEIGHT,
+    DEPRESSION_ALLOSTATIC_WEIGHT,
+    DEPRESSION_ENERGY_WEIGHT,
+    DEPRESSION_HEDONIC_WEIGHT,
+    DEPRESSION_INFLAMMATION_WEIGHT,
+    DEPRESSION_OFFSET,
+    DEPRESSION_VALENCE_WEIGHT,
+    DISTRESS_ENERGY_WEIGHT,
+    DISTRESS_HUNGER_WEIGHT,
+    DISTRESS_INFLAMMATION_WEIGHT,
+    DISTRESS_OFFSET,
+    DISTRESS_PAIN_WEIGHT,
+    ENERGY_ADENOSINE_WEIGHT,
+    ENERGY_GLUCOSE_WEIGHT,
+    ENERGY_HUNGER_WEIGHT,
+    ENERGY_INFLAMMATION_WEIGHT,
+    ENERGY_NOREPI_WEIGHT,
+    ENERGY_OFFSET,
+    ENERGY_T3_WEIGHT,
+    FLOW_ANXIETY_REDUCTION,
+    FLOW_AROUSAL_WEIGHT,
+    FLOW_CLARITY_WEIGHT,
+    FLOW_GABA_WEIGHT,
+    FLOW_HEDONIC_WEIGHT,
+    HEDONIC_ALLOSTATIC_WEIGHT,
+    HEDONIC_ANANDAMIDE_WEIGHT,
+    HEDONIC_DOPAMINE_REWARD_WEIGHT,
+    HEDONIC_ENDORPHIN_WEIGHT,
+    HEDONIC_INFLAMMATION_WEIGHT,
+    HEDONIC_OFFSET,
+    HEDONIC_SEROTONIN_WEIGHT,
+    LONELINESS_INFLAMMATION_WEIGHT,
+    LONELINESS_OFFSET,
+    LONELINESS_OXYTOCIN_WEIGHT,
+    LONELINESS_WARMTH_WEIGHT,
+    MELATONIN_DRAG_MULTIPLIER,
+    MELATONIN_DRAG_THRESHOLD,
+    NORM_ADENOSINE_SLEEP_PRESSURE_MIN,
+    NORM_ADENOSINE_SLEEP_PRESSURE_SCALE,
+    NORM_ANANDAMIDE_DIVISOR,
+    NORM_BDNF_MIN,
+    NORM_BDNF_RANGE,
+    NORM_GABA_MIN,
+    NORM_GABA_RANGE,
+    NORM_HUNGER_MIN,
+    NORM_HUNGER_RANGE,
+    NORM_T3_MIN,
+    NORM_T3_RANGE,
+    NORM_VASOPRESSIN_DIVISOR,
+    VALENCE_ALLOSTATIC_WEIGHT,
+    VALENCE_BDNF_WEIGHT,
+    VALENCE_CORTISOL_WEIGHT,
+    VALENCE_DOPAMINE_COGNITIVE_WEIGHT,
+    VALENCE_OFFSET,
+    VALENCE_SEROTONIN_WEIGHT,
+    VALENCE_T3_WEIGHT,
+    WARMTH_CORTISOL_WEIGHT,
+    WARMTH_OFFSET,
+    WARMTH_OXYTOCIN_WEIGHT,
+    WARMTH_PAIN_WEIGHT,
+    WARMTH_SEROTONIN_WEIGHT,
+    WARMTH_VASOPRESSIN_WEIGHT,
+)
 
 
 def _n(name: str, s) -> float:
@@ -53,12 +144,13 @@ def derived(s) -> dict:
     adenosine = s.body.get("adenosine",                      25.0)
 
     # Normalize new inputs to 0-100 scale
-    gaba_n     = min(100.0, max(0.0, (gaba - 0.5) / 0.095))   # 0.5→0, 10→100
-    ei         = (glutamate - gaba) / max(gaba, 0.5)           # signed ratio
-    t3_n       = min(100.0, max(0.0, (t3 - 20.0) / 1.8))      # 20→0, 200→100
-    bdnf_n     = min(100.0, max(0.0, (bdnf - 1000.0) / 190.0)) # 1000→0, 20000→100
-    hunger_n   = min(100.0, max(0.0, (ghrelin - 200.0) / 8.0)) # 200→0, 1000→100
-    adenosine_n = min(100.0, max(0.0, (adenosine - 20.0) / 0.6)) # matches sleep_pressure
+    gaba_n     = min(100.0, max(0.0, (gaba     - NORM_GABA_MIN)  / NORM_GABA_RANGE))
+    ei         = (glutamate - gaba) / max(gaba, NORM_GABA_MIN)     # signed E/I ratio
+    t3_n       = min(100.0, max(0.0, (t3       - NORM_T3_MIN)    / NORM_T3_RANGE))
+    bdnf_n     = min(100.0, max(0.0, (bdnf     - NORM_BDNF_MIN)  / NORM_BDNF_RANGE))
+    hunger_n   = min(100.0, max(0.0, (ghrelin  - NORM_HUNGER_MIN) / NORM_HUNGER_RANGE))
+    adenosine_n = min(100.0, max(0.0,
+        (adenosine - NORM_ADENOSINE_SLEEP_PRESSURE_MIN) / NORM_ADENOSINE_SLEEP_PRESSURE_SCALE))
 
     # --- Receptor sensitivity adjustments ---
     d1_sens     = s.receptor_sensitivity.get("dopamine",  {}).get("D1",    1.0)
@@ -77,90 +169,90 @@ def derived(s) -> dict:
     # Old substance tolerance scalar — kept for backward compat during transition
     tol_d = s.tolerance.get("dopamine", 0.0)
 
-    effective_dopamine_reward   = _n("dopamine", s) * d2_sens * (1.0 - tol_d)
+    effective_dopamine_reward    = _n("dopamine", s) * d2_sens * (1.0 - tol_d)
     effective_dopamine_cognitive = _n("dopamine", s) * d1_sens * (1.0 - tol_d)
-    effective_gaba = gaba_n * gaba_a_sens
+    effective_gaba               = gaba_n * gaba_a_sens
 
     # Vasopressin and anandamide (normalized)
-    vasopressin_n = min(100.0, s.neuroendocrine.get("vasopressin", 2.0) / 0.15)
-    anandamide_n  = min(100.0, s.body.get("anandamide", 1.5) / 0.15)
+    vasopressin_n = min(100.0, s.neuroendocrine.get("vasopressin", 2.0) / NORM_VASOPRESSIN_DIVISOR)
+    anandamide_n  = min(100.0, s.body.get("anandamide", 1.5)            / NORM_ANANDAMIDE_DIVISOR)
 
-    melatonin_drag = max(0.0, _n("melatonin", s) - 40.0) * 0.25
+    melatonin_drag = max(0.0, _n("melatonin", s) - MELATONIN_DRAG_THRESHOLD) * MELATONIN_DRAG_MULTIPLIER
 
     # --- Second-order values ---
 
     # ENERGY: glucose drives ATP; norepinephrine mobilizes; T3 (metabolism) sustains.
     # Fatigue from adenosine, hunger, inflammation, melatonin drag.
     energy = _clamp(
-        20
-        + (_n("glucose", s) * 0.35)
-        + (_n("norepinephrine", s) * 0.25)
-        + (t3_n * 0.15)
-        - (adenosine_n * 0.20)
-        - (hunger_n * 0.05)
+        ENERGY_OFFSET
+        + (_n("glucose", s)        * ENERGY_GLUCOSE_WEIGHT)
+        + (_n("norepinephrine", s) * ENERGY_NOREPI_WEIGHT)
+        + (t3_n                    * ENERGY_T3_WEIGHT)
+        - (adenosine_n             * ENERGY_ADENOSINE_WEIGHT)
+        - (hunger_n                * ENERGY_HUNGER_WEIGHT)
         - melatonin_drag
-        - (infl * 0.15)   # inflammation fatigue ("sickness behavior")
+        - (infl                    * ENERGY_INFLAMMATION_WEIGHT)   # sickness behavior
     )
 
     # COGNITIVE CLARITY: ACh (attention/encoding), glucose (fuel), BDNF (neuroplasticity).
     # Impaired by fatigue, cortisol hyperactivation, pain distraction.
     cognitive_clarity = _clamp(
-        20
-        + (_n("acetylcholine", s) * 0.35)
-        + (_n("glucose", s) * 0.15)
-        + (bdnf_n * 0.10)
-        - (adenosine_n * 0.20)
-        - (_n("cortisol", s) * 0.15)
-        - (pain_int * 0.10)
-        - melatonin_drag * 0.6
+        CLARITY_OFFSET
+        + (_n("acetylcholine", s) * CLARITY_ACH_WEIGHT)
+        + (_n("glucose", s)       * CLARITY_GLUCOSE_WEIGHT)
+        + (bdnf_n                 * CLARITY_BDNF_WEIGHT)
+        - (adenosine_n            * CLARITY_ADENOSINE_WEIGHT)
+        - (_n("cortisol", s)      * CLARITY_CORTISOL_WEIGHT)
+        - (pain_int               * CLARITY_PAIN_WEIGHT)
+        - melatonin_drag          * CLARITY_MELATONIN_DRAG_FACTOR
     )
 
     # HEDONIC TONE: reward (D2), endorphins (natural opioids), serotonin (contentment),
     # anandamide (bliss molecule). Blunted by inflammation (anhedonia) and allostatic load.
     hedonic_tone = _clamp(
-        5
-        + (effective_dopamine_reward * 0.40)
-        + (_n("endorphins", s) * 0.25)
-        + (effective_serotonin * 0.20)
-        + (anandamide_n * 0.15)
-        - (infl * 0.10)    # anhedonia from sickness
-        - (al * 0.10)      # allostatic load blunts pleasure
+        HEDONIC_OFFSET
+        + (effective_dopamine_reward * HEDONIC_DOPAMINE_REWARD_WEIGHT)
+        + (_n("endorphins", s)       * HEDONIC_ENDORPHIN_WEIGHT)
+        + (effective_serotonin       * HEDONIC_SEROTONIN_WEIGHT)
+        + (anandamide_n              * HEDONIC_ANANDAMIDE_WEIGHT)
+        - (infl                      * HEDONIC_INFLAMMATION_WEIGHT)   # anhedonia from sickness
+        - (al                        * HEDONIC_ALLOSTATIC_WEIGHT)     # allostatic load blunts pleasure
     )
 
     # SOCIAL WARMTH: oxytocin (bonding), serotonin (security), vasopressin (pair-bond).
     # Reduced by cortisol (threat response) and pain.
     social_warmth = _clamp(
-        10
-        + (_n("oxytocin", s) * 0.45)
-        + (effective_serotonin * 0.25)
-        + (vasopressin_n * 0.10)
-        - (_n("cortisol", s) * 0.15)
-        - (pain_int * 0.05)
+        WARMTH_OFFSET
+        + (_n("oxytocin", s)   * WARMTH_OXYTOCIN_WEIGHT)
+        + (effective_serotonin * WARMTH_SEROTONIN_WEIGHT)
+        + (vasopressin_n       * WARMTH_VASOPRESSIN_WEIGHT)
+        - (_n("cortisol", s)   * WARMTH_CORTISOL_WEIGHT)
+        - (pain_int            * WARMTH_PAIN_WEIGHT)
     )
 
     # AROUSAL: norepinephrine (locus coeruleus), cortisol (HPA), E/I balance.
     # Calmed by GABA and adenosine; melatonin drags it down.
     arousal = _clamp(
-        15
-        + (_n("norepinephrine", s) * 0.40)
-        + (_n("cortisol", s) * 0.25)
-        + (max(0.0, ei) * 5.0)   # high E/I → more arousal
-        - (effective_gaba * 0.20) # GABAergic inhibition calms
-        - (adenosine_n * 0.15)
-        - melatonin_drag * 0.8
+        AROUSAL_OFFSET
+        + (_n("norepinephrine", s) * AROUSAL_NOREPI_WEIGHT)
+        + (_n("cortisol", s)       * AROUSAL_CORTISOL_WEIGHT)
+        + (max(0.0, ei)            * AROUSAL_EI_BALANCE_SCALE)   # high E/I → more arousal
+        - (effective_gaba          * AROUSAL_GABA_WEIGHT)         # GABAergic inhibition calms
+        - (adenosine_n             * AROUSAL_ADENOSINE_WEIGHT)
+        - melatonin_drag           * AROUSAL_MELATONIN_DRAG_FACTOR
     )
 
     # MOOD VALENCE: serotonin (positive baseline), dopamine (motivation/agency),
     # T3 (metabolic mood support), BDNF (neuroplasticity = capacity for wellbeing).
     # Cortisol and allostatic load shift it negative.
     mood_valence = _clamp(
-        10
-        + (effective_serotonin * 0.35)
-        + (effective_dopamine_cognitive * 0.25)
-        + (t3_n * 0.10)
-        + (bdnf_n * 0.10)
-        - (_n("cortisol", s) * 0.20)
-        - (al * 0.10)
+        VALENCE_OFFSET
+        + (effective_serotonin          * VALENCE_SEROTONIN_WEIGHT)
+        + (effective_dopamine_cognitive * VALENCE_DOPAMINE_COGNITIVE_WEIGHT)
+        + (t3_n                         * VALENCE_T3_WEIGHT)
+        + (bdnf_n                       * VALENCE_BDNF_WEIGHT)
+        - (_n("cortisol", s)            * VALENCE_CORTISOL_WEIGHT)
+        - (al                           * VALENCE_ALLOSTATIC_WEIGHT)
     )
 
     # Pain awareness: raw pain amplified by arousal (hypervigilance)
@@ -169,54 +261,54 @@ def derived(s) -> dict:
     # --- Third-order emotional states ---
 
     anxiety = _clamp(
-        (arousal * 0.35)
-        + (100 - cognitive_clarity) * 0.25
-        + (100 - social_warmth) * 0.25
-        + (pain_awareness * 0.10)
-        + (max(0.0, ei) * 5.0)     # high E/I (glutamate-dominant) → anxious
-        - (effective_gaba * 0.20)   # GABA is anxiolytic
-        - 20
+        (arousal              * ANXIETY_AROUSAL_WEIGHT)
+        + (100 - cognitive_clarity) * ANXIETY_CLARITY_WEIGHT
+        + (100 - social_warmth)     * ANXIETY_WARMTH_WEIGHT
+        + (pain_awareness     * ANXIETY_PAIN_WEIGHT)
+        + (max(0.0, ei)       * ANXIETY_EI_SCALE)     # glutamate-dominant → anxious
+        - (effective_gaba     * ANXIETY_GABA_WEIGHT)   # GABA is anxiolytic
+        - ANXIETY_OFFSET
     )
 
     depression = _clamp(
-        (100 - mood_valence) * 0.35
-        + (100 - hedonic_tone) * 0.35
-        + (100 - energy) * 0.15
-        + (infl * 0.10)   # inflammatory depression (cytokine-mediated)
-        + (al * 0.05)     # allostatic load contributes to hopelessness
-        - 20
+        (100 - mood_valence)  * DEPRESSION_VALENCE_WEIGHT
+        + (100 - hedonic_tone)  * DEPRESSION_HEDONIC_WEIGHT
+        + (100 - energy)        * DEPRESSION_ENERGY_WEIGHT
+        + (infl                 * DEPRESSION_INFLAMMATION_WEIGHT)  # inflammatory depression
+        + (al                   * DEPRESSION_ALLOSTATIC_WEIGHT)    # hopelessness
+        - DEPRESSION_OFFSET
     )
 
     boredom = _clamp(
-        (100 - arousal) * 0.45
-        + (100 - hedonic_tone) * 0.30
-        + (100 - energy) * 0.20
-        + (100 - cognitive_clarity) * 0.05
-        - 20
+        (100 - arousal)         * BOREDOM_AROUSAL_WEIGHT
+        + (100 - hedonic_tone)  * BOREDOM_HEDONIC_WEIGHT
+        + (100 - energy)        * BOREDOM_ENERGY_WEIGHT
+        + (100 - cognitive_clarity) * BOREDOM_CLARITY_WEIGHT
+        - BOREDOM_OFFSET
     )
 
     loneliness = _clamp(
-        (100 - social_warmth) * 0.55
-        + (100 - _n("oxytocin", s)) * 0.35
-        + (infl * 0.10)   # sickness behavior increases perceived isolation
-        - 25
+        (100 - social_warmth)    * LONELINESS_WARMTH_WEIGHT
+        + (100 - _n("oxytocin", s)) * LONELINESS_OXYTOCIN_WEIGHT
+        + (infl                  * LONELINESS_INFLAMMATION_WEIGHT)  # sickness → isolation
+        - LONELINESS_OFFSET
     )
 
     flow = _clamp(
-        (cognitive_clarity * 0.40)
-        + (hedonic_tone * 0.30)
-        + (arousal * 0.20)
-        + (effective_gaba * 0.10)   # relaxed alertness enables flow
-        - anxiety * 0.35
+        (cognitive_clarity * FLOW_CLARITY_WEIGHT)
+        + (hedonic_tone    * FLOW_HEDONIC_WEIGHT)
+        + (arousal         * FLOW_AROUSAL_WEIGHT)
+        + (effective_gaba  * FLOW_GABA_WEIGHT)   # relaxed alertness enables flow
+        - anxiety          * FLOW_ANXIETY_REDUCTION
     )
 
     # Physical distress: pain + inflammation + hunger + fatigue
     physical_distress = _clamp(
-        (pain_awareness * 0.50)
-        + (infl * 0.25)
-        + (hunger_n * 0.10)
-        + (100 - energy) * 0.15
-        - 15
+        (pain_awareness * DISTRESS_PAIN_WEIGHT)
+        + (infl         * DISTRESS_INFLAMMATION_WEIGHT)
+        + (hunger_n     * DISTRESS_HUNGER_WEIGHT)
+        + (100 - energy) * DISTRESS_ENERGY_WEIGHT
+        - DISTRESS_OFFSET
     )
 
     return {

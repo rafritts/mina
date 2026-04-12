@@ -42,6 +42,11 @@ from src.sim.physio.autonomic import advance_autonomic
 from src.sim.psych.allostatic import advance_allostatic
 from src.sim.physio.circadian import _advance_core_temp, _advance_orexin, compute_sleep_propensity
 
+from src.sim.constants import (
+    AUTO_SLEEP_PROPENSITY_IN_WINDOW,
+    AUTO_SLEEP_PROPENSITY_OVERRIDE,
+)
+
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
 
@@ -336,8 +341,8 @@ def advance(state: BiologicalState,
         in_window = (sleep_start_hour <= hour_of_day < sleep_end_hour or
                      hour_of_day < sleep_end_hour)
 
-        # In window: 70 is sufficient; any time: 90 overrides (exhaustion collapse)
-        threshold = 70.0 if in_window else 90.0
+        # In window: propensity threshold is lower; exhaustion can override any time
+        threshold = AUTO_SLEEP_PROPENSITY_IN_WINDOW if in_window else AUTO_SLEEP_PROPENSITY_OVERRIDE
 
         if propensity >= threshold:
             s.sleeping    = True

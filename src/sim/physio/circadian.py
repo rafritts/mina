@@ -13,6 +13,34 @@ import math
 import time
 
 from src.sim.bio.state import BiologicalState
+from src.sim.constants import (
+    ADENOSINE_BUILD_RATE_BASE,
+    ADENOSINE_CLEAR_RATE_SLEEP,
+    ADENOSINE_FLOOR_SLEEP,
+    ADENOSINE_OREXIN_SUPPRESS_THRESHOLD,
+    ADENOSINE_OREXIN_SUPPRESS_RATE,
+    ADENOSINE_SLEEP_DRIVE_MIN,
+    ADENOSINE_SLEEP_DRIVE_DIVISOR,
+    CIRCADIAN_HALF_PERIOD,
+    CORE_TEMP_AMPLITUDE,
+    CORE_TEMP_APPROACH_RATE,
+    CORE_TEMP_BASELINE,
+    CORE_TEMP_TROUGH_HOUR,
+    FEVER_IL1B_THRESHOLD,
+    FEVER_IL1B_RATE,
+    FEVER_IL6_THRESHOLD,
+    FEVER_IL6_RATE,
+    FEVER_MAX_DELTA,
+    FEVER_SLEEP_REDUCTION,
+    MELATONIN_SLEEP_PROPENSITY_DIVISOR,
+    OREXIN_CIRCADIAN_AMPLITUDE,
+    OREXIN_CIRCADIAN_BASE,
+    OREXIN_CIRCADIAN_PEAK_HOUR,
+    OREXIN_SLEEP_PROPENSITY_DIVISOR,
+    SLEEP_PROPENSITY_C_PROCESS_WEIGHT,
+    SLEEP_PROPENSITY_OREXIN_OPPOSITION,
+    SLEEP_PROPENSITY_S_PROCESS_WEIGHT,
+)
 from src.sim.events import EventBus
 
 
@@ -36,10 +64,10 @@ def _advance_adenosine(s: BiologicalState, sim_hours: float) -> BiologicalState:
 
     if s.sleeping:
         # Glymphatic system clears adenosine during NREM/SWS
-        a = max(15.0, a - 20.0 * sim_hours)
+        a = max(ADENOSINE_FLOOR_SLEEP, a - ADENOSINE_CLEAR_RATE_SLEEP * sim_hours)
     else:
         # Neural activity accumulates adenosine; cortisol stress accelerates it
-        base_rate    = 3.0
+        base_rate    = ADENOSINE_BUILD_RATE_BASE
         stress_bonus = max(0.0, s.chemicals.get("cortisol", 250.0) - 400.0) * 0.004
         base_rate   += stress_bonus
         a = min(100.0, a + base_rate * sim_hours)
@@ -61,10 +89,12 @@ def _orexin_baseline_fn(hour: float, ctx: dict) -> float:
     High cortisol (stress) transiently supports orexin (stress = stay awake).
     """
     # Circadian cosine: peak at 15:00 (3pm), trough at 03:00
-    base = 200.0 + 150.0 * math.cos((hour - 15.0) * math.pi / 12.0)
+    base = (OREXIN_CIRCADIAN_BASE
+            + OREXIN_CIRCADIAN_AMPLITUDE * math.cos(
+                (hour - OREXIN_CIRCADIAN_PEAK_HOUR) * math.pi / CIRCADIAN_HALF_PERIOD))
     # Adenosine opposes orexin (mutual inhibition with sleep-active VLPO neurons)
     adenosine = ctx.get("adenosine", 25.0)
-    base -= max(0.0, adenosine - 40.0) * 2.0
+    base -= max(0.0, adenosine - ADENOSINE_OREXIN_SUPPRESS_THRESHOLD) * ADENOSINE_OREXIN_SUPPRESS_RATE
     # Cortisol supports orexin (stress-induced hyperarousal)
     base += max(0.0, ctx.get("cortisol", 250.0) - 400.0) * 0.1
     return max(30.0, base)
@@ -103,16 +133,18 @@ def compute_sleep_propensity(s: BiologicalState) -> float:
     melatonin = s.chemicals.get("melatonin",                 5.0)
     orexin    = s.neuroendocrine.get("orexin",             300.0)
 
-    # Process S: 0 propensity at adenosine 20, 100 propensity at adenosine 90
-    s_process = min(100.0, max(0.0, (adenosine - 20.0) / 0.70))
+    # Process S: 0 propensity at adenosine SLEEP_DRIVE_MIN, 100 at adenosine 90
+    s_process = min(100.0, max(0.0,
+        (adenosine - ADENOSINE_SLEEP_DRIVE_MIN) / ADENOSINE_SLEEP_DRIVE_DIVISOR))
 
     # Process C: melatonin drives sleep, orexin drives waking
-    melatonin_drive = (melatonin / 220.0) * 100.0
-    orexin_wake     = (orexin    / 400.0) * 100.0
-    c_process = max(0.0, melatonin_drive - orexin_wake * 0.6)
+    melatonin_drive = (melatonin / MELATONIN_SLEEP_PROPENSITY_DIVISOR) * 100.0
+    orexin_wake     = (orexin    / OREXIN_SLEEP_PROPENSITY_DIVISOR)    * 100.0
+    c_process = max(0.0, melatonin_drive - orexin_wake * SLEEP_PROPENSITY_OREXIN_OPPOSITION)
 
     # Weighted composite: homeostatic pressure dominates
-    propensity = s_process * 0.6 + c_process * 0.4
+    propensity = (s_process * SLEEP_PROPENSITY_S_PROCESS_WEIGHT
+                  + c_process * SLEEP_PROPENSITY_C_PROCESS_WEIGHT)
     return min(100.0, max(0.0, round(propensity, 1)))
 
 
@@ -127,26 +159,30 @@ def _advance_core_temp(s: BiologicalState, sim_hours: float,
     Nadir ~4–6am (promotes sleep onset), peak ~6–8pm (promotes alertness).
     Fever: elevated by IL-6 and IL-1β (pyrogens via PGE2 in the hypothalamus).
     """
-    # Circadian component: nadir at 4am, peak at 16pm
-    circadian_temp = 36.75 + 0.4 * math.sin((hour_of_day - 4.0) * math.pi / 12.0)
+    # Circadian component: nadir at CORE_TEMP_TROUGH_HOUR, peak ~12hr later
+    circadian_temp = (CORE_TEMP_BASELINE
+                      + CORE_TEMP_AMPLITUDE * math.sin(
+                          (hour_of_day - CORE_TEMP_TROUGH_HOUR) * math.pi / CIRCADIAN_HALF_PERIOD))
 
     # Fever component (cytokine-driven)
     il1b = s.immune.get("il1b", 2.0)
     il6  = s.immune.get("il6",  3.0)
     fever_delta = 0.0
-    if il1b > 10.0 or il6 > 20.0:
-        fever_delta = max(0.0, il6 - 20.0) * 0.02 + max(0.0, il1b - 10.0) * 0.03
-        fever_delta = min(4.0, fever_delta)   # max fever +4°C
+    if il1b > FEVER_IL1B_THRESHOLD or il6 > FEVER_IL6_THRESHOLD:
+        fever_delta = (max(0.0, il6  - FEVER_IL6_THRESHOLD)  * FEVER_IL6_RATE
+                       + max(0.0, il1b - FEVER_IL1B_THRESHOLD) * FEVER_IL1B_RATE)
+        fever_delta = min(FEVER_MAX_DELTA, fever_delta)
 
     target = circadian_temp + fever_delta
 
-    # During sleep: heat dissipation drops core temp ~0.3°C below circadian
+    # During sleep: heat dissipation drops core temp below circadian
     if s.sleeping:
-        target -= 0.3
+        target -= FEVER_SLEEP_REDUCTION
 
     current = s.body.get("core_temp", 37.0)
-    # Fast approach (0.3/hr) — temperature responds within ~3 hours
-    s.body["core_temp"] = round(current + (target - current) * min(1.0, 0.3 * sim_hours), 2)
+    # Fast approach — temperature responds within ~3 hours
+    s.body["core_temp"] = round(
+        current + (target - current) * min(1.0, CORE_TEMP_APPROACH_RATE * sim_hours), 2)
     return s
 
 

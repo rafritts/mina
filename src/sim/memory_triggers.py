@@ -18,10 +18,14 @@ import time
 
 from src.sim.events import BiologicalEvent, EventBus
 from src.sim.bio.state import BiologicalState
+from src.sim.constants import (
+    ALLOSTATIC_KAG_THRESHOLD,
+    KAG_SIGNIFICANCE_THRESHOLD,
+    MULTI_EVENT_RAG_COUNT,
+    RAG_SIGNIFICANCE_THRESHOLD,
+)
 
-RAG_SIGNIFICANCE_THRESHOLD = 0.30
-KAG_SIGNIFICANCE_THRESHOLD = 0.80
-MULTI_EVENT_THRESHOLD       = 3
+MULTI_EVENT_THRESHOLD = MULTI_EVENT_RAG_COUNT  # local alias for backward compat
 
 _KAG_FLAG_FILE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
@@ -79,7 +83,7 @@ def process_events(s: BiologicalState, events: list[BiologicalEvent],
     # Rule 4: Allostatic load milestones → always KAG
     al = s.neuroplasticity.get("allostatic_load", 0.0)
     for ae in events:
-        if ae.chemical == "allostatic_load" and ae.label_crossed and al > 50.0:
+        if ae.chemical == "allostatic_load" and ae.label_crossed and al > ALLOSTATIC_KAG_THRESHOLD:
             _flag_kag_allostatic(s, al)
 
 
