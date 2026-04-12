@@ -46,14 +46,20 @@ def _load_config() -> dict:
 # ---------------------------------------------------------------------------
 
 def _cortisol_baseline_fn(hour: float, ctx: dict) -> float:
-    """Circadian cortisol — peaks ~450 nmol/L at 8am, troughs ~90 at 8pm."""
-    base = 180.0 + 270.0 * math.cos((hour - 8) * math.pi / 12)
-    # Hypoglycemia drives HPA axis
-    if ctx.get("glucose", 85.0) < 55.0:
-        base += 120.0
-    # Dehydration elevates stress hormones
+    """
+    Cortisol driven primarily by ACTH (HPA cascade) with circadian modulation.
+    SPEC-22: stressors route through apply_stressor_delta() → cascade_queue → ACTH → cortisol.
+    """
+    acth = ctx.get("acth", 25.0)
+    # Adrenal output: ACTH 10–60 → cortisol 150–700 nmol/L (proportional with circadian offset)
+    circadian_offset = 100.0 * math.cos((hour - 8) * math.pi / 12)
+    base = acth * 10.0 + circadian_offset
+    # Dehydration still directly stresses adrenals
     if ctx.get("hydration", 62.0) < 56.0:
         base += 60.0
+    # Hypoglycaemia activates HPA (same as CRH, but also direct adrenal effect)
+    if ctx.get("glucose", 85.0) < 60.0:
+        base += 120.0
     return max(50.0, base)
 
 
@@ -64,6 +70,24 @@ def _norepi_baseline_fn(hour: float, ctx: dict) -> float:
     if ctx.get("hydration", 62.0) < 56.0:
         base += 30.0
     return base
+
+
+def _serotonin_baseline_fn(hour: float, ctx: dict) -> float:
+    """
+    Serotonin baseline modulated by T3 (thyroid) and estradiol (sex hormone).
+    SPEC-22: neuroendocrine hormones feed into ctx and shift the serotonin set-point.
+    """
+    base = 22.0
+    # T3 potentiates serotonin synthesis (low T3 = depression-like blunting)
+    t3_factor = ctx.get("t3", 120.0) / 120.0
+    base *= max(0.7, min(1.3, t3_factor))
+    # Estradiol promotes serotonin activity above 80 pg/mL
+    est = ctx.get("estradiol", 100.0)
+    base += max(0.0, est - 80.0) * 0.003
+    # Low estradiol (menstrual / late luteal) → direct serotonin deficit
+    if est < 50.0:
+        base -= 2.0
+    return max(5.0, base)
 
 
 def _gaba_baseline_fn(hour: float, ctx: dict) -> float:
@@ -221,6 +245,7 @@ REGISTRY: dict[str, ChemicalProfile] = {
         unit="ng/mL",
         resting_baseline=22.0,
         approach_rate=0.06,
+        baseline_fn=_serotonin_baseline_fn,
         resting_low=10.0,
         resting_high=35.0,
         critical_low=0.0,

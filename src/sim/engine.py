@@ -27,6 +27,11 @@ from src.sim.neuro.receptors import advance_receptors
 from src.sim.neuro.substances import advance_substances, SUBSTANCE_DEFS
 from src.sim.physio.circadian import _advance_adenosine
 
+# SPEC-22 subsystems
+from src.sim.physio.hpa import advance_hpa
+from src.sim.physio.endocrine import advance_endocrine
+from src.sim.physio.metabolic import advance_metabolic
+
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
 
@@ -51,11 +56,34 @@ def _hour_of_day(now: float) -> float:
 def _make_context(state: BiologicalState, hour: float) -> dict:
     return {
         "hour":           hour,
+        "sleeping":       state.sleeping,
+        # First-order chemicals
         "glucose":        state.chemicals.get("glucose",        CHEMICAL_DEFAULTS.get("glucose", 85.0)),
         "hydration":      state.chemicals.get("hydration",      CHEMICAL_DEFAULTS.get("hydration", 62.0)),
         "cortisol":       state.chemicals.get("cortisol",       CHEMICAL_DEFAULTS.get("cortisol", 250.0)),
+        "dopamine":       state.chemicals.get("dopamine",       CHEMICAL_DEFAULTS.get("dopamine", 80.0)),
+        "serotonin":      state.chemicals.get("serotonin",      CHEMICAL_DEFAULTS.get("serotonin", 22.0)),
+        "oxytocin":       state.chemicals.get("oxytocin",       CHEMICAL_DEFAULTS.get("oxytocin", 4.0)),
         # sleep_pressure now derives from body["adenosine"] via property
         "sleep_pressure": state.sleep_pressure,
+        # SPEC-22: neuroendocrine hormones feed baseline_fns for cortisol, serotonin, etc.
+        "acth":         state.neuroendocrine.get("acth",         25.0),
+        "crh":          state.neuroendocrine.get("crh",          30.0),
+        "t3":           state.neuroendocrine.get("t3",           120.0),
+        "t4":           state.neuroendocrine.get("t4",           8.0),
+        "tsh":          state.neuroendocrine.get("tsh",          2.0),
+        "estradiol":    state.neuroendocrine.get("estradiol",    100.0),
+        "progesterone": state.neuroendocrine.get("progesterone", 0.5),
+        "dhea":         state.neuroendocrine.get("dhea",         150.0),
+        "insulin":      state.neuroendocrine.get("insulin",      5.0),
+        "ghrelin":      state.neuroendocrine.get("ghrelin",      400.0),
+        "leptin":       state.neuroendocrine.get("leptin",       15.0),
+        "vasopressin":  state.neuroendocrine.get("vasopressin",  2.0),
+        "prolactin":    state.neuroendocrine.get("prolactin",    8.0),
+        # Immune — for HPA-immune axis
+        "il6":          state.immune.get("il6", 3.0),
+        # Pain — for 2-AG baseline
+        "pain_intensity": state.pain.get("pain_intensity", 0.0),
     }
 
 
@@ -79,6 +107,7 @@ _SUBSYSTEM_MANAGED = frozenset({
     "glutamate",        # → amino_acids.py
     "anandamide",       # → endocannabinoids.py (body-stored)
     "two_ag",           # → endocannabinoids.py (body-stored)
+    "glucose",          # → metabolic.py (SPEC-22: insulin-mediated clearance)
 })
 
 
@@ -114,8 +143,20 @@ def advance(state: BiologicalState,
     # Must run before Phase 1 so REGISTRY interactions (GABA→cortisol) use fresh values.
     s = advance_amino_acids(s, sim_hours, event_bus)
 
+    # --- SPEC-22 Phase HPA: CRH, ACTH, cascade queue ---
+    # Must run before Phase 1 so ACTH is current when cortisol baseline_fn fires.
+    s = advance_hpa(s, sim_hours, now, hour_of_day, event_bus)
+
+    # --- SPEC-22 Phase Endocrine: thyroid, sex hormones, GH, DHEA, prolactin, vasopressin ---
+    s = advance_endocrine(s, sim_hours, hour_of_day, event_bus)
+
+    # --- SPEC-22 Phase Metabolic: insulin, glucose, ghrelin, leptin ---
+    s = advance_metabolic(s, sim_hours, hour_of_day, event_bus)
+
+    # Rebuild context after SPEC-22 subsystems so Phase 1 baseline_fns see current ACTH/T3/etc.
+    ctx = _make_context(s, hour_of_day)
+
     # --- Phase 1: each chemical advances toward its own baseline ---
-    # TODO SPEC-22: extract HPA/endocrine/metabolic advance logic
 
     for name, profile in REGISTRY.items():
         if name in _SUBSYSTEM_MANAGED:
@@ -123,22 +164,7 @@ def advance(state: BiologicalState,
 
         current = s.chemicals.get(name, CHEMICAL_DEFAULTS.get(name, 0.0))
 
-        if name == "glucose":
-            # Liver glycogenolysis keeps blood sugar stable during sleep.
-            # Awake: -6.5 mg/dL/hr. Sleeping: -0.8 mg/dL/hr.
-            decay_rate = 0.8 if s.sleeping else 6.5
-            new_glu = clamp_chemical(name, current - decay_rate * sim_hours)
-            s.chemicals[name] = new_glu
-            # Hypoglycemic awakening: glucose < 55 forces the body awake
-            if s.sleeping and new_glu < 55:
-                s.sleeping = False
-                try:
-                    from log import log
-                    log("STATE", f"Hypoglycemic awakening: glucose={new_glu:.1f} mg/dL")
-                except ImportError:
-                    pass
-
-        elif name == "hydration":
+        if name == "hydration":
             # Pure decay: -0.4% TBW/hr; restored only by drink tool
             s.chemicals[name] = clamp_chemical(name, current - 0.4 * sim_hours)
 
