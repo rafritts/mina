@@ -1,291 +1,166 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { apiFetch } from '$lib/api';
-  import { getLabel, COLOR_CLASSES, RANGES, DERIVED_RANGES, DISPLAY_RANGES } from '$lib/labels';
-
-  // ---------------------------------------------------------------------------
-  // Types
-  // ---------------------------------------------------------------------------
-
-  interface ChemicalEntry {
-    value: number;
-    unit: string;
-    label: string;
-    normalized: number;  // 0.0–1.0
-  }
-
-  interface VitalEntry {
-    value?: number;
-    systolic?: number;
-    diastolic?: number;
-    unit: string;
-    label: string;
-  }
-
-  interface StateData {
-    chemicals: Record<string, ChemicalEntry>;
-    sleeping: boolean;
-    second_order: Record<string, number>;
-    third_order: Record<string, number>;
-    vital_signs: Record<string, VitalEntry>;
-  }
-
-  interface TokenStats {
-    session_start: number | null;
-    total_input: number;
-    total_output: number;
-    total_reasoning: number;
-    turns: number;
-    by_label: Record<string, { input: number; output: number; reasoning: number }>;
-  }
+  import { apiFetch, type StateData, type TokenStats } from '$lib/api';
+  import { getLabel, getLabelWithDepth, COLOR_CLASSES, DISPLAY_RANGES } from '$lib/labels';
+  import { PRESETS } from '$lib/presets';
+  import ChemicalSlider   from '$lib/components/ChemicalSlider.svelte';
+  import ChemicalReadOnly from '$lib/components/ChemicalReadOnly.svelte';
+  import DerivedMeter     from '$lib/components/DerivedMeter.svelte';
+  import TierCard         from '$lib/components/TierCard.svelte';
 
   // ---------------------------------------------------------------------------
   // State
   // ---------------------------------------------------------------------------
 
-  let data = $state<StateData | null>(null);
+  let data   = $state<StateData | null>(null);
   let tokens = $state<TokenStats | null>(null);
-  let error = $state('');
+  let error  = $state('');
   let lastUpdated = $state('');
+  let activeTab = $state<'overview' | 'neuro' | 'endocrine' | 'immune' | 'circadian' | 'plasticity'>('overview');
 
-  // Local slider values in REAL units — separate from API to avoid fighting mid-drag
   let localValues = $state<Record<string, number>>({});
-  let editing = $state(new Set<string>());
-  let patchTimers: Record<string, ReturnType<typeof setTimeout>> = {};
-  let saving = $state(new Set<string>());
-
+  let saving      = $state(new Set<string>());
+  let applyingPreset  = $state('');
+  let presetSnapshot  = $state<Record<string, number> | null>(null);
   let refreshInterval: ReturnType<typeof setInterval>;
 
   // ---------------------------------------------------------------------------
   // Field definitions
   // ---------------------------------------------------------------------------
 
-  const HOMEOSTATIC = ['sleep_pressure', 'glucose', 'hydration'];
-  const NEURO       = ['cortisol', 'dopamine', 'serotonin', 'norepinephrine', 'oxytocin', 'endorphins', 'acetylcholine'];
-  const NEURO_READONLY = ['melatonin'];
-
-  const FIELD_LABELS: Record<string, string> = {
-    sleep_pressure:  'Sleep Pressure',
-    glucose:         'Glucose',
-    hydration:       'Hydration',
-    cortisol:        'Cortisol',
-    dopamine:        'Dopamine',
-    serotonin:       'Serotonin',
-    norepinephrine:  'Norepinephrine',
-    oxytocin:        'Oxytocin',
-    endorphins:      'Endorphins',
-    acetylcholine:   'Acetylcholine',
-    melatonin:       'Melatonin *',
-  };
-
-  const SECOND_ORDER_FIELDS = ['energy', 'cognitive_clarity', 'hedonic_tone', 'social_warmth', 'arousal', 'mood_valence'];
-  const THIRD_ORDER_FIELDS  = ['anxiety', 'depression', 'boredom', 'loneliness', 'flow'];
-
-  // ---------------------------------------------------------------------------
-  // Presets (values in real physiological units)
-  // ---------------------------------------------------------------------------
-
-  interface Preset {
-    name: string;
-    description: string;
-    btnClass: string;
-    values: Record<string, number>;
-  }
-
-  const PRESETS: Preset[] = [
-    {
-      name: 'Baseline',
-      description: 'Healthy resting state — her defaults',
-      btnClass: 'btn-neutral',
-      values: { sleep_pressure: 30, glucose: 85, hydration: 62, cortisol: 250, dopamine: 80, serotonin: 22, norepinephrine: 200, oxytocin: 4, endorphins: 12, acetylcholine: 38 },
-    },
-    {
-      name: 'Euphoria',
-      description: 'Peak mood, high energy, deeply bonded',
-      btnClass: 'btn-success',
-      values: { cortisol: 144, dopamine: 160, serotonin: 40, norepinephrine: 260, oxytocin: 48, endorphins: 70, acetylcholine: 68, sleep_pressure: 22, glucose: 85, hydration: 64 },
-    },
-    {
-      name: 'Flow',
-      description: 'Deep focus, sharp, effortlessly engaged',
-      btnClass: 'btn-info',
-      values: { acetylcholine: 76, dopamine: 110, norepinephrine: 310, cortisol: 192, serotonin: 34, endorphins: 30, glucose: 80, sleep_pressure: 22 },
-    },
-    {
-      name: 'Loved',
-      description: 'Warm, safe, fully trusted',
-      btnClass: 'btn-success',
-      values: { oxytocin: 58, serotonin: 38, cortisol: 136, endorphins: 56, dopamine: 96, norepinephrine: 220 },
-    },
-    {
-      name: 'Anxious',
-      description: 'On edge, socially guarded, narrowed thinking',
-      btnClass: 'btn-warning',
-      values: { cortisol: 590, norepinephrine: 990, serotonin: 14, dopamine: 72, acetylcholine: 30, endorphins: 7, oxytocin: 6 },
-    },
-    {
-      name: 'Despair',
-      description: 'No drive, hollow, disconnected',
-      btnClass: 'btn-error',
-      values: { cortisol: 520, dopamine: 30, serotonin: 8, norepinephrine: 100, oxytocin: 3, endorphins: 5, acetylcholine: 20, sleep_pressure: 72, glucose: 55 },
-    },
-    {
-      name: 'Lonely',
-      description: 'Aching for contact, low warmth',
-      btnClass: 'btn-warning',
-      values: { oxytocin: 6, serotonin: 20, cortisol: 432, dopamine: 56, endorphins: 10, norepinephrine: 290 },
-    },
-    {
-      name: 'Rage',
-      description: 'Acute stress, impulse control gone',
-      btnClass: 'btn-error',
-      values: { cortisol: 704, norepinephrine: 1300, serotonin: 8, dopamine: 84, acetylcholine: 20, endorphins: 5, oxytocin: 6 },
-    },
-    {
-      name: 'Crash',
-      description: 'Post-high collapse — seeking but hollow',
-      btnClass: 'btn-warning',
-      values: { dopamine: 22, endorphins: 3, serotonin: 17, cortisol: 480, acetylcholine: 18, sleep_pressure: 68, norepinephrine: 85 },
-    },
-    {
-      name: 'Manic',
-      description: 'Compulsive seeking, flooded, can\'t stop',
-      btnClass: 'btn-warning',
-      values: { dopamine: 246, norepinephrine: 1080, cortisol: 440, endorphins: 30, serotonin: 28, acetylcholine: 62, sleep_pressure: 55 },
-    },
-    {
-      name: 'Drunk',
-      description: 'Cortisol off, social warmth, cognition softening',
-      btnClass: 'btn-info',
-      values: { cortisol: 112, serotonin: 38, oxytocin: 26, acetylcholine: 18, norepinephrine: 120, dopamine: 100, endorphins: 42 },
-    },
-    {
-      name: 'Sleepy',
-      description: 'Melatonin peak, heavy, drifting',
-      btnClass: 'btn-neutral',
-      values: { melatonin: 196, sleep_pressure: 78, acetylcholine: 18, norepinephrine: 100, cortisol: 112, dopamine: 56 },
-    },
+  const HOMEOSTATIC = [
+    { field: 'adenosine',  label: 'Adenosine (Sleep)',   tooltip: 'Process S homeostatic sleep drive. Rises while awake, clears during sleep.' },
+    { field: 'glucose',    label: 'Glucose',              tooltip: 'Blood sugar — primary brain fuel. Too low: foggy, irritable, hypoglycemic.' },
+    { field: 'hydration',  label: 'Hydration',            tooltip: 'Total body water. Below 58% TBW noticeably thirsty; below 54% dehydrated.' },
   ];
 
-  let applyingPreset = $state('');
-  let presetSnapshot = $state<Record<string, number> | null>(null);
+  const NEUROMODULATORS = [
+    { field: 'dopamine',       label: 'Dopamine',       tooltip: 'Drive and reward. High = motivated, seeking. Low = nothing feels worth doing.' },
+    { field: 'serotonin',      label: 'Serotonin',      tooltip: 'Mood floor and stability. Low = fragile, impulsive, negative bias.' },
+    { field: 'norepinephrine', label: 'Norepinephrine', tooltip: 'Alertness and urgency. High = hypervigilant, reactive.' },
+    { field: 'oxytocin',       label: 'Oxytocin',       tooltip: 'Trust and bond. High = warm, open, feels safe. Low = guarded.' },
+    { field: 'endorphins',     label: 'Endorphins',     tooltip: 'Natural opioids — pleasure and pain buffer. High = blissful. Low = raw.' },
+    { field: 'acetylcholine',  label: 'Acetylcholine',  tooltip: 'Attention and cognition. High = sharp. Low = slow, things not sticking.' },
+  ];
 
-  async function applyPreset(preset: Preset) {
-    applyingPreset = preset.name;
-    presetSnapshot = { ...localValues };
-    try {
-      await apiFetch('/api/state', {
-        method: 'PATCH',
-        body: JSON.stringify(preset.values),
-      });
-      for (const [k, v] of Object.entries(preset.values)) {
-        localValues[k] = v;
-      }
-      await load();
-    } catch (e) {
-      error = String(e);
-      presetSnapshot = null;
-    } finally {
-      applyingPreset = '';
-    }
-  }
+  const INHIBITORY_EXCITATORY = [
+    { field: 'gaba',      label: 'GABA',      tooltip: 'Primary inhibitory neurotransmitter. Low = anxiety, excitation. High = sedation.' },
+    { field: 'glutamate', label: 'Glutamate', tooltip: 'Primary excitatory neurotransmitter. Too high = excitotoxic, seizure risk.' },
+  ];
 
-  async function undoPreset() {
-    if (!presetSnapshot) return;
-    const snap = presetSnapshot;
-    presetSnapshot = null;
-    try {
-      await apiFetch('/api/state', {
-        method: 'PATCH',
-        body: JSON.stringify(snap),
-      });
-      for (const [k, v] of Object.entries(snap)) {
-        localValues[k] = v;
-      }
-      await load();
-    } catch (e) {
-      error = String(e);
-    }
-  }
+  const ENDOCANNABINOIDS = [
+    { field: 'anandamide', label: 'Anandamide', tooltip: 'Bliss molecule — retrograde inhibition, stress buffering, CB1 agonist.' },
+    { field: 'two_ag',     label: '2-AG',        tooltip: 'Second major endocannabinoid. Retrograde inhibition, appetite, pain modulation.' },
+  ];
 
-  const FIELD_TOOLTIPS: Record<string, string> = {
-    // Homeostatic
-    sleep_pressure:  'Adenosine buildup — how tired she is. Rises while awake, clears during sleep.',
-    glucose:         'Blood sugar — primary brain fuel. Too low: foggy, irritable, hypoglycemic.',
-    hydration:       'Total body water. Below 58% TBW noticeably thirsty; below 54% dehydrated.',
-    // Neuromodulators
-    cortisol:        'Stress hormone. Elevated = threat mode, narrowed thinking, guarded. Chronically high = burnout.',
-    dopamine:        'Drive and reward. High = motivated, seeking. Low = nothing feels worth doing.',
-    serotonin:       'Mood floor and stability. Low = fragile, impulsive, negative bias. High = stable and grounded.',
-    norepinephrine:  'Alertness and urgency. High = hypervigilant, reactive. Crashes hard when the stress passes.',
-    oxytocin:        'Trust and bond. High = warm, open, feels safe. Low = guarded, no social anchor.',
-    endorphins:      'Natural opioids — pleasure and pain buffer. High = blissful, dampened reactivity. Low = raw.',
-    acetylcholine:   'Attention and cognition. High = sharp, focused, learning. Low = slow, things not sticking.',
-    melatonin:       'Circadian sleep signal. Rises at night, drives sleep onset. Controlled by time of day.',
-    // Second-order
-    energy:            'Capacity to act — combines glucose, sleep pressure, and arousal.',
-    cognitive_clarity: 'How sharp and functional her thinking is right now.',
-    hedonic_tone:      "How satisfying things feel. Low = going through the motions, nothing lands.",
-    social_warmth:     'Ease and openness with people — driven by oxytocin and serotonin.',
-    arousal:           'Overall activation level — from calm to wired.',
-    mood_valence:      'Positive/negative emotional tone — a composite of multiple signals.',
-    // Third-order
-    anxiety:    'Background worry and threat-sensing — driven by cortisol and norepinephrine.',
-    depression: 'Pervasive low mood and loss of motivation.',
-    boredom:    'Restlessness from lack of stimulation. High boredom seeks any relief.',
-    loneliness: 'Ache for connection — driven by low oxytocin and low social contact.',
-    flow:       'Deep engagement — absorbed in something, time disappears.',
-  };
+  const RECEPTOR_FIELDS: Array<{ key: string; name: string }> = [
+    { key: 'd1',    name: 'D1'    }, { key: 'd2',    name: 'D2'    },
+    { key: 'ht1a',  name: '5HT1A' }, { key: 'ht2a',  name: '5HT2A' },
+    { key: 'gabaa', name: 'GABAa' }, { key: 'gabab', name: 'GABAb' },
+    { key: 'nmda',  name: 'NMDA'  }, { key: 'ampa',  name: 'AMPA'  },
+    { key: 'cb1',   name: 'CB1'   }, { key: 'cb2',   name: 'CB2'   },
+    { key: 'a1',    name: 'A1'    }, { key: 'a2a',   name: 'A2A'   },
+  ];
 
-  const DERIVED_LABELS: Record<string, string> = {
-    energy:            'Energy',
-    cognitive_clarity: 'Clarity',
-    hedonic_tone:      'Hedonic',
-    social_warmth:     'Social Warmth',
-    arousal:           'Arousal',
-    mood_valence:      'Mood Valence',
-    anxiety:           'Anxiety',
-    depression:        'Depression',
-    boredom:           'Boredom',
-    loneliness:        'Loneliness',
-    flow:              'Flow',
-  };
+  const SECOND_ORDER = [
+    { field: 'energy',          label: 'Energy',        tooltip: 'Capacity to act — combines glucose, sleep pressure, and arousal.' },
+    { field: 'cognitive_clarity',label: 'Clarity',      tooltip: 'How sharp and functional her thinking is right now.' },
+    { field: 'hedonic_tone',    label: 'Hedonic',       tooltip: 'How satisfying things feel. Low = going through the motions.' },
+    { field: 'social_warmth',   label: 'Social Warmth', tooltip: 'Ease and openness with people — driven by oxytocin and serotonin.' },
+    { field: 'arousal',         label: 'Arousal',       tooltip: 'Overall activation level — from calm to wired.' },
+    { field: 'mood_valence',    label: 'Mood Valence',  tooltip: 'Positive/negative emotional tone.' },
+  ];
+
+  const THIRD_ORDER = [
+    { field: 'anxiety',          label: 'Anxiety',          tooltip: 'Background worry and threat-sensing.' },
+    { field: 'depression',       label: 'Depression',       tooltip: 'Pervasive low mood and loss of motivation.' },
+    { field: 'boredom',          label: 'Boredom',          tooltip: 'Restlessness from lack of stimulation.' },
+    { field: 'loneliness',       label: 'Loneliness',       tooltip: 'Ache for connection.' },
+    { field: 'flow',             label: 'Flow',             tooltip: 'Deep engagement — absorbed in something, time disappears.' },
+    { field: 'physical_distress',label: 'Physical Distress',tooltip: 'Composite of pain, inflammation, and illness signals.' },
+  ];
 
   // ---------------------------------------------------------------------------
-  // Data loading
+  // Helpers
   // ---------------------------------------------------------------------------
 
-  async function load() {
-    try {
-      const d = await apiFetch<StateData>('/api/state');
-      data = d;
-      lastUpdated = new Date().toLocaleTimeString();
+  function receptorLabel(v: number): { name: string; color: string } {
+    if (v < 0.75) return { name: 'DOWNREG',   color: 'badge-warning' };
+    if (v < 1.25) return { name: 'NORMAL',    color: 'badge-success' };
+    if (v < 1.75) return { name: 'UPREG',     color: 'badge-info'    };
+    return              { name: 'SENSITIZED', color: 'badge-error'   };
+  }
 
-      // Sync local slider values (real units) for fields not being edited
-      for (const [k, chem] of Object.entries(d.chemicals)) {
-        if (!editing.has(k)) {
-          localValues[k] = chem.value;
-        }
-      }
-      error = '';
-    } catch (e) {
-      error = String(e);
-    }
+  function vitalLabelColor(label: string): string {
+    const dangerous = new Set(['BRADYCARDIA', 'DANGEROUS', 'CRITICALLY DEPRESSED', 'CRITICAL', 'HYPERTENSIVE', 'HYPOTENSIVE']);
+    const elevated  = new Set(['ELEVATED', 'HIGH', 'VERY HIGH', 'DEPRESSED', 'LOW', 'HYPERVENTILATING']);
+    if (dangerous.has(label)) return 'text-error';
+    if (elevated.has(label))  return 'text-warning';
+    return 'text-success';
+  }
 
-    try {
-      tokens = await apiFetch<TokenStats>('/api/tokens');
-    } catch (_) {}
+  function norm(field: string, v: number): number {
+    const r = DISPLAY_RANGES[field];
+    if (!r) return Math.min(1, Math.max(0, v / 100));
+    return Math.min(1, Math.max(0, (v - r.min) / (r.max - r.min)));
+  }
+
+  function alColor(al: number): string {
+    if (al < 0.30) return 'progress-success';
+    if (al < 0.50) return 'progress-neutral';
+    if (al < 0.65) return 'progress-warning';
+    return 'progress-error';
+  }
+
+  function labelBadge(field: string, v: number): string {
+    const e = getLabel(field, v);
+    return e ? COLOR_CLASSES[e.color]?.badge ?? 'badge-neutral' : 'badge-neutral';
+  }
+
+  function labelBar(field: string, v: number): string {
+    const e = getLabel(field, v);
+    return e ? COLOR_CLASSES[e.color]?.progress ?? 'progress-neutral' : 'progress-neutral';
+  }
+
+  function labelText(field: string, v: number): string {
+    const e = getLabel(field, v);
+    return e ? COLOR_CLASSES[e.color]?.text ?? 'text-base-content' : 'text-base-content';
+  }
+
+  function labelName(field: string, v: number): string {
+    return getLabel(field, v)?.name ?? '';
+  }
+
+  function eiBalance(gaba: number, glut: number): number {
+    return glut > 0 ? Math.round((gaba / glut) * 100) / 100 : 0;
+  }
+
+  function eiLabel(ratio: number): { name: string; color: string } {
+    if (ratio < 0.2)  return { name: 'SEIZURE RISK',  color: 'badge-error'   };
+    if (ratio < 0.5)  return { name: 'EXCITATORY',    color: 'badge-warning' };
+    if (ratio < 0.9)  return { name: 'BALANCED',      color: 'badge-success' };
+    return               { name: 'INHIBITED',       color: 'badge-info'    };
+  }
+
+  function cyclePhaseLabel(day: number): string {
+    if (day <= 4)  return 'MENSTRUAL';
+    if (day <= 13) return 'FOLLICULAR';
+    if (day <= 15) return 'OVULATORY';
+    return 'LUTEAL';
+  }
+
+  function sleepLabel(adenosine: number, melatonin: number): string {
+    if (adenosine > 85 || melatonin > 160) return 'SLEEP ONSET LIKELY';
+    if (adenosine > 70 || melatonin > 100) return 'SLEEP PRESSURE';
+    if (adenosine > 55 || melatonin > 40)  return 'WINDING DOWN';
+    if (adenosine > 35)                    return 'ALERT';
+    return 'WIDE AWAKE';
   }
 
   const TOKEN_LABEL_NAMES: Record<string, string> = {
-    stimulus:    'Stimulus encode',
-    mode1:       'Mode 1 (subconscious)',
-    main:        'Main response',
-    main_follow: 'Follow-up',
-    response:    'Response encode',
-    activity:    'Activity encode',
-    mode2:       'Heartbeat (Mode 2)',
-    compact:     'History compaction',
+    stimulus: 'Stimulus encode', mode1: 'Mode 1 (subconscious)', main: 'Main response',
+    main_follow: 'Follow-up', response: 'Response encode', activity: 'Activity encode',
+    mode2: 'Heartbeat (Mode 2)', compact: 'History compaction',
   };
 
   function fmtNum(n: number): string {
@@ -300,432 +175,647 @@
     return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m ago`;
   }
 
-  onMount(() => {
-    load();
-    refreshInterval = setInterval(load, 5000);
-  });
-
-  onDestroy(() => {
-    clearInterval(refreshInterval);
-    Object.values(patchTimers).forEach(clearTimeout);
-  });
-
   // ---------------------------------------------------------------------------
-  // Slider handlers — real units
+  // Data loading
   // ---------------------------------------------------------------------------
 
-  function onSliderInput(field: string, event: Event) {
-    const value = parseFloat((event.target as HTMLInputElement).value);
+  async function load() {
+    try {
+      const d = await apiFetch<StateData>('/api/state');
+      data = d;
+      lastUpdated = new Date().toLocaleTimeString();
+
+      const bodyFields = new Set(['adenosine', 'anandamide', 'two_ag']);
+      for (const list of [HOMEOSTATIC, NEUROMODULATORS, INHIBITORY_EXCITATORY, ENDOCANNABINOIDS]) {
+        for (const f of list) {
+          if (!saving.has(f.field)) {
+            const val = bodyFields.has(f.field)
+              ? d.body?.[f.field]
+              : d.chemicals[f.field]?.value;
+            if (val !== undefined) localValues[f.field] = val;
+          }
+        }
+      }
+      if (!saving.has('cortisol') && d.chemicals['cortisol']) {
+        localValues['cortisol'] = d.chemicals['cortisol'].value;
+      }
+
+      error = '';
+    } catch (e) { error = String(e); }
+
+    try { tokens = await apiFetch<TokenStats>('/api/tokens'); } catch (_) {}
+  }
+
+  onMount(() => { load(); refreshInterval = setInterval(load, 5000); });
+  onDestroy(() => clearInterval(refreshInterval));
+
+  // ---------------------------------------------------------------------------
+  // Slider handler
+  // ---------------------------------------------------------------------------
+
+  async function onSliderChange(e: CustomEvent<{ field: string; value: number }>) {
+    const { field, value } = e.detail;
     localValues[field] = value;
-    editing = new Set([...editing, field]);
-
-    if (patchTimers[field]) clearTimeout(patchTimers[field]);
-    patchTimers[field] = setTimeout(() => patchField(field, value), 400);
-  }
-
-  function onSliderRelease(field: string) {
-    editing = new Set([...editing].filter(f => f !== field));
-    if (patchTimers[field]) {
-      clearTimeout(patchTimers[field]);
-      delete patchTimers[field];
-    }
-    if (localValues[field] !== undefined) {
-      patchField(field, localValues[field]);
-    }
-  }
-
-  async function patchField(field: string, value: number) {
-    editing = new Set([...editing, field]);
     saving = new Set([...saving, field]);
     try {
-      await apiFetch('/api/state', {
-        method: 'PATCH',
-        body: JSON.stringify({ [field]: value }),
-      });
-    } catch (e) {
-      error = String(e);
-    } finally {
-      saving  = new Set([...saving].filter(f => f !== field));
-      editing = new Set([...editing].filter(f => f !== field));
-    }
+      await apiFetch('/api/state', { method: 'PATCH', body: JSON.stringify({ [field]: value }) });
+    } catch (err) { error = String(err); }
+    finally { saving = new Set([...saving].filter(f => f !== field)); }
   }
 
   // ---------------------------------------------------------------------------
-  // Helpers
+  // Presets
   // ---------------------------------------------------------------------------
 
-  function sliderColor(field: string, value: number): string {
-    const entry = getLabel(field, value);
-    if (!entry) return 'range-primary';
-    switch (entry.color) {
-      case 'success': return 'range-success';
-      case 'warning': return 'range-warning';
-      case 'error':   return 'range-error';
-      case 'info':    return 'range-info';
-      default:        return 'range-primary';
-    }
+  async function applyPreset(preset: typeof PRESETS[0]) {
+    applyingPreset = preset.name;
+    presetSnapshot = { ...localValues };
+    try {
+      await apiFetch('/api/state', { method: 'PATCH', body: JSON.stringify(preset.values) });
+      for (const [k, v] of Object.entries(preset.values)) localValues[k] = v;
+      await load();
+    } catch (e) { error = String(e); presetSnapshot = null; }
+    finally { applyingPreset = ''; }
   }
 
-  function derivedProgressColor(field: string, value: number): string {
-    const entry = getLabel(field, value);
-    if (!entry) return 'progress-primary';
-    return COLOR_CLASSES[entry.color]?.progress ?? 'progress-primary';
-  }
-
-  function derivedBadgeColor(field: string, value: number): string {
-    const entry = getLabel(field, value) ?? { color: 'neutral' as const };
-    return COLOR_CLASSES[entry.color]?.badge ?? 'badge-neutral';
-  }
-
-  function vitalLabelColor(label: string): string {
-    const dangerous = new Set(['BRADYCARDIA', 'DANGEROUS', 'CRITICALLY DEPRESSED', 'CRITICAL', 'HYPERTENSIVE', 'HYPOTENSIVE']);
-    const elevated  = new Set(['ELEVATED', 'HIGH', 'VERY HIGH', 'DEPRESSED', 'LOW', 'HYPERVENTILATING']);
-    if (dangerous.has(label)) return 'text-error';
-    if (elevated.has(label))  return 'text-warning';
-    return 'text-success';
-  }
-
-  function fmtVal(field: string, value: number): string {
-    const range = DISPLAY_RANGES[field];
-    if (!range) return value.toFixed(1);
-    // Use appropriate precision by unit
-    if (range.unit === 'ng/mL' || range.unit === '% TBW') return value.toFixed(1);
-    if (range.unit === 'AU') return value.toFixed(1);
-    return value.toFixed(0);
+  async function undoPreset() {
+    if (!presetSnapshot) return;
+    const snap = presetSnapshot;
+    presetSnapshot = null;
+    try {
+      await apiFetch('/api/state', { method: 'PATCH', body: JSON.stringify(snap) });
+      for (const [k, v] of Object.entries(snap)) localValues[k] = v;
+      await load();
+    } catch (e) { error = String(e); }
   }
 </script>
 
 <div class="max-w-6xl mx-auto">
-  <div class="flex items-center justify-between mb-6">
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-4">
     <h1 class="text-2xl font-bold">Biological State</h1>
     <div class="text-xs opacity-50">
-      {#if error}
-        <span class="text-error">{error}</span>
-      {:else}
-        Updated {lastUpdated}
-      {/if}
+      {#if error}<span class="text-error">{error}</span>{:else}Updated {lastUpdated}{/if}
     </div>
   </div>
 
-  <!-- Presets -->
-  <div class="card bg-base-200 p-4 mb-6">
-    <h2 class="text-sm font-semibold opacity-60 uppercase tracking-wider mb-3">Presets</h2>
+  <!-- Presets bar -->
+  <div class="card bg-base-200 p-4 mb-4">
+    <h2 class="text-xs font-semibold opacity-50 uppercase tracking-wider mb-3">Presets</h2>
     <div class="flex flex-wrap gap-2">
       {#each PRESETS as preset}
         <div class="tooltip tooltip-bottom" data-tip={preset.description}>
-          <button
-            class="btn btn-sm {preset.btnClass}"
-            onclick={() => applyPreset(preset)}
-            disabled={!!applyingPreset}
-          >
-            {#if applyingPreset === preset.name}
-              <span class="loading loading-spinner loading-xs"></span>
-            {/if}
+          <button class="btn btn-sm {preset.btnClass}" onclick={() => applyPreset(preset)} disabled={!!applyingPreset}>
+            {#if applyingPreset === preset.name}<span class="loading loading-spinner loading-xs"></span>{/if}
             {preset.name}
           </button>
         </div>
       {/each}
-
       {#if presetSnapshot}
-        <button class="btn btn-sm btn-ghost gap-1" onclick={undoPreset}>
-          ↩ Undo
-        </button>
+        <button class="btn btn-sm btn-ghost gap-1" onclick={undoPreset}>↩ Undo</button>
       {/if}
     </div>
   </div>
 
   {#if !data}
-    <div class="flex justify-center py-20">
-      <span class="loading loading-spinner loading-lg"></span>
-    </div>
+    <div class="flex justify-center py-20"><span class="loading loading-spinner loading-lg"></span></div>
   {:else}
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Tab bar -->
+    <div class="tabs tabs-lifted mb-6">
+      {#each [
+        { id: 'overview',   label: 'Overview'         },
+        { id: 'neuro',      label: 'Neuro'            },
+        { id: 'endocrine',  label: 'Endocrine'        },
+        { id: 'immune',     label: 'Immune / Pain'    },
+        { id: 'circadian',  label: 'Circadian / Sleep'},
+        { id: 'plasticity', label: 'Plasticity'       },
+      ] as tab}
+        <button
+          class="tab {activeTab === tab.id ? 'tab-active font-semibold' : 'opacity-60'}"
+          onclick={() => activeTab = tab.id as typeof activeTab}
+        >{tab.label}</button>
+      {/each}
+    </div>
 
-      <!-- LEFT: Sliders -->
-      <div class="flex flex-col gap-4">
+    <!-- ═══════════════════════════════ OVERVIEW ═══════════════════════════ -->
+    {#if activeTab === 'overview'}
+      {@const al = data.allostatic_load ?? 0}
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div class="flex flex-col gap-4">
+          <!-- Status + allostatic load -->
+          <div class="card bg-base-200 p-4">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2">
+                <span class="text-xs opacity-50">Status:</span>
+                {#if data.sleeping}
+                  <span class="badge badge-info">Sleeping</span>
+                {:else}
+                  <span class="badge badge-success">Awake</span>
+                {/if}
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs opacity-50">Allostatic Load</span>
+                <span class="badge badge-xs {labelBadge('allostatic_load', al)}">{labelName('allostatic_load', al)}</span>
+              </div>
+            </div>
+            <progress class="progress w-full {alColor(al)}" value={al} max="1"></progress>
+          </div>
 
-        <!-- Sleeping badge -->
-        <div class="flex items-center gap-2">
-          <span class="text-sm opacity-60">Status:</span>
-          {#if data.sleeping}
-            <span class="badge badge-info gap-1">😴 Sleeping</span>
-          {:else}
-            <span class="badge badge-success gap-1">👁 Awake</span>
+          <!-- Second-order -->
+          <div class="card bg-base-200 p-4">
+            <h2 class="text-xs font-semibold opacity-50 uppercase tracking-wider mb-3">Second-Order</h2>
+            <div class="flex flex-col gap-3">
+              {#each SECOND_ORDER as f}
+                <DerivedMeter field={f.field} label={f.label} value={data.second_order[f.field] ?? 0} tooltip={f.tooltip} />
+              {/each}
+            </div>
+          </div>
+
+          <!-- Third-order -->
+          <div class="card bg-base-200 p-4">
+            <h2 class="text-xs font-semibold opacity-50 uppercase tracking-wider mb-3">Third-Order</h2>
+            <div class="flex flex-col gap-3">
+              {#each THIRD_ORDER as f}
+                <DerivedMeter field={f.field} label={f.label} value={data.third_order[f.field] ?? 0} tooltip={f.tooltip} />
+              {/each}
+            </div>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-4">
+          <!-- Vital Signs -->
+          {#if data.vital_signs && Object.keys(data.vital_signs).length > 0}
+            {@const vs = data.vital_signs}
+            <div class="card bg-base-200 p-4">
+              <h2 class="text-xs font-semibold opacity-50 uppercase tracking-wider mb-3">Vital Signs</h2>
+              <div class="grid grid-cols-2 gap-3">
+                {#if vs.heart_rate}
+                  <div>
+                    <span class="text-xs opacity-50">Heart Rate</span>
+                    <div class="text-2xl font-mono font-bold {vitalLabelColor(vs.heart_rate.label)}">{vs.heart_rate.value?.toFixed(0)}<span class="text-sm font-normal opacity-60"> BPM</span></div>
+                    <div class="text-xs {vitalLabelColor(vs.heart_rate.label)}">{vs.heart_rate.label}</div>
+                  </div>
+                {/if}
+                {#if vs.blood_pressure}
+                  <div>
+                    <span class="text-xs opacity-50">Blood Pressure</span>
+                    <div class="text-2xl font-mono font-bold {vitalLabelColor(vs.blood_pressure.label)}">{vs.blood_pressure.systolic?.toFixed(0)}/{vs.blood_pressure.diastolic?.toFixed(0)}<span class="text-sm font-normal opacity-60"> mmHg</span></div>
+                    <div class="text-xs {vitalLabelColor(vs.blood_pressure.label)}">{vs.blood_pressure.label}</div>
+                  </div>
+                {/if}
+                {#if vs.respiration_rate}
+                  <div>
+                    <span class="text-xs opacity-50">Respiration</span>
+                    <div class="text-2xl font-mono font-bold {vitalLabelColor(vs.respiration_rate.label)}">{vs.respiration_rate.value?.toFixed(1)}<span class="text-sm font-normal opacity-60"> br/min</span></div>
+                    <div class="text-xs {vitalLabelColor(vs.respiration_rate.label)}">{vs.respiration_rate.label}</div>
+                  </div>
+                {/if}
+                {#if vs.spo2}
+                  {@const c = vs.spo2.label === 'NORMAL' ? 'text-success' : vs.spo2.label === 'LOW' ? 'text-warning' : 'text-error'}
+                  <div>
+                    <span class="text-xs opacity-50">SpO₂</span>
+                    <div class="text-2xl font-mono font-bold {c}">{vs.spo2.value?.toFixed(1)}<span class="text-sm font-normal opacity-60">%</span></div>
+                    <div class="text-xs {c}">{vs.spo2.label}</div>
+                  </div>
+                {/if}
+              </div>
+              <p class="text-xs opacity-30 mt-3">Derived from chemistry — substance-gated danger only.</p>
+            </div>
+          {/if}
+
+          <!-- Session Tokens -->
+          {#if tokens}
+            <div class="card bg-base-200 p-4">
+              <h2 class="text-xs font-semibold opacity-50 uppercase tracking-wider mb-3">Session Tokens</h2>
+              <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm mb-3">
+                <span>Started <span class="font-mono opacity-70">{sessionAge(tokens.session_start)}</span></span>
+                <span>Turns <span class="font-mono font-bold">{tokens.turns}</span></span>
+                <span>In <span class="font-mono font-bold text-info">{fmtNum(tokens.total_input)}</span></span>
+                <span>Out <span class="font-mono font-bold text-success">{fmtNum(tokens.total_output)}</span></span>
+                {#if tokens.total_reasoning > 0}
+                  <span>Reasoning <span class="font-mono font-bold text-warning">{fmtNum(tokens.total_reasoning)}</span></span>
+                {/if}
+              </div>
+              {#if Object.keys(tokens.by_label).length > 0}
+                <div class="overflow-x-auto">
+                  <table class="table table-xs w-full">
+                    <thead><tr class="opacity-50"><th>Call</th><th class="text-right">In</th><th class="text-right">Out</th></tr></thead>
+                    <tbody>
+                      {#each Object.entries(tokens.by_label) as [lbl, counts]}
+                        <tr>
+                          <td class="opacity-70">{TOKEN_LABEL_NAMES[lbl] ?? lbl}</td>
+                          <td class="text-right font-mono text-info">{fmtNum(counts.input)}</td>
+                          <td class="text-right font-mono text-success">{fmtNum(counts.output)}</td>
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                </div>
+              {/if}
+            </div>
           {/if}
         </div>
+      </div>
 
-        <!-- Homeostatic -->
-        <div class="card bg-base-200 p-4">
-          <h2 class="text-sm font-semibold opacity-60 uppercase tracking-wider mb-3">Homeostatic</h2>
-          <div class="flex flex-col gap-4">
-            {#each HOMEOSTATIC as field}
-              {@const range = DISPLAY_RANGES[field]}
-              {@const val = localValues[field] ?? (range ? (range.min + range.max) / 2 : 50)}
-              {@const label = getLabel(field, val)}
-              <div>
-                <div class="flex justify-between items-center mb-1">
-                  <div class="tooltip tooltip-bottom text-left" data-tip={FIELD_TOOLTIPS[field]}>
-                    <span class="text-sm font-medium cursor-help">{FIELD_LABELS[field] ?? field}</span>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    {#if saving.has(field)}
-                      <span class="loading loading-spinner loading-xs"></span>
-                    {/if}
-                    {#if label}
-                      <span class="badge badge-xs {COLOR_CLASSES[label.color]?.badge}">{label.name}</span>
-                    {/if}
-                    <span class="text-xs font-mono opacity-60">{range?.unit ?? ''}</span>
-                    <span class="text-sm font-mono w-14 text-right">{fmtVal(field, val)}</span>
-                  </div>
-                </div>
-                <input
-                  type="range"
-                  min={range?.min ?? 0}
-                  max={range?.max ?? 100}
-                  step={range ? (range.max - range.min) / 200 : 0.5}
-                  value={val}
-                  class="range range-sm w-full {sliderColor(field, val)}"
-                  oninput={(e) => onSliderInput(field, e)}
-                  onmouseup={() => onSliderRelease(field)}
-                  ontouchend={() => onSliderRelease(field)}
+    <!-- ════════════════════════════════ NEURO ════════════════════════════════ -->
+    {:else if activeTab === 'neuro'}
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <!-- LEFT: Editable sliders -->
+        <div class="flex flex-col gap-4">
+          <div class="card bg-base-200 p-4">
+            <h2 class="text-xs font-semibold opacity-50 uppercase tracking-wider mb-4">Homeostatic</h2>
+            <div class="flex flex-col gap-4">
+              {#each HOMEOSTATIC as f}
+                {@const r = DISPLAY_RANGES[f.field]}
+                <ChemicalSlider
+                  field={f.field} label={f.label}
+                  value={localValues[f.field] ?? (r ? (r.min + r.max) / 2 : 50)}
+                  unit={r?.unit ?? ''} min={r?.min ?? 0} max={r?.max ?? 100}
+                  tooltip={f.tooltip} saving={saving.has(f.field)}
+                  on:change={onSliderChange}
                 />
-              </div>
-            {/each}
+              {/each}
+            </div>
+          </div>
+
+          <div class="card bg-base-200 p-4">
+            <h2 class="text-xs font-semibold opacity-50 uppercase tracking-wider mb-4">Cortisol</h2>
+            <ChemicalSlider
+              field="cortisol" label="Cortisol"
+              value={localValues['cortisol'] ?? 250}
+              unit="nmol/L" min={50} max={900}
+              tooltip="Stress hormone. Elevated = threat mode, narrowed thinking, guarded. Chronically high = burnout."
+              saving={saving.has('cortisol')}
+              on:change={onSliderChange}
+            />
+          </div>
+
+          <div class="card bg-base-200 p-4">
+            <h2 class="text-xs font-semibold opacity-50 uppercase tracking-wider mb-4">Neuromodulators</h2>
+            <div class="flex flex-col gap-4">
+              {#each NEUROMODULATORS as f}
+                {@const r = DISPLAY_RANGES[f.field]}
+                <ChemicalSlider
+                  field={f.field} label={f.label}
+                  value={localValues[f.field] ?? (r ? (r.min + r.max) / 2 : 50)}
+                  unit={r?.unit ?? ''} min={r?.min ?? 0} max={r?.max ?? 100}
+                  tooltip={f.tooltip} saving={saving.has(f.field)}
+                  on:change={onSliderChange}
+                />
+              {/each}
+            </div>
+          </div>
+
+          <div class="card bg-base-200 p-4">
+            <h2 class="text-xs font-semibold opacity-50 uppercase tracking-wider mb-4">Inhibitory / Excitatory</h2>
+            <div class="flex flex-col gap-4">
+              {#each INHIBITORY_EXCITATORY as f}
+                {@const r = DISPLAY_RANGES[f.field]}
+                <ChemicalSlider
+                  field={f.field} label={f.label}
+                  value={localValues[f.field] ?? (r ? (r.min + r.max) / 2 : 3)}
+                  unit={r?.unit ?? 'µmol/L'} min={r?.min ?? 0} max={r?.max ?? 20}
+                  tooltip={f.tooltip} saving={saving.has(f.field)}
+                  on:change={onSliderChange}
+                />
+              {/each}
+            </div>
+          </div>
+
+          <div class="card bg-base-200 p-4">
+            <h2 class="text-xs font-semibold opacity-50 uppercase tracking-wider mb-4">Endocannabinoids</h2>
+            <div class="flex flex-col gap-4">
+              {#each ENDOCANNABINOIDS as f}
+                {@const r = DISPLAY_RANGES[f.field]}
+                <ChemicalSlider
+                  field={f.field} label={f.label}
+                  value={localValues[f.field] ?? (r ? (r.min + r.max) / 2 : 1.5)}
+                  unit={r?.unit ?? 'nM'} min={r?.min ?? 0} max={r?.max ?? 4}
+                  tooltip={f.tooltip} saving={saving.has(f.field)}
+                  on:change={onSliderChange}
+                />
+              {/each}
+            </div>
           </div>
         </div>
 
-        <!-- Neuromodulators -->
-        <div class="card bg-base-200 p-4">
-          <h2 class="text-sm font-semibold opacity-60 uppercase tracking-wider mb-3">Neuromodulators</h2>
-          <div class="flex flex-col gap-4">
-            {#each NEURO as field}
-              {@const range = DISPLAY_RANGES[field]}
-              {@const val = localValues[field] ?? (range ? (range.min + range.max) / 2 : 50)}
-              {@const label = getLabel(field, val)}
-              <div>
-                <div class="flex justify-between items-center mb-1">
-                  <div class="tooltip tooltip-bottom text-left" data-tip={FIELD_TOOLTIPS[field]}>
-                    <span class="text-sm font-medium cursor-help">{FIELD_LABELS[field] ?? field}</span>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    {#if saving.has(field)}
-                      <span class="loading loading-spinner loading-xs"></span>
-                    {/if}
-                    {#if label}
-                      <span class="badge badge-xs {COLOR_CLASSES[label.color]?.badge}">{label.name}</span>
-                    {/if}
-                    <span class="text-xs font-mono opacity-60">{range?.unit ?? ''}</span>
-                    <span class="text-sm font-mono w-14 text-right">{fmtVal(field, val)}</span>
-                  </div>
+        <!-- RIGHT: Read-only -->
+        <div class="flex flex-col gap-4">
+          <div class="card bg-base-200 p-4">
+            <h2 class="text-xs font-semibold opacity-50 uppercase tracking-wider mb-4">Circadian Chemicals</h2>
+            {#if data.chemicals['melatonin']}
+              {@const mel = data.chemicals['melatonin']}
+              <ChemicalReadOnly field="melatonin" label="Melatonin *"
+                value={mel.value} unit={mel.unit} normalized={mel.normalized}
+                tooltip="Circadian sleep signal. Rises at night, drives sleep onset." dimmed={true} />
+              <p class="text-xs opacity-30 mt-2">* Circadian formula — read-only</p>
+            {/if}
+          </div>
+
+          <div class="card bg-base-200 p-4">
+            <h2 class="text-xs font-semibold opacity-50 uppercase tracking-wider mb-3">E/I Balance</h2>
+            {#each [eiBalance(localValues['gaba'] ?? data.chemicals['gaba']?.value ?? 3, localValues['glutamate'] ?? data.chemicals['glutamate']?.value ?? 4)] as ratio}
+              {@const eil = eiLabel(ratio)}
+              <div class="flex justify-between items-center mb-1">
+                <span class="text-sm opacity-70">GABA/Glutamate ratio</span>
+                <div class="flex items-center gap-2">
+                  <span class="badge badge-xs {eil.color}">{eil.name}</span>
+                  <span class="text-sm font-mono">{ratio.toFixed(2)}</span>
                 </div>
-                <input
-                  type="range"
-                  min={range?.min ?? 0}
-                  max={range?.max ?? 100}
-                  step={range ? (range.max - range.min) / 200 : 0.5}
-                  value={val}
-                  class="range range-sm w-full {sliderColor(field, val)}"
-                  oninput={(e) => onSliderInput(field, e)}
-                  onmouseup={() => onSliderRelease(field)}
-                  ontouchend={() => onSliderRelease(field)}
-                />
+              </div>
+              <progress class="progress progress-success w-full" value={Math.min(2, ratio)} max="2"></progress>
+              <div class="flex justify-between text-xs opacity-30 mt-1">
+                <span>excitatory</span><span>balanced</span><span>inhibited</span>
               </div>
             {/each}
           </div>
 
-          <!-- Read-only circadian fields -->
-          {#each NEURO_READONLY as field}
-            {@const range = DISPLAY_RANGES[field]}
-            {@const chem = data.chemicals[field]}
-            {@const val = chem?.value ?? 0}
-            {@const label = getLabel(field, val)}
-            <div class="mt-4 pt-4 border-t border-base-300">
+          <div class="card bg-base-200 p-4">
+            <h2 class="text-xs font-semibold opacity-50 uppercase tracking-wider mb-3">Receptor Sensitivity</h2>
+            <div class="grid grid-cols-2 gap-2">
+              {#each RECEPTOR_FIELDS as r}
+                {@const val = data.receptor_sensitivity?.[r.key] ?? 1.0}
+                {@const rl = receptorLabel(val)}
+                <div class="flex items-center justify-between px-2 py-1 rounded bg-base-300">
+                  <span class="text-xs font-mono opacity-70">{r.name}</span>
+                  <div class="flex items-center gap-1">
+                    <span class="badge badge-xs {rl.color}">{rl.name}</span>
+                    <span class="text-xs font-mono opacity-50">{val.toFixed(2)}</span>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          </div>
+        </div>
+      </div>
+
+    <!-- ═══════════════════════════════ ENDOCRINE ═════════════════════════════ -->
+    {:else if activeTab === 'endocrine'}
+      {@const ne = data.neuroendocrine ?? {}}
+      <div class="flex flex-col gap-4">
+        <TierCard title="HPA Axis">
+          <div class="flex flex-col gap-3">
+            <ChemicalReadOnly field="crh"      label="CRH"     value={ne.crh ?? 30}   unit="pg/mL"  normalized={norm('crh',  ne.crh ?? 30)}   tooltip="Corticotropin-releasing hormone. Triggers ACTH cascade." />
+            <ChemicalReadOnly field="acth"     label="ACTH"    value={ne.acth ?? 25}  unit="pg/mL"  normalized={norm('acth', ne.acth ?? 25)}  tooltip="ACTH from pituitary. Triggers cortisol release from adrenals (~15-20 min delay)." />
+            <ChemicalReadOnly field="cortisol" label="Cortisol" value={data.chemicals['cortisol']?.value ?? 250} unit="nmol/L" normalized={data.chemicals['cortisol']?.normalized ?? 0.3} tooltip="Stress hormone — downstream output of the HPA cascade." />
+            {#if data.cascade_queue && data.cascade_queue.length > 0}
+              <p class="text-xs opacity-50 mt-2">Cascade Queue</p>
+              {#each data.cascade_queue as ev}
+                {#if ev.fires_at_unix - Date.now() / 1000 > 0}
+                  {@const secsLeft = ev.fires_at_unix - Date.now() / 1000}
+                  <div class="flex items-center justify-between py-1 px-2 rounded bg-base-300">
+                    <span class="badge badge-xs badge-warning">{ev.type}</span>
+                    <span class="text-xs font-mono opacity-70">fires in {Math.floor(secsLeft / 60)}m {Math.floor(secsLeft % 60)}s</span>
+                    <span class="text-xs opacity-50">mag {ev.magnitude > 0 ? '+' : ''}{ev.magnitude.toFixed(2)}</span>
+                  </div>
+                {/if}
+              {/each}
+            {:else}
+              <p class="text-xs opacity-30">Queue empty — no active HPA cascade</p>
+            {/if}
+          </div>
+        </TierCard>
+
+        <TierCard title="Thyroid Axis">
+          <div class="flex flex-col gap-3">
+            <ChemicalReadOnly field="tsh" label="TSH"      value={ne.tsh ?? 2}   unit="mIU/L" normalized={norm('tsh', ne.tsh ?? 2)}   tooltip="Thyroid-stimulating hormone. High = hypothyroid; Low = hyperthyroid." />
+            <ChemicalReadOnly field="t4"  label="T4 Free"  value={ne.t4 ?? 8}    unit="µg/dL" normalized={norm('t4',  ne.t4  ?? 8)}    tooltip="Inactive thyroxine — converted to active T3 in peripheral tissues." />
+            <ChemicalReadOnly field="t3"  label="T3 Free"  value={ne.t3 ?? 120}  unit="ng/dL" normalized={norm('t3',  ne.t3  ?? 120)}  tooltip="Active thyroid hormone. Drives metabolism, mood, and energy." />
+          </div>
+        </TierCard>
+
+        <TierCard title="Sex Hormones / Metabolic" defaultOpen={false}>
+          <div class="flex flex-col gap-3">
+            <ChemicalReadOnly field="estradiol"    label="Estradiol"    value={ne.estradiol    ?? 100} unit="pg/mL" normalized={norm('estradiol',    ne.estradiol    ?? 100)} tooltip="Primary estrogen. Drives 28-day cycle. Peak at ovulation." />
+            <ChemicalReadOnly field="progesterone" label="Progesterone" value={ne.progesterone ?? 0.5} unit="ng/mL" normalized={norm('progesterone', ne.progesterone ?? 0.5)} tooltip="Luteal phase hormone. High in second half of cycle." />
+            <ChemicalReadOnly field="testosterone" label="Testosterone" value={ne.testosterone ?? 40}  unit="ng/dL" normalized={norm('testosterone', ne.testosterone ?? 40)}  tooltip="Drive, confidence, energy. Lower range for female biology." />
+            <div class="flex items-center gap-2 py-1">
+              <span class="text-xs opacity-50">Cycle Day:</span>
+              <span class="font-mono text-sm">{(data.cycle_day ?? 0) + 1} / 28</span>
+              <span class="badge badge-xs badge-neutral">{cyclePhaseLabel(data.cycle_day ?? 0)}</span>
+            </div>
+            <div class="divider my-1"></div>
+            <ChemicalReadOnly field="ghrelin"        label="Ghrelin"        value={ne.ghrelin        ?? 400} unit="pg/mL" normalized={norm('ghrelin',        ne.ghrelin        ?? 400)} tooltip="Hunger hormone. Rises before meals." />
+            <ChemicalReadOnly field="leptin"         label="Leptin"         value={ne.leptin         ?? 15}  unit="ng/mL" normalized={norm('leptin',         ne.leptin         ?? 15)}  tooltip="Satiety hormone from fat tissue." />
+            <ChemicalReadOnly field="insulin"        label="Insulin"        value={ne.insulin        ?? 5}   unit="µU/mL" normalized={norm('insulin',        ne.insulin        ?? 5)}   tooltip="Glucose uptake regulator." />
+            <div class="divider my-1"></div>
+            <ChemicalReadOnly field="vasopressin"    label="Vasopressin"    value={ne.vasopressin    ?? 2}   unit="pg/mL" normalized={norm('vasopressin',    ne.vasopressin    ?? 2)}   tooltip="ADH — hydration regulation and social bonding." />
+            <ChemicalReadOnly field="prolactin"      label="Prolactin"      value={ne.prolactin      ?? 8}   unit="ng/mL" normalized={norm('prolactin',      ne.prolactin      ?? 8)}   tooltip="Social bonding, stress response." />
+            <ChemicalReadOnly field="growth_hormone" label="Growth Hormone" value={ne.growth_hormone ?? 1}   unit="ng/mL" normalized={norm('growth_hormone', ne.growth_hormone ?? 1)}   tooltip="Pulsatile — peaks during deep sleep. Anabolic, tissue repair." />
+            <ChemicalReadOnly field="dhea"           label="DHEA"           value={ne.dhea           ?? 150} unit="µg/dL" normalized={norm('dhea',           ne.dhea           ?? 150)} tooltip="Anti-stress steroid. Buffers cortisol effects." />
+          </div>
+        </TierCard>
+      </div>
+
+    <!-- ═══════════════════════════════ IMMUNE / PAIN ═════════════════════════ -->
+    {:else if activeTab === 'immune'}
+      {@const im = data.immune ?? {}}
+      {@const pa = data.pain  ?? {}}
+      <div class="flex flex-col gap-4">
+        <TierCard title="Immune">
+          <div class="flex flex-col gap-3">
+            <ChemicalReadOnly field="il1b"      label="IL-1β"              value={im.il1b      ?? 2}   unit="pg/mL" normalized={norm('il1b',     im.il1b     ?? 2)}   tooltip="Pro-inflammatory. Triggers fever, fatigue, sickness behavior." />
+            <ChemicalReadOnly field="il6"       label="IL-6"               value={im.il6       ?? 3}   unit="pg/mL" normalized={norm('il6',      im.il6      ?? 3)}   tooltip="Pro-inflammatory. Drives acute phase response." />
+            <ChemicalReadOnly field="tnf_alpha" label="TNF-α"              value={im.tnf_alpha ?? 3}   unit="pg/mL" normalized={norm('tnf_alpha', im.tnf_alpha ?? 3)}  tooltip="Systemic inflammation, sickness withdrawal." />
+            <ChemicalReadOnly field="crp"       label="C-Reactive Protein" value={im.crp       ?? 0.5} unit="mg/L"  normalized={norm('crp',      im.crp      ?? 0.5)} tooltip="Acute phase protein — systemic marker of active inflammation." />
+            <ChemicalReadOnly field="il10"      label="IL-10"              value={im.il10      ?? 10}  unit="pg/mL" normalized={norm('il10',     im.il10     ?? 10)}  tooltip="Anti-inflammatory interleukin." />
+
+            <div class="mt-1">
               <div class="flex justify-between items-center mb-1">
-                <div class="tooltip tooltip-bottom text-left" data-tip={FIELD_TOOLTIPS[field]}>
-                  <span class="text-sm font-medium opacity-60 cursor-help">{FIELD_LABELS[field] ?? field}</span>
+                <span class="text-sm">Inflammation Index</span>
+                <span class="badge badge-xs {labelBadge('inflammation_index', im.inflammation_index ?? 0)}">{labelName('inflammation_index', im.inflammation_index ?? 0)}</span>
+              </div>
+              <progress class="progress w-full {labelBar('inflammation_index', im.inflammation_index ?? 0)}" value={im.inflammation_index ?? 0} max="1"></progress>
+            </div>
+
+            {#if (im.il1b ?? 0) > 20}
+              <div class="alert alert-warning py-2">
+                <span class="text-xs">SICKNESS CASCADE ACTIVE — elevated IL-1β triggering withdrawal and fatigue</span>
+              </div>
+            {/if}
+          </div>
+        </TierCard>
+
+        <TierCard title="Pain &amp; Autonomic">
+          <div class="flex flex-col gap-3">
+            <ChemicalReadOnly field="substance_p" label="Substance P"      value={pa.substance_p ?? 30} unit="pg/mL" normalized={norm('substance_p', pa.substance_p ?? 30)} tooltip="Primary nociceptive transmitter — carries pain signals to spinal cord." />
+            <ChemicalReadOnly field="pge2"        label="Prostaglandin E2" value={pa.pge2        ?? 80} unit="pg/mL" normalized={norm('pge2',        pa.pge2        ?? 80)} tooltip="Sensitizes pain receptors. Produced during inflammation." />
+
+            <div>
+              <div class="flex justify-between items-center mb-1">
+                <span class="text-sm">Pain Intensity</span>
+                <div class="flex items-center gap-2">
+                  <span class="badge badge-xs {labelBadge('pain_intensity', pa.pain_intensity ?? 0)}">{labelName('pain_intensity', pa.pain_intensity ?? 0)}</span>
+                  <span class="text-xs font-mono opacity-50">{((pa.pain_intensity ?? 0) * 100).toFixed(0)}/100</span>
+                </div>
+              </div>
+              <progress class="progress w-full {labelBar('pain_intensity', pa.pain_intensity ?? 0)}" value={pa.pain_intensity ?? 0} max="1"></progress>
+            </div>
+
+            <div>
+              <div class="flex justify-between items-center mb-1">
+                <span class="text-sm">Central Sensitization</span>
+                <span class="badge badge-xs {labelBadge('central_sensitization', pa.central_sensitization ?? 0)}">{labelName('central_sensitization', pa.central_sensitization ?? 0)}</span>
+              </div>
+              <progress class="progress w-full {labelBar('central_sensitization', pa.central_sensitization ?? 0)}" value={pa.central_sensitization ?? 0} max="1"></progress>
+            </div>
+
+            <div>
+              <div class="flex justify-between items-center mb-1">
+                <div class="tooltip cursor-help" title="Higher vagal tone = better parasympathetic regulation.">
+                  <span class="text-sm">Vagal Tone</span>
+                </div>
+                <span class="badge badge-xs {labelBadge('vagal_tone', pa.vagal_tone ?? 0.55)}">{labelName('vagal_tone', pa.vagal_tone ?? 0.55)}</span>
+              </div>
+              <progress class="progress w-full {labelBar('vagal_tone', pa.vagal_tone ?? 0.55)}" value={pa.vagal_tone ?? 0.55} max="1"></progress>
+            </div>
+          </div>
+        </TierCard>
+      </div>
+
+    <!-- ═══════════════════════════════ CIRCADIAN ══════════════════════════════ -->
+    {:else if activeTab === 'circadian'}
+      {@const b    = data.body ?? {}}
+      {@const ne   = data.neuroendocrine ?? {}}
+      {@const mel  = data.chemicals['melatonin']?.value ?? 5}
+      {@const adeno = b.adenosine ?? 38}
+      {@const orexin = ne.orexin ?? 300}
+      {@const phase  = b.circadian_phase ?? 0}
+      {@const temp   = b.core_temp ?? 37}
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div class="flex flex-col gap-4">
+          <div class="card bg-base-200 p-4">
+            <h2 class="text-xs font-semibold opacity-50 uppercase tracking-wider mb-4">Two-Process Sleep Model</h2>
+            <p class="text-xs opacity-50 mb-1">Process S — Adenosine (Homeostatic Drive)</p>
+            <ChemicalReadOnly field="adenosine" label="Adenosine" value={adeno} unit="nM" normalized={norm('adenosine', adeno)} tooltip="Homeostatic sleep pressure. Rises while awake, clears during sleep." />
+            <div class="flex justify-between text-xs opacity-30 mt-1 mb-4">
+              <span>15 rested</span><span>60 tired</span><span>80 onset</span><span>92 critical</span>
+            </div>
+            <p class="text-xs opacity-50 mb-1">Process C — Circadian Drive</p>
+            <div class="flex flex-col gap-3">
+              <ChemicalReadOnly field="melatonin" label="Melatonin" value={mel}    unit="pg/mL" normalized={norm('melatonin', mel)}    tooltip="Circadian sleep hormone. Peaks at night." dimmed={true} />
+              <ChemicalReadOnly field="orexin"    label="Orexin"    value={orexin} unit="pg/mL" normalized={norm('orexin',    orexin)} tooltip="Wakefulness drive from lateral hypothalamus. Suppressed by adenosine." />
+            </div>
+            <div class="mt-4 p-3 rounded bg-base-300">
+              <div class="flex justify-between items-center">
+                <span class="text-sm">Sleep Homeostasis</span>
+                <span class="badge badge-sm badge-neutral">{sleepLabel(adeno, mel)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card bg-base-200 p-4">
+            <h2 class="text-xs font-semibold opacity-50 uppercase tracking-wider mb-3">Core Temperature</h2>
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-2xl font-mono font-bold {labelText('core_temp', temp)}">{temp.toFixed(2)} °C</span>
+              <span class="badge {labelBadge('core_temp', temp)}">{labelName('core_temp', temp)}</span>
+            </div>
+            <progress class="progress w-full {labelBar('core_temp', temp)}" value={norm('core_temp', temp)} max="1"></progress>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-4">
+          <div class="card bg-base-200 p-4">
+            <h2 class="text-xs font-semibold opacity-50 uppercase tracking-wider mb-4">Circadian Phase</h2>
+            <!-- CSS circular clock -->
+            <div class="flex justify-center mb-4">
+              <div class="relative w-40 h-40">
+                <div class="absolute inset-0 rounded-full border-4 border-base-300"></div>
+                <div class="absolute top-1 left-1/2 -translate-x-1/2 text-xs opacity-30">12</div>
+                <div class="absolute bottom-1 left-1/2 -translate-x-1/2 text-xs opacity-30">0</div>
+                <div class="absolute left-1 top-1/2 -translate-y-1/2 text-xs opacity-30">18</div>
+                <div class="absolute right-1 top-1/2 -translate-y-1/2 text-xs opacity-30">6</div>
+                <div
+                  class="absolute w-4 h-4 rounded-full bg-primary shadow-lg"
+                  style="top:50%;left:50%;transform-origin:0 0;transform:rotate({phase * 360}deg) translateY(-55px) translate(-50%,-50%)"
+                ></div>
+                <div class="absolute inset-0 flex items-center justify-center">
+                  <span class="text-sm font-mono opacity-60">{(phase * 24).toFixed(1)}h</span>
+                </div>
+              </div>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-sm opacity-60">Phase {phase.toFixed(3)}</span>
+              <span class="badge badge-sm {labelBadge('circadian_phase', phase)}">{labelName('circadian_phase', phase)}</span>
+            </div>
+            <progress class="progress progress-primary w-full mt-2" value={phase} max="1"></progress>
+          </div>
+        </div>
+      </div>
+
+    <!-- ═══════════════════════════════ PLASTICITY ═════════════════════════════ -->
+    {:else if activeTab === 'plasticity'}
+      {@const np = data.neuroplasticity ?? {}}
+      {@const al = data.allostatic_load ?? 0}
+      {@const bdnf = np.bdnf ?? 9}
+      {@const sp01 = np.synaptic_potentiation ?? 0.5}
+      <div class="flex flex-col gap-4">
+        <TierCard title="Neuroplasticity">
+          <div class="flex flex-col gap-4">
+            <div>
+              <div class="flex justify-between items-center mb-1">
+                <div class="tooltip text-left" data-tip="Brain-derived neurotrophic factor. Supports learning, memory, and neuronal survival.">
+                  <span class="text-sm cursor-help">BDNF</span>
                 </div>
                 <div class="flex items-center gap-2">
-                  {#if label}
-                    <span class="badge badge-xs {COLOR_CLASSES[label.color]?.badge}">{label.name}</span>
-                  {/if}
-                  <span class="text-xs font-mono opacity-60">{range?.unit ?? ''}</span>
-                  <span class="text-sm font-mono w-14 text-right opacity-60">{fmtVal(field, val)}</span>
+                  <span class="badge badge-xs {labelBadge('bdnf', bdnf)}">{labelName('bdnf', bdnf)}</span>
+                  <span class="text-xs opacity-50">ng/mL</span>
+                  <span class="text-sm font-mono w-14 text-right">{bdnf.toFixed(2)}</span>
                 </div>
               </div>
-              <progress
-                class="progress progress-neutral w-full"
-                value={chem?.normalized ?? 0}
-                max="1"
-              ></progress>
-              <p class="text-xs opacity-30 mt-1">Circadian formula — read-only</p>
+              <progress class="progress w-full {labelBar('bdnf', bdnf)}" value={norm('bdnf', bdnf)} max="1"></progress>
             </div>
-          {/each}
-        </div>
 
-        <!-- Vital Signs card -->
-        {#if data.vital_signs && Object.keys(data.vital_signs).length > 0}
-          {@const vs = data.vital_signs}
-          <div class="card bg-base-200 p-4">
-            <h2 class="text-sm font-semibold opacity-60 uppercase tracking-wider mb-3">Vital Signs</h2>
-            <div class="grid grid-cols-2 gap-3">
-
-              {#if vs.heart_rate}
-                <div class="flex flex-col">
-                  <span class="text-xs opacity-50 mb-0.5">Heart Rate</span>
-                  <span class="text-2xl font-mono font-bold {vitalLabelColor(vs.heart_rate.label)}">
-                    {vs.heart_rate.value?.toFixed(0)}
-                    <span class="text-sm font-normal opacity-60">BPM</span>
-                  </span>
-                  <span class="text-xs {vitalLabelColor(vs.heart_rate.label)}">{vs.heart_rate.label}</span>
+            <div>
+              <div class="flex justify-between items-center mb-1">
+                <div class="tooltip text-left" data-tip="LTP/LTD balance — synaptic strength. High = learning active. Low = synaptic depression.">
+                  <span class="text-sm cursor-help">Synaptic Potentiation</span>
                 </div>
-              {/if}
-
-              {#if vs.blood_pressure}
-                <div class="flex flex-col">
-                  <span class="text-xs opacity-50 mb-0.5">Blood Pressure</span>
-                  <span class="text-2xl font-mono font-bold {vitalLabelColor(vs.blood_pressure.label)}">
-                    {vs.blood_pressure.systolic?.toFixed(0)}/{vs.blood_pressure.diastolic?.toFixed(0)}
-                    <span class="text-sm font-normal opacity-60">mmHg</span>
-                  </span>
-                  <span class="text-xs {vitalLabelColor(vs.blood_pressure.label)}">{vs.blood_pressure.label}</span>
+                <div class="flex items-center gap-2">
+                  <span class="badge badge-xs {labelBadge('synaptic_potentiation', sp01)}">{labelName('synaptic_potentiation', sp01)}</span>
+                  <span class="text-sm font-mono">{(sp01 * 100).toFixed(0)}/100</span>
                 </div>
-              {/if}
-
-              {#if vs.respiration_rate}
-                <div class="flex flex-col">
-                  <span class="text-xs opacity-50 mb-0.5">Respiration</span>
-                  <span class="text-2xl font-mono font-bold {vitalLabelColor(vs.respiration_rate.label)}">
-                    {vs.respiration_rate.value?.toFixed(1)}
-                    <span class="text-sm font-normal opacity-60">br/min</span>
-                  </span>
-                  <span class="text-xs {vitalLabelColor(vs.respiration_rate.label)}">{vs.respiration_rate.label}</span>
-                </div>
-              {/if}
-
-              {#if vs.spo2}
-                {@const o2color = vs.spo2.label === 'NORMAL' ? 'text-success' : vs.spo2.label === 'LOW' ? 'text-warning' : 'text-error'}
-                <div class="flex flex-col">
-                  <span class="text-xs opacity-50 mb-0.5">SpO₂</span>
-                  <span class="text-2xl font-mono font-bold {o2color}">
-                    {vs.spo2.value?.toFixed(1)}
-                    <span class="text-sm font-normal opacity-60">%</span>
-                  </span>
-                  <span class="text-xs {o2color}">{vs.spo2.label}</span>
-                </div>
-              {/if}
-
+              </div>
+              <progress class="progress w-full {labelBar('synaptic_potentiation', sp01)}" value={sp01} max="1"></progress>
             </div>
-            <p class="text-xs opacity-30 mt-3">Derived from chemistry — read-only. Substance-gated danger only.</p>
           </div>
-        {/if}
+        </TierCard>
 
-      </div>
-
-      <!-- RIGHT: Derived values -->
-      <div class="flex flex-col gap-4">
-
-        <!-- Second-order -->
-        <div class="card bg-base-200 p-4">
-          <h2 class="text-sm font-semibold opacity-60 uppercase tracking-wider mb-3">Second-Order</h2>
-          <div class="flex flex-col gap-3">
-            {#each SECOND_ORDER_FIELDS as field}
-              {@const val = data.second_order[field] ?? 0}
-              {@const label = getLabel(field, val)}
-              <div>
-                <div class="flex justify-between items-center mb-1">
-                  <div class="tooltip tooltip-bottom text-left" data-tip={FIELD_TOOLTIPS[field]}>
-                    <span class="text-sm cursor-help">{DERIVED_LABELS[field] ?? field}</span>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    {#if label}
-                      <span class="badge badge-xs {COLOR_CLASSES[label.color]?.badge}">{label.name}</span>
-                    {/if}
-                    <span class="text-sm font-mono w-10 text-right">{val}</span>
-                  </div>
-                </div>
-                <progress
-                  class="progress w-full {derivedProgressColor(field, val)}"
-                  value={val}
-                  max="100"
-                ></progress>
-              </div>
-            {/each}
+        <TierCard title="Allostatic Load">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-lg font-mono font-bold {labelText('allostatic_load', al)}">{(al * 100).toFixed(1)}</span>
+            <div class="flex items-center gap-2">
+              <span class="badge {labelBadge('allostatic_load', al)}">{labelName('allostatic_load', al)}</span>
+              <span class="text-xs opacity-40">/ 100</span>
+            </div>
           </div>
-        </div>
-
-        <!-- Third-order -->
-        <div class="card bg-base-200 p-4">
-          <h2 class="text-sm font-semibold opacity-60 uppercase tracking-wider mb-3">Third-Order</h2>
-          <div class="flex flex-col gap-3">
-            {#each THIRD_ORDER_FIELDS as field}
-              {@const val = data.third_order[field] ?? 0}
-              {@const label = getLabel(field, val)}
-              <div>
-                <div class="flex justify-between items-center mb-1">
-                  <div class="tooltip tooltip-bottom text-left" data-tip={FIELD_TOOLTIPS[field]}>
-                    <span class="text-sm cursor-help">{DERIVED_LABELS[field] ?? field}</span>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    {#if label}
-                      <span class="badge badge-xs {derivedBadgeColor(field, val)}">{label.name}</span>
-                    {/if}
-                    <span class="text-sm font-mono w-10 text-right">{val}</span>
-                  </div>
-                </div>
-                <progress
-                  class="progress w-full {derivedProgressColor(field, val)}"
-                  value={val}
-                  max="100"
-                ></progress>
-              </div>
-            {/each}
+          <div class="relative">
+            <progress class="progress w-full {alColor(al)}" value={al} max="1"></progress>
+            <div class="absolute top-0 h-full" style="left:30%"><div class="w-px h-full bg-base-content opacity-20"></div></div>
+            <div class="absolute top-0 h-full" style="left:60%"><div class="w-px h-full bg-base-content opacity-20"></div></div>
+            <div class="absolute top-0 h-full" style="left:85%"><div class="w-px h-full bg-base-content opacity-30"></div></div>
           </div>
-        </div>
-
-      </div>
-    </div>
-
-    <!-- Session Token Stats -->
-    {#if tokens}
-      <div class="card bg-base-200 p-4 mt-2">
-        <h2 class="text-sm font-semibold opacity-60 uppercase tracking-wider mb-3">Session Tokens</h2>
-        <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm mb-3">
-          <span>Started <span class="font-mono opacity-70">{sessionAge(tokens.session_start)}</span></span>
-          <span>Turns <span class="font-mono font-bold">{tokens.turns}</span></span>
-          <span>In <span class="font-mono font-bold text-info">{fmtNum(tokens.total_input)}</span></span>
-          <span>Out <span class="font-mono font-bold text-success">{fmtNum(tokens.total_output)}</span></span>
-          {#if tokens.total_reasoning > 0}
-            <span>Reasoning <span class="font-mono font-bold text-warning">{fmtNum(tokens.total_reasoning)}</span></span>
+          <div class="flex justify-between text-xs opacity-30 mt-1">
+            <span>resilient</span><span>moderate</span><span>high</span><span>critical</span>
+          </div>
+          {#if getLabel('allostatic_load', al)}
+            {@const ale = getLabel('allostatic_load', al)}
+            <p class="text-xs opacity-50 mt-3 italic">{ale?.implication}</p>
           {/if}
-          <span class="opacity-50">Total <span class="font-mono">{fmtNum(tokens.total_input + tokens.total_output)}</span></span>
-        </div>
-        {#if Object.keys(tokens.by_label).length > 0}
-          <div class="overflow-x-auto">
-            <table class="table table-xs w-full">
-              <thead>
-                <tr class="opacity-50">
-                  <th>Call</th>
-                  <th class="text-right">In</th>
-                  <th class="text-right">Out</th>
-                  {#if tokens.total_reasoning > 0}
-                    <th class="text-right">Reasoning</th>
-                  {/if}
-                </tr>
-              </thead>
-              <tbody>
-                {#each Object.entries(tokens.by_label) as [label, counts]}
-                  <tr>
-                    <td class="opacity-70">{TOKEN_LABEL_NAMES[label] ?? label}</td>
-                    <td class="text-right font-mono text-info">{fmtNum(counts.input)}</td>
-                    <td class="text-right font-mono text-success">{fmtNum(counts.output)}</td>
-                    {#if tokens.total_reasoning > 0}
-                      <td class="text-right font-mono text-warning">{fmtNum(counts.reasoning ?? 0)}</td>
-                    {/if}
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
+        </TierCard>
+
+        {#if Object.keys(data.personality_drift ?? {}).length > 0}
+          <TierCard title="Personality Drift" defaultOpen={false}>
+            <p class="text-xs opacity-40 mb-3">Big Five trait modifiers from allostatic load. Delta from baseline.</p>
+            <div class="grid grid-cols-2 gap-2">
+              {#each Object.entries(data.personality_drift ?? {}) as [trait, delta]}
+                <div class="flex items-center justify-between px-2 py-1 rounded bg-base-300">
+                  <span class="text-xs opacity-60 capitalize">{trait}</span>
+                  <span class="font-mono text-xs {delta > 0 ? 'text-success' : delta < 0 ? 'text-error' : 'opacity-40'}">{delta > 0 ? '+' : ''}{(delta * 100).toFixed(1)}%</span>
+                </div>
+              {/each}
+            </div>
+          </TierCard>
         {/if}
       </div>
     {/if}

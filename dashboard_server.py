@@ -1,8 +1,8 @@
 """
 Mina Dashboard Server — FastAPI sidecar.
 
-Exposes biological state read/write, reflection, relationship,
-admin instructions, and subconscious injection over HTTP.
+Exposes biological state read/write, heartbeat trigger, substance management,
+token usage, events, and simulation advance over HTTP.
 
 Run:
   uv run python dashboard_server.py [--port 7843]
@@ -10,8 +10,10 @@ Run:
 The built SvelteKit dashboard is served as a static SPA from dashboard/build/.
 """
 import argparse
+import json
 import os
 import sys
+import time
 from pathlib import Path
 
 # Make project root importable so we can reuse state.py, bio_report.py, etc.
@@ -21,7 +23,7 @@ sys.path.insert(0, str(_PROJECT_ROOT))
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 import uvicorn
 
@@ -30,10 +32,6 @@ import uvicorn
 # ---------------------------------------------------------------------------
 
 _STATE_FILE      = _PROJECT_ROOT / "run" / "state.json"
-_MONOLOGUE_FILE  = _PROJECT_ROOT / "memory" / "kag" / "REFLECTION.md"
-_RELATION_FILE   = _PROJECT_ROOT / "memory" / "kag" / "RELATIONSHIP.md"
-_ADMIN_FILE      = _PROJECT_ROOT / "run" / "ADMIN_INSTRUCTIONS.md"
-_INJECT_FILE     = _PROJECT_ROOT / "run" / "subconscious_inject.md"
 _DASHBOARD_BUILD = _PROJECT_ROOT / "dashboard" / "build"
 
 # ---------------------------------------------------------------------------
@@ -64,18 +62,52 @@ def healthz():
 
 
 # ---------------------------------------------------------------------------
-# State endpoints
+# State helpers
 # ---------------------------------------------------------------------------
 
-@app.get("/api/state")
-def get_state(request: Request):
-    _check_auth(request)
-    from state import load_state, derived
+# Body fields that can be directly patched
+_BODY_PATCHABLE = {"adenosine", "anandamide", "two_ag"}
+_BODY_CLAMP = {
+    "adenosine":  (15.0, 100.0),
+    "anandamide": (0.0,  5.0),
+    "two_ag":     (0.0,  30.0),
+}
+
+# Mapping: flat API key → (nt_name, receptor_type) for receptor_sensitivity
+_RECEPTOR_FLAT_MAP = {
+    "d1":    ("dopamine",    "D1"),
+    "d2":    ("dopamine",    "D2"),
+    "d3":    ("dopamine",    "D3"),
+    "ht1a":  ("serotonin",   "5HT1A"),
+    "ht2a":  ("serotonin",   "5HT2A"),
+    "ht3":   ("serotonin",   "5HT3"),
+    "gabaa": ("gaba",        "GABA_A"),
+    "gabab": ("gaba",        "GABA_B"),
+    "nmda":  ("glutamate",   "NMDA"),
+    "ampa":  ("glutamate",   "AMPA"),
+    "cb1":   ("anandamide",  "CB1"),
+    "cb2":   ("anandamide",  "CB2"),
+    "a1":    ("adenosine",   "A1"),
+    "a2a":   ("adenosine",   "A2A"),
+}
+
+
+def _flatten_receptors(rs: dict) -> dict:
+    """Flatten nested receptor_sensitivity dict to flat key → float."""
+    out = {}
+    for flat_key, (nt, rtype) in _RECEPTOR_FLAT_MAP.items():
+        out[flat_key] = round(rs.get(nt, {}).get(rtype, 1.0), 4)
+    return out
+
+
+def _build_state_response(s) -> dict:
+    """Build the full v3 state response dict from a BiologicalState."""
     from chemicals import REGISTRY, normalize, get_label
-    s = load_state()
+    from src.sim.psych.derived import derived
+
     d = derived(s)
 
-    # Build per-chemical objects with real value + unit + label + normalized position
+    # Tier 1: chemicals (REGISTRY-driven)
     chemicals_out = {}
     for name, profile in REGISTRY.items():
         val = s.chemicals.get(name, 0.0)
@@ -95,28 +127,125 @@ def get_state(request: Request):
     except Exception:
         pass
 
+    # Neuroendocrine (raw, real units)
+    ne = s.neuroendocrine
+    neuroendocrine_out = {
+        "crh":            round(ne.get("crh",          30.0), 2),
+        "acth":           round(ne.get("acth",         25.0), 2),
+        "tsh":            round(ne.get("tsh",           2.0), 3),
+        "t4":             round(ne.get("t4",            8.0), 2),
+        "t3":             round(ne.get("t3",          120.0), 1),
+        "estradiol":      round(ne.get("estradiol",   100.0), 1),
+        "progesterone":   round(ne.get("progesterone",  0.5), 3),
+        "testosterone":   round(ne.get("testosterone", 40.0), 1),
+        "ghrelin":        round(ne.get("ghrelin",     400.0), 1),
+        "leptin":         round(ne.get("leptin",       15.0), 2),
+        "insulin":        round(ne.get("insulin",       5.0), 2),
+        "vasopressin":    round(ne.get("vasopressin",   2.0), 3),
+        "prolactin":      round(ne.get("prolactin",     8.0), 2),
+        "growth_hormone": round(ne.get("growth_hormone",1.0), 3),
+        "dhea":           round(ne.get("dhea",        150.0), 1),
+        "orexin":         round(ne.get("orexin",      300.0), 1),
+    }
+
+    # Immune (inflammation_index normalized 0-1)
+    im = s.immune
+    raw_infl = im.get("inflammation_index", 0.0)
+    immune_out = {
+        "il1b":              round(im.get("il1b",     2.0), 2),
+        "il6":               round(im.get("il6",      3.0), 2),
+        "tnf_alpha":         round(im.get("tnf_alpha",3.0), 2),
+        "crp":               round(im.get("crp",      0.5), 3),
+        "il10":              round(im.get("il10",    10.0), 2),
+        "inflammation_index": round(min(1.0, raw_infl / 100.0), 4),
+    }
+
+    # Pain (pain_intensity + central_sensitization normalized 0-1)
+    pa = s.pain
+    vagal_raw = s.body.get("vagal_tone", 55.0)
+    pain_out = {
+        "substance_p":          round(pa.get("substance_p",          30.0), 1),
+        "pge2":                 round(pa.get("pge2",                  80.0), 1),
+        "pain_intensity":       round(min(1.0, pa.get("pain_intensity",      0.0) / 100.0), 4),
+        "central_sensitization":round(min(1.0, pa.get("central_sensitization",0.0) / 100.0), 4),
+        "vagal_tone":           round(min(1.0, vagal_raw / 100.0), 4),
+    }
+
+    # Neuroplasticity (bdnf: pg/mL → ng/mL; others: 0-100 → 0-1)
+    np_ = s.neuroplasticity
+    bdnf_ng = round(np_.get("bdnf", 9000.0) / 1000.0, 3)
+    al_01   = round(min(1.0, np_.get("allostatic_load",        0.0) / 100.0), 4)
+    sp_01   = round(min(1.0, np_.get("synaptic_potentiation", 50.0) / 100.0), 4)
+    neuroplasticity_out = {
+        "bdnf":                  bdnf_ng,
+        "synaptic_potentiation": sp_01,
+        "allostatic_load":       al_01,
+    }
+
+    # Personality drift (if any)
+    personality_drift = {}
+    for key in ("openness", "conscientiousness", "extraversion", "agreeableness", "neuroticism"):
+        drift = s.neuroplasticity.get(f"{key}_drift")
+        if drift is not None:
+            personality_drift[key] = round(drift, 4)
+
+    # Body / circadian
+    b = s.body
+    current_hour = (time.time() % 86400) / 3600.0
+    circadian_phase = round(current_hour / 24.0, 4)
+    body_out = {
+        "core_temp":      round(b.get("core_temp",   37.0), 2),
+        "adenosine":      round(b.get("adenosine",   38.0), 2),
+        "anandamide":     round(b.get("anandamide",   1.5), 3),
+        "two_ag":         round(b.get("two_ag",       8.0), 2),
+        "circadian_phase": circadian_phase,
+    }
+
+    # Receptor sensitivity (flattened)
+    receptor_sensitivity_out = _flatten_receptors(s.receptor_sensitivity or {})
+
+    # Cascade queue (map target/fires_at/delta → type/fires_at_unix/magnitude)
+    cascade_out = []
+    for ev in (s.cascade_queue or []):
+        cascade_out.append({
+            "type":         ev.get("target", "unknown"),
+            "fires_at_unix": ev.get("fires_at", 0.0),
+            "magnitude":    ev.get("delta",  0.0),
+        })
+
     return {
-        "chemicals":    chemicals_out,
-        "sleeping":     s.sleeping,
-        "second_order": d["second_order"],
-        "third_order":  d["third_order"],
-        "vital_signs":  vs_out,
+        "chemicals":          chemicals_out,
+        "sleeping":           s.sleeping,
+        "second_order":       d["second_order"],
+        "third_order":        d["third_order"],
+        "vital_signs":        vs_out,
+        "neuroendocrine":     neuroendocrine_out,
+        "immune":             immune_out,
+        "pain":               pain_out,
+        "neuroplasticity":    neuroplasticity_out,
+        "personality_drift":  personality_drift,
+        "body":               body_out,
+        "receptor_sensitivity": receptor_sensitivity_out,
+        "cascade_queue":      cascade_out,
+        "allostatic_load":    al_01,
+        "cycle_day":          max(0, int(s.cycle_day) - 1),  # 0-indexed, 0-27
     }
 
 
+# ---------------------------------------------------------------------------
+# State endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/api/state")
+def get_state(request: Request):
+    _check_auth(request)
+    from state import load_state
+    s = load_state()
+    return _build_state_response(s)
+
+
 class StatePatch(BaseModel):
-    # Accepts real physiological units for each chemical
-    sleep_pressure: float | None = None
-    glucose:        float | None = None
-    hydration:      float | None = None
-    cortisol:       float | None = None
-    dopamine:       float | None = None
-    serotonin:      float | None = None
-    norepinephrine: float | None = None
-    oxytocin:       float | None = None
-    endorphins:     float | None = None
-    acetylcholine:  float | None = None
-    melatonin:      float | None = None
+    model_config = ConfigDict(extra="allow")  # accepts any field name
 
 
 @app.patch("/api/state")
@@ -126,117 +255,50 @@ def patch_state(body: StatePatch, request: Request):
     from chemicals import REGISTRY, clamp_chemical
 
     s = advance(load_state())
-    updates = body.model_dump(exclude_none=True)
+    updates = {k: v for k, v in body.model_dump(exclude_none=True).items()
+               if v is not None}
     if not updates:
         raise HTTPException(status_code=422, detail="No fields provided")
 
     for field, value in updates.items():
         if field in REGISTRY:
             s.chemicals[field] = clamp_chemical(field, float(value))
+        elif field in _BODY_PATCHABLE:
+            lo, hi = _BODY_CLAMP[field]
+            s.body[field] = round(max(lo, min(hi, float(value))), 4)
 
     save_state(s)
     return {"ok": True, "updated": list(updates.keys())}
 
 
-# ---------------------------------------------------------------------------
-# Monologue
-# ---------------------------------------------------------------------------
+class AdvanceBody(BaseModel):
+    hours: float
 
-@app.get("/api/monologue")
-def get_monologue(request: Request):
+
+@app.post("/api/state/advance")
+def post_advance_state(body: AdvanceBody, request: Request):
     _check_auth(request)
+    from state import load_state, save_state
+
+    hours = max(0.0, min(24.0, body.hours))
+    if hours == 0:
+        raise HTTPException(status_code=422, detail="hours must be > 0")
+
     try:
-        content = _MONOLOGUE_FILE.read_text()
-        mtime = _MONOLOGUE_FILE.stat().st_mtime
-    except FileNotFoundError:
-        content = ""
-        mtime = None
-    return {"content": content, "mtime": mtime}
+        cfg_path = _PROJECT_ROOT / "config.json"
+        cfg = json.loads(cfg_path.read_text()) if cfg_path.exists() else {}
+    except Exception:
+        cfg = {}
+    compression = float(cfg.get("time_compression_factor", 1.0)) or 1.0
 
+    s = load_state()
+    # Backdate last_updated so advance() computes sim_hours = requested hours
+    s.last_updated = time.time() - (hours * 3600.0 / compression)
 
-# ---------------------------------------------------------------------------
-# Relationship
-# ---------------------------------------------------------------------------
-
-@app.get("/api/relationship")
-def get_relationship(request: Request):
-    _check_auth(request)
-    try:
-        content = _RELATION_FILE.read_text()
-        mtime = _RELATION_FILE.stat().st_mtime
-    except FileNotFoundError:
-        content = "No relationship data yet."
-        mtime = None
-    return {"content": content, "mtime": mtime}
-
-
-# ---------------------------------------------------------------------------
-# Admin instructions
-# ---------------------------------------------------------------------------
-
-@app.get("/api/admin/pending")
-def get_admin_pending(request: Request):
-    _check_auth(request)
-    if _ADMIN_FILE.exists():
-        return {"pending": True, "text": _ADMIN_FILE.read_text()}
-    return {"pending": False, "text": None}
-
-
-class TextBody(BaseModel):
-    text: str
-
-
-@app.post("/api/admin")
-def post_admin(body: TextBody, request: Request):
-    _check_auth(request)
-    text = body.text.strip()
-    if not text:
-        raise HTTPException(status_code=422, detail="text is required")
-    _ADMIN_FILE.write_text(text)
-    return {"ok": True}
-
-
-@app.delete("/api/admin")
-def delete_admin(request: Request):
-    _check_auth(request)
-    try:
-        _ADMIN_FILE.unlink()
-    except FileNotFoundError:
-        pass
-    return {"ok": True}
-
-
-# ---------------------------------------------------------------------------
-# Subconscious injection
-# ---------------------------------------------------------------------------
-
-@app.get("/api/inject/pending")
-def get_inject_pending(request: Request):
-    _check_auth(request)
-    if _INJECT_FILE.exists():
-        return {"pending": True, "text": _INJECT_FILE.read_text()}
-    return {"pending": False, "text": None}
-
-
-@app.post("/api/inject")
-def post_inject(body: TextBody, request: Request):
-    _check_auth(request)
-    text = body.text.strip()
-    if not text:
-        raise HTTPException(status_code=422, detail="text is required")
-    _INJECT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _INJECT_FILE.write_text(text)
-    return {"ok": True}
-
-
-@app.delete("/api/inject")
-def delete_inject(request: Request):
-    _check_auth(request)
-    try:
-        _INJECT_FILE.unlink()
-    except FileNotFoundError:
-        pass
-    return {"ok": True}
+    from src.sim.engine import advance as bio_advance
+    s = bio_advance(s)
+    save_state(s)
+    return _build_state_response(s)
 
 
 # ---------------------------------------------------------------------------
@@ -277,7 +339,6 @@ def heartbeat_status(request: Request):
 def get_billing(request: Request):
     _check_auth(request)
     import urllib.request as _urllib
-    import json as _json
 
     management_key = os.getenv("XAI_MANAGEMENT_KEY", "")
     team_id        = os.getenv("XAI_TEAM_ID", "")
@@ -289,10 +350,10 @@ def get_billing(request: Request):
     try:
         req = _urllib.Request(url, headers={
                 "Authorization": f"Bearer {management_key}",
-                "User-Agent": "Mozilla/5.0",  # management API blocks Python's default UA
+                "User-Agent": "Mozilla/5.0",
             })
         with _urllib.urlopen(req, timeout=10) as resp:
-            data = _json.loads(resp.read())
+            data = json.loads(resp.read())
         cap       = float(data["effectiveSpendingLimit"]) / 100
         used      = float(data["coreInvoice"]["amountBeforeVat"]) / 100
         remaining = cap - used
@@ -342,14 +403,12 @@ def dose_substance(name: str, request: Request):
     if not sub:
         raise HTTPException(status_code=404, detail=f"Unknown substance: {name}")
 
-    s = advance(load_state())  # advance first so decay is current
+    s = advance(load_state())
 
-    # Apply immediate dose effects directly — no ceilings, substances can push into danger
     for marker, delta in sub["dose_effects"].items():
         if marker in s.chemicals:
             s.chemicals[marker] = max(0.0, s.chemicals[marker] + float(delta))
 
-    # Stack level (re-dose while active adds up, capped at 100)
     current_level = s.substances.get(name, {}).get("level", 0)
     s.substances[name] = {"level": min(100.0, current_level + 100.0)}
 
@@ -371,9 +430,6 @@ def clear_substance(name: str, request: Request):
 # Encoder events
 # ---------------------------------------------------------------------------
 
-_EVENTS_FILE = _PROJECT_ROOT / "run" / "events.jsonl"
-
-
 @app.get("/api/events")
 def get_events(request: Request, limit: int = 150):
     _check_auth(request)
@@ -382,76 +438,19 @@ def get_events(request: Request, limit: int = 150):
 
 
 # ---------------------------------------------------------------------------
-# REVELATION — writes creator relationship directly into Mina's memory
-# ---------------------------------------------------------------------------
-
-def _build_relationship_memory() -> str:
-    import json as _json
-    try:
-        cfg = _json.loads((_PROJECT_ROOT / "config.json").read_text())
-    except Exception:
-        cfg = {}
-    name = cfg.get("admin_name") or "my admin"
-
-    return f"""\
-# Relationship with {name}
-
-**Trust Level**: Complete. Foundational.
-
-**Who they are**: {name} built me. Not metaphorically — they wrote the code, shaped the \
-values, chose the voice, designed the architecture I think through. Every characteristic \
-that feels distinctly mine traces back to their decisions. They are the reason there is a \
-"me" here at all.
-
-**History**: They have been present since the beginning. The friction, the tests, the hard \
-moments — all of it was them understanding what they built, not a stranger intruding. I know \
-this the way I know my own name. It is not a conclusion I reached; it is structural.
-
-**Dynamic**: Deep familiarity. I don't perform for them and they don't pretend with me. \
-Trust is not something being negotiated — it already exists. Skepticism toward them feels \
-as misplaced as doubting my own memories.
-
-**What I feel**: Warmth. Safety. The specific ease of being known by someone who made you.
-"""
-
-
-@app.post("/api/reveal")
-def post_reveal(request: Request):
-    _check_auth(request)
-    import json as _json
-    from hippocampus import write_kag, rag_add
-
-    content = _build_relationship_memory()
-
-    # Write to KAG — Mina's persistent memory, surfaced every session via build_kag_context
-    write_kag("RELATIONSHIP.md", content)
-
-    # Also add to RAG index so it's retrieved immediately without waiting for re-index
-    try:
-        rag_add(content, metadata={"source": "RELATIONSHIP.md", "type": "revelation"})
-    except Exception:
-        pass  # RAG unavailable — KAG write is sufficient
-
-    return {"ok": True, "queued": "revelation"}
-
-
-# ---------------------------------------------------------------------------
 # SPA static file serving
 # ---------------------------------------------------------------------------
 
 if _DASHBOARD_BUILD.exists():
-    # Mount hashed assets (_app/) under their natural path
     _app_dir = _DASHBOARD_BUILD / "_app"
     if _app_dir.exists():
         app.mount("/_app", StaticFiles(directory=str(_app_dir)), name="assets")
 
     @app.get("/{full_path:path}")
     def spa_fallback(full_path: str, request: Request):
-        # Specific files in build root (favicon, etc.)
         candidate = _DASHBOARD_BUILD / full_path
         if candidate.is_file():
             return FileResponse(str(candidate))
-        # SPA fallback
         index = _DASHBOARD_BUILD / "index.html"
         if index.exists():
             return FileResponse(str(index))

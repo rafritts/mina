@@ -29,7 +29,7 @@
       const data = await res.json();
       authRequired = data.auth_required ?? false;
     } catch {
-      authRequired = false;  // can't reach server — let them try anyway
+      authRequired = false;
     }
   });
 
@@ -60,12 +60,10 @@
   });
 
   const navLinks = [
-    { href: '/state',        label: 'State' },
-    { href: '/monologue',    label: 'Monologue' },
-    { href: '/admin',        label: 'Admin' },
-    { href: '/substances',   label: 'Substances' },
-    { href: '/relationship', label: 'Relationship' },
-    { href: '/events',       label: 'Logs' },
+    { href: '/state',      label: 'State'      },
+    { href: '/control',    label: 'Control'    },
+    { href: '/substances', label: 'Substances' },
+    { href: '/events',     label: 'Logs'       },
   ];
 
   let pageTitle = $derived(
