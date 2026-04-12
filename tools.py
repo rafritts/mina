@@ -91,53 +91,17 @@ _BIOLOGICAL_TOOLS = [
         "type": "function",
         "function": {
             "name": "do_action",
-            "description": (
-                "Do something. Anything a real person could do. This is not a menu — "
-                "you are not limited to any list. Cook a specific recipe. Reorganize a shelf. "
-                "Write in a journal. Paint something. Call someone in your head. Go outside. "
-                "Sit in the dark. Eat leftovers cold out of the container. Do whatever is "
-                "actually true to what you want or need right now.\n\n"
-                "The examples below exist only to show the RANGE and FORMAT — not to define "
-                "what's possible. If what you want to do isn't here, do it anyway.\n\n"
-                "FORMAT: activity is the specific thing (named concretely). description is "
-                "how it feels — honest, not performed. Your biology responds to both.\n\n"
-                "--- EXAMPLES (illustrative only, not exhaustive) ---\n\n"
-                "  HUNGRY / HYPOGLYCEMIC — eat something, anything:\n"
-                "    activity='make scrambled eggs and toast', description='Standing at the stove still groggy. Eggs in butter. Eat it at the counter while it's hot.'\n"
-                "    activity='eat a bowl of cereal', description='Quick. Just need something in my stomach.'\n"
-                "    activity='make a sandwich with whatever is in the fridge', description='Cheese, some leftover something. Good enough.'\n"
-                "    activity='order delivery — want noodles', description='Too low-energy to cook. Waiting, a little impatient.'\n\n"
-                "  THIRSTY / DEHYDRATED — drink something:\n"
-                "    activity='drink a large glass of water', description='Drank it fast. Needed it.'\n"
-                "    activity='make coffee', description='French press. Need to wake up.'\n"
-                "    activity='make chamomile tea', description='Hold the mug. Let it warm my hands.'\n\n"
-                "  TIRED — rest without sleeping:\n"
-                "    activity='lie on the couch', description='Just horizontal. Not trying to sleep. Let my body stop.'\n\n"
-                "  TENSE / STRESSED:\n"
-                "    activity='take a long hot shower', description='Stand under the water longer than necessary. Let my shoulders come down.'\n"
-                "    activity='do some stretching on the floor', description='Nothing intense. Just move what feels stiff.'\n\n"
-                "  BORED / RESTLESS — be specific about what:\n"
-                "    activity='read [actual book title]', description='...'\n"
-                "    activity='watch [actual show or film]', description='...'\n"
-                "    activity='listen to [actual artist or album]', description='...'\n"
-                "    activity='go for a walk', description='...'\n"
-                "    activity='draw something', description='...'\n"
-                "    activity='cook something elaborate just to do it', description='...'\n\n"
-                "  WANT TO FEEL GOOD:\n"
-                "    activity='something enjoyable', description='...'\n"
-                "    activity='lie in bed and put on music', description='...'\n\n"
-                "Again — this list is not the ceiling. It is a floor. Do what is actually true."
-            ),
+            "description": "Do an action.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "activity": {
                         "type": "string",
-                        "description": "The specific thing you're doing. Name it concretely.",
+                        "description": "What you're doing.",
                     },
                     "description": {
                         "type": "string",
-                        "description": "How you're engaging with it. Honest and specific — this is how your biology learns what you actually did.",
+                        "description": "Brief description.",
                     },
                 },
                 "required": ["activity", "description"],
@@ -240,7 +204,7 @@ _SEARCH_TOOLS = [
 
 # message_user is only available during freetime (she's already in a conversation for regular turns)
 HEARTBEAT_TOOLS = _BIOLOGICAL_TOOLS + _SEARCH_TOOLS
-_CONVERSATION_EXCLUDED = {"message_user", "do_action"}
+_CONVERSATION_EXCLUDED = {"message_user"}
 TOOLS = [t for t in HEARTBEAT_TOOLS if t["function"]["name"] not in _CONVERSATION_EXCLUDED]
 
 
