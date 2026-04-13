@@ -43,7 +43,7 @@ class _SuppressResetError(logging.Filter):
 logging.getLogger("discord.client").addFilter(_SuppressResetError())
 logging.getLogger("discord.gateway").addFilter(_SuppressResetError())
 from ..bio.state import load_and_advance, save_state, load_state, apply_deltas, log_state, derived
-from ..memory.hippocampus import build_kag_context, build_rag_context, rag_wipe
+from ..memory.hippocampus import build_kag_context, build_rag_context, rag_wipe, rag_fix_word_filter, kag_fix_word_filter
 _CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
 _RUN_DIR = os.path.join(_PROJECT_ROOT, "run")
 _LOG_FILE = os.path.join(_PROJECT_ROOT, "logs", "mina.log")
@@ -1140,6 +1140,56 @@ async def cmd_context(interaction: discord.Interaction):
         "```",
     ]
     await interaction.response.send_message("\n".join(lines), ephemeral=True)
+
+
+@tree.command(name="fix-false-positive", description="Retroactively replace 'girl/girls' → 'woman/women' in history, KAG, and RAG.")
+async def cmd_fix_false_positive(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    try:
+        # --- History ---
+        history = load_history()
+        history_hits = 0
+        def _fix_content(content):
+            if isinstance(content, str):
+                fixed = apply_word_filter(content)
+                return fixed, fixed != content
+            if isinstance(content, list):
+                changed = False
+                result = []
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "text":
+                        fixed = apply_word_filter(item["text"])
+                        changed = changed or fixed != item["text"]
+                        result.append({**item, "text": fixed})
+                    else:
+                        result.append(item)
+                return result, changed
+            return content, False
+
+        new_history = []
+        for entry in history:
+            content, changed = _fix_content(entry.get("content", ""))
+            if changed:
+                history_hits += 1
+            new_history.append({**entry, "content": content})
+        if history_hits:
+            save_history(new_history)
+
+        # --- KAG files ---
+        kag_modified = kag_fix_word_filter()
+
+        # --- RAG (re-embeds changed entries via Ollama — runs in thread) ---
+        rag_hits = await asyncio.to_thread(rag_fix_word_filter)
+
+        parts = [f"history messages patched: {history_hits}"]
+        if kag_modified:
+            parts.append(f"KAG files patched: {', '.join(kag_modified)}")
+        else:
+            parts.append("KAG files: none needed patching")
+        parts.append(f"RAG entries re-embedded: {rag_hits}")
+        await interaction.followup.send("\n".join(parts), ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"fix-false-positive failed: {e}", ephemeral=True)
 
 
 # ---------------------------------------------------------------------------

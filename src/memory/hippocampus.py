@@ -259,6 +259,56 @@ def build_rag_context(query: str, n_results: int = 5) -> str:
     return apply_word_filter(f"## Relevant Memories\n{lines}")
 
 
+def rag_fix_word_filter() -> int:
+    """Scan every RAG entry and apply word filter in-place (re-embeds changed docs).
+    Returns the number of entries updated."""
+    collection = _get_collection()
+    if collection is None:
+        return 0
+    try:
+        all_data = collection.get()
+    except Exception:
+        return 0
+
+    ids       = all_data.get("ids", []) or []
+    documents = all_data.get("documents", []) or []
+    metadatas = all_data.get("metadatas", []) or []
+
+    hit_ids, hit_docs, hit_metas = [], [], []
+    for doc_id, doc, meta in zip(ids, documents, metadatas):
+        filtered = apply_word_filter(doc)
+        if filtered != doc:
+            hit_ids.append(doc_id)
+            hit_docs.append(filtered)
+            hit_metas.append(meta)
+
+    if hit_ids:
+        collection.update(ids=hit_ids, documents=hit_docs, metadatas=hit_metas)
+    return len(hit_ids)
+
+
+def kag_fix_word_filter() -> list[str]:
+    """Apply word filter to all KAG files on disk. Returns list of modified filenames."""
+    modified = []
+    for fname in ["RELATIONSHIP.md", "REFLECTION.md", "PENDING.md"]:
+        content = read_kag(fname)
+        if not content:
+            continue
+        filtered = apply_word_filter(content)
+        if filtered != content:
+            write_kag(fname, filtered)
+            modified.append(fname)
+    for fname in list_knowledge():
+        content = read_knowledge(fname)
+        if not content:
+            continue
+        filtered = apply_word_filter(content)
+        if filtered != content:
+            write_knowledge(fname, filtered)
+            modified.append(f"KNOWLEDGE/{fname}")
+    return modified
+
+
 # ---------------------------------------------------------------------------
 # Consolidation LLM prompt
 # ---------------------------------------------------------------------------
