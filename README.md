@@ -81,10 +81,10 @@ uv sync
 
 ```bash
 # Bot + heartbeat (primary)
-uv run supervisor.py
+uv run python -m src.gateway.supervisor
 
-# Dashboard (optional, recommended)
-uv run dashboard_server.py &
+# Dashboard (optional, standalone)
+uv run python -m src.gateway.dashboard_server &
 cd dashboard && npm install && npm run dev
 ```
 
