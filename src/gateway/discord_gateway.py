@@ -6,6 +6,7 @@ Run via supervisor.py (or directly for development):
 """
 import asyncio
 import base64
+import datetime
 import json
 import logging
 import mimetypes
@@ -1022,17 +1023,37 @@ async def cmd_clean(interaction: discord.Interaction, n: int = 0):
 
     scan_limit = (n * 5) if n > 0 else 500
     deleted_count = 0
-    found = 0
+
+    # Collect matching messages first, then delete in bulk where possible.
+    # Discord bulk delete handles up to 100 messages per call but only works
+    # for messages under 14 days old — fall back to individual delete for older ones.
+    cutoff = discord.utils.utcnow() - datetime.timedelta(days=14)
+    bulk_batch: list[discord.Message] = []
+    old_msgs:   list[discord.Message] = []
+
     try:
         async for msg in channel.history(limit=scan_limit, oldest_first=False):
             if msg.author != client.user:
                 continue
+            if msg.created_at > cutoff:
+                bulk_batch.append(msg)
+            else:
+                old_msgs.append(msg)
+            if n > 0 and (len(bulk_batch) + len(old_msgs)) >= n:
+                break
+
+        # Bulk delete in chunks of 100
+        for i in range(0, len(bulk_batch), 100):
+            chunk = bulk_batch[i:i + 100]
+            await channel.delete_messages(chunk)
+            deleted_count += len(chunk)
+
+        # Individual delete for messages older than 14 days
+        for msg in old_msgs:
             await msg.delete()
             deleted_count += 1
-            await asyncio.sleep(0.5)
-            found += 1
-            if n > 0 and found >= n:
-                break
+            await asyncio.sleep(1.1)  # stay safely under the per-route rate limit
+
     except discord.HTTPException as e:
         await interaction.followup.send(f"Deleted {deleted_count} before error: {e}", ephemeral=True)
         return
