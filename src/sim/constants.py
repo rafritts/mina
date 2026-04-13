@@ -14,8 +14,11 @@ CORTISOL_CIRCADIAN_AMPLITUDE   = 270.0   # nmol/L — peak swing above base
 CORTISOL_CIRCADIAN_PEAK_HOUR   = 8       # hour of day — cortisol awakening response
 CORTISOL_CIRCADIAN_FLOOR       = 50.0    # nmol/L — absolute minimum (adrenal safety floor)
 
-MELATONIN_CIRCADIAN_AMPLITUDE  = 110.0   # pg/mL — peak melatonin (× 2 = 220 at apex)
-MELATONIN_DEFAULT_PEAK_HOUR    = 4       # hour of day — default sleep window start
+MELATONIN_PEAK_AMPLITUDE       = 210.0   # pg/mL above daytime floor at the 3am peak
+MELATONIN_DAYTIME_FLOOR        = 5.0     # pg/mL — suppressed baseline during daylight hours
+MELATONIN_PEAK_HOUR            = 2.5     # hour of day — physiological peak ~2-3am
+MELATONIN_GAUSSIAN_SIGMA       = 2.0     # hours — controls width of secretion window
+# σ=2 gives: ~215 at 2:30am → ~33 at 6:30am → ~7 at 8:30am → ~5 by 10am (daytime baseline)
 
 OREXIN_CIRCADIAN_BASE          = 200.0   # pg/mL — baseline wake-promoting level
 OREXIN_CIRCADIAN_AMPLITUDE     = 150.0   # pg/mL — afternoon peak swing

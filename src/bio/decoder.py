@@ -199,7 +199,7 @@ def biological_report(state: BiologicalState) -> str:
     lines.append(row_chem("Hydration",  "hydration"))
 
     if state.sleeping:
-        sp = state.chemicals.get("sleep_pressure", 0.0)
+        sp = state.sleep_pressure
         lines.append(f"{'Sleep pres':<12} {sp:>7.1f} {'AU':<6}  SLEEPING")
     else:
         lines.append(row_chem("Sleep pres", "sleep_pressure"))
@@ -350,7 +350,7 @@ def needs_summary(state: BiologicalState, elapsed_minutes: float = 0) -> str:
     elif hyd < 58:
         parts.append("Thirsty.")
 
-    sp = state.chemicals.get("sleep_pressure", 30.0)
+    sp = state.sleep_pressure
     if sp > 80:
         parts.append("Exhausted, heavy sleep pressure.")
     elif sp > 60:

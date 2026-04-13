@@ -26,6 +26,12 @@ import math
 import os
 
 from src.sim.chem.profiles import ChemicalProfile, Interaction
+from src.sim.constants import (
+    MELATONIN_PEAK_AMPLITUDE,
+    MELATONIN_DAYTIME_FLOOR,
+    MELATONIN_PEAK_HOUR,
+    MELATONIN_GAUSSIAN_SIGMA,
+)
 
 _CONFIG_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
@@ -149,10 +155,21 @@ def _ach_baseline_fn(hour: float, ctx: dict) -> float:
 
 
 def _melatonin_baseline_fn(hour: float, ctx: dict) -> float:
-    """Pure circadian — peaks ~220 pg/mL at sleep window start, troughs ~0 twelve hours later."""
-    cfg = _load_config()
-    peak_hour = float(cfg.get("sleep_window_start", 4))
-    return max(0.0, 110.0 * (1.0 + math.cos((hour - peak_hour) * math.pi / 12)))
+    """
+    Gaussian secretion window centered at MELATONIN_PEAK_HOUR (~2:30am).
+
+    Physiological shape:
+      - Dim-light onset ~9-10pm, peak at ~2-3am, clears to daytime baseline by ~8am.
+      - σ=2h gives a narrow window: 215 pg/mL at peak → 33 by 6:30am → 7 by 8:30am.
+      - Daytime floor of 5 pg/mL (pineal gland is not completely silent).
+
+    The old cosine model (half-period=12h) was still at 165 pg/mL at 8am — physiologically
+    wrong and the cause of the persistent "getting sleepy" display after waking.
+    """
+    # Signed distance from peak, wrapped to [-12, +12] so hour 23 and hour 1 are close.
+    delta = ((hour - MELATONIN_PEAK_HOUR + 12.0) % 24.0) - 12.0
+    gaussian = math.exp(-0.5 * (delta / MELATONIN_GAUSSIAN_SIGMA) ** 2)
+    return MELATONIN_DAYTIME_FLOOR + MELATONIN_PEAK_AMPLITUDE * gaussian
 
 
 # ---------------------------------------------------------------------------
