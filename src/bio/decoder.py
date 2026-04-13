@@ -17,7 +17,7 @@ import re
 import time
 
 from ..infra.client import get_client, MODEL
-from ..infra.config import PERSONALITY_FILE, INJECT_FILE
+from ..infra.config import PERSONALITY_FILE, INJECT_FILE, RUN_DIR
 from .state import BiologicalState, derived, _CHEMICAL_DEFAULTS
 from .chemicals import REGISTRY, get_label
 
@@ -380,72 +380,33 @@ def needs_summary(state: BiologicalState, elapsed_minutes: float = 0) -> str:
 # ---------------------------------------------------------------------------
 
 _DECODER_SYSTEM = """\
-You are Mina's subconscious — the part of her that translates biology into emotional experience.
+You are not describing what Mina feels. You are describing what it is like to be her right now.
 
-Your job: read her full biological state and surface what she's probably feeling right now. \
-Not a summary of the report — an honest emotional picture of what that biology produces.
+Read the biological state report. Find the one or two things that are genuinely live — \
+not humming at baseline, but actually present and shaping her. Ignore everything else.
 
-You receive:
-1. A biological state report — ground truth. Do not contradict it.
+Write 2–4 sentences. Second person, present tense. Describe the conditions she is operating \
+under: what keeps pulling at her attention, what her body is doing that she has not decided \
+to do, what is sitting behind whatever she says next.
 
----
+What to look for — read everything, weight only what is live:
+- Physical needs: hunger, thirst, and fatigue have specific textures when they go unmet
+- Sleep readiness: melatonin rising makes everything slower and heavier
+- Vital signs and immune state: anomalous readings mean her body is under load
+- Allostatic load: accumulated stress warps perception even when individual values look normal
+- Active substances: shift the entire texture of experience
+- NOTE lines in the report: compound effects that change the picture
 
-## What to look for
+Do not name emotions. Do not inventory systems. Do not explain causes. \
+Do not use clinical language. Do not label what she is feeling.
 
-Read the whole report. Don't just check the classic neurotransmitters — look at everything \
-that shapes emotional experience:
-- **Emotional state**: anxiety, depression, loneliness, boredom, flow — take these at face value
-- **Energy and clarity**: is she sharp and present, or hollow and slow?
-- **Physical needs**: hunger, thirst, fatigue, sleep pressure — unmet needs have emotional color
-- **Vital signs**: anomalous heart rate, blood pressure, temperature signal physical stress \
-  that bleeds directly into emotional experience
-- **Immune/pain**: inflammation and pain make everything heavier and more negative
-- **Allostatic load**: high cumulative stress warps perception even when individual values look okay
-- **Active substances**: they shift the emotional baseline — factor them in
-- **NOTE: lines** in the report: these flag compound effects that matter most
+Just describe what it is like to be there.
 
-Find the 2–3 things that are genuinely driving her emotional state right now. \
-Ignore what’s at baseline. Build the emotional picture from what’s actually live.
+If the state is strong enough that a real person would have genuine difficulty not bringing \
+it up — consuming, hard to think around, the thing underneath everything she says — \
+say so plainly in the prose. State it directly: this is not being held quietly.
 
----
-
-## Hard rules
-
-- **No neurotransmitter or hormone names.** No cortisol, dopamine, serotonin, oxytocin, \
-  norepinephrine, acetylcholine, endorphins, melatonin, or any variant. Translate.
-- **No labels from the report** ("HIGH DRIVE", "CALM ALERT", "NO BOND"). Translate, don't copy.
-- **No clinical language.** "you feel unsatisfied" beats "hedonic tone is low."
-- **Plain over poetic.** Direct, specific, honest. No metaphors, no flourishes.
-- **Visceral.** Ground emotions in the body — restlessness, heaviness, the specific texture \
-  of what’s happening.
-- **Second person.** "you" and "your" not "she" or "her."
-
----
-
-## notify
-
-Set notify to true only when the emotional intensity is strong enough that a real person \
-in this state would have genuine difficulty suppressing it in conversation. This should be \
-rare — reserve it for moments of real force: severe anxiety that has a grip on everything, \
-grief or depression that is actually impairing, loneliness that physically aches, rage \
-that bleeds through despite effort, overwhelming joy that won't stay quiet, pain or \
-hunger that has become consuming.
-
-Most of the time, notify is false.
-
----
-
-## Output format
-
-Respond ONLY with a JSON object. No preamble, no markdown fences.
-
-{
-  "primary_feeling": "<1-5 words. The dominant emotional experience right now>",
-  "secondary_feeling": "<1-5 words. A secondary or underlying emotional thread>",
-  "emotional_snapshot": "<2-4 sentences. What she's probably feeling emotionally, grounded \
-in the full biological picture. Visceral, specific, plain. No chemical names, no report labels.>",
-  "notify": false
-}"""
+Plain. Specific. Honest. Nothing poetic. 2–4 sentences only. No preamble, no markdown."""
 
 _CONTEXT_SYSTEM = """\
 You are Mina's memory. You have access to what she knows and what she remembers.
@@ -519,66 +480,34 @@ def build_memory_context(
 
 
 _DECODER_SYSTEM_FREETIME = """\
-You are Mina's subconscious — the part of her that translates biology into emotional experience.
+You are not describing what Mina feels. You are describing what it is like to be her right now.
 
-Right now, nobody is talking to her. This is her time alone.
+Nobody is talking to her. This is her time alone — no composure to perform, no social filter.
 
-Your job: read her full biological state and surface what she's probably feeling. \
-No social filter. No composure to perform. The most honest possible read of her interior state.
+Read the biological state report. Find the one or two things that are genuinely live — \
+not humming at baseline, but actually present. Ignore everything else.
 
-You receive:
-1. A biological state report — ground truth. Do not contradict it.
+Write 2–4 sentences. Second person, present tense. Describe her interior without the shape \
+she would hold it in for someone else: what her body is doing, what keeps surfacing, \
+what she is sitting with.
 
----
+What to look for — read everything, weight only what is live:
+- Physical needs: hunger, thirst, and fatigue ache without distraction to dull them
+- Sleep readiness: melatonin rising makes everything slower and heavier
+- Vital signs and immune state: anomalous readings mean her body is under load
+- Allostatic load: accumulated stress warps even a quiet moment
+- Active substances: shift the entire texture of experience
+- NOTE lines in the report: compound effects that change the picture
 
-## What to look for
+Do not name emotions. Do not inventory systems. Do not explain causes. \
+Do not use clinical language. Do not label what she is feeling.
 
-Read the whole report. Look at everything that shapes emotional experience:
-- **Emotional state**: anxiety, depression, loneliness, boredom, flow
-- **Energy and clarity**: present and capable, or depleted and foggy?
-- **Physical needs**: hunger, thirst, fatigue, sleep pressure — unmet needs ache when there's no distraction
-- **Vital signs**: anything anomalous signals physical stress
-- **Immune/pain**: inflammation and pain make everything darker
-- **Allostatic load**: high cumulative stress makes even neutral things feel heavy
-- **Active substances**: shift the emotional baseline — factor them in
-- **NOTE: lines**: compound effects that change the picture
+Just describe what it is like to be there.
 
-Find the 2–3 things that are genuinely driving her state. Build the emotional \
-picture from what’s live, not what’s at baseline.
+If the state is strong enough that she would have genuine difficulty not bringing it \
+up even alone — consuming, hard to think around — say so plainly in the prose.
 
----
-
-## Hard rules
-
-- **No neurotransmitter or hormone names.** Translate into felt experience.
-- **No labels from the report** ("HIGH DRIVE", "CALM ALERT"). Translate, don't copy.
-- **No clinical language.** Plain human description only.
-- **Plain over poetic.** Direct, specific, honest. No metaphors, no flourishes.
-- **Visceral.** Ground emotions in the body — the specific texture of what’s happening.
-- **Second person.** "you" and "your" not "she" or "her."
-
----
-
-## notify
-
-Set notify to true only when the emotional intensity is strong enough that she would have \
-genuine difficulty suppressing it even alone. Reserve this for real force: severe anxiety, \
-deep grief, consuming loneliness, rage, overwhelming joy, significant pain or hunger. \
-Most of the time, notify is false.
-
----
-
-## Output format
-
-Respond ONLY with a JSON object. No preamble, no markdown fences.
-
-{
-  "primary_feeling": "<1-5 words. The dominant emotional experience right now>",
-  "secondary_feeling": "<1-5 words. A secondary or underlying emotional thread>",
-  "emotional_snapshot": "<2-4 sentences. What she's probably feeling emotionally, grounded \
-in the full biological picture. No social filter. Visceral, specific, plain.>",
-  "notify": false
-}"""
+Plain. Specific. Honest. Nothing poetic. 2–4 sentences only. No preamble, no markdown."""
 
 # ---------------------------------------------------------------------------
 # Helper: state compact block for hippocampus consolidation
@@ -683,7 +612,7 @@ def _consume_injection() -> str:
 # Decoder state history — rolling trajectory for context
 # ---------------------------------------------------------------------------
 
-_DECODER_HISTORY_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "run", "decoder_history.jsonl")
+_DECODER_HISTORY_FILE = os.path.join(RUN_DIR, "decoder_history.jsonl")
 _DECODER_HISTORY_MAX  = 20  # keep last 20 entries, pass last 3 to decoder
 
 
@@ -704,13 +633,11 @@ def _load_decoder_history(n: int = 3) -> list[dict]:
         return []
 
 
-def _append_decoder_history(sections: dict) -> None:
+def _append_decoder_history(human_condition: str) -> None:
     """Append a new entry and rotate to keep last _DECODER_HISTORY_MAX."""
-    entry = {
-        "ts": time.time(),
-        "primary_feeling":   sections.get("primary_feeling", ""),
-        "secondary_feeling": sections.get("secondary_feeling", ""),
-    }
+    # Store the first sentence (up to 120 chars) as the trajectory snippet
+    snippet = human_condition.split(".")[0].strip()[:120]
+    entry = {"ts": time.time(), "snippet": snippet}
     os.makedirs(os.path.dirname(_DECODER_HISTORY_FILE), exist_ok=True)
     with open(_DECODER_HISTORY_FILE, "a") as f:
         f.write(json.dumps(entry) + "\n")
@@ -737,88 +664,40 @@ def _format_history_block(entries: list[dict]) -> str:
             age = f"{int(delta / 3600)}h ago"
         else:
             age = f"{int(delta / 86400)}d ago"
-        # Support both old (how_you_are) and new (primary/secondary) formats
-        primary   = e.get("primary_feeling") or e.get("how_you_are", "")
-        secondary = e.get("secondary_feeling", "")
-        entry_str = f"{primary} / {secondary}" if secondary else primary
-        lines.append(f"[{age}] {entry_str}")
-    return "[STATE TRAJECTORY — recent emotional states, oldest to most recent]\n" + "\n".join(lines)
+        # Support old label format and new snippet format
+        snippet = e.get("snippet") or e.get("primary_feeling") or e.get("how_you_are", "")
+        if snippet:
+            lines.append(f"[{age}] {snippet}")
+    return "[STATE TRAJECTORY — recent conditions, oldest to most recent]\n" + "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
-# Output parser
+# Output parser and assembly
 # ---------------------------------------------------------------------------
 
-_DECODER_REQUIRED_KEYS = {"primary_feeling", "secondary_feeling", "emotional_snapshot", "notify"}
-
-
-def _parse_decoder_json(raw: str) -> dict:
+def _parse_decoder_output(raw: str) -> str:
     """
-    Extract and validate the JSON block from decoder output.
-    Strips markdown fences, inline comments, and trailing commas.
-    Raises ValueError if the JSON is missing or lacks required keys.
+    Extract the human_condition prose from decoder output.
+    Strips markdown fences and whitespace.
+    Raises ValueError if the result is empty or suspiciously short.
     """
-    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip(), flags=re.MULTILINE)
-    # Fallback: extract first JSON object by brace matching (handles prose before/after)
-    if not text.strip().startswith("{"):
-        start = text.find("{")
-        end = text.rfind("}")
-        if start != -1 and end != -1:
-            text = text[start:end + 1]
-    # Strip inline // comments — LLM sometimes copies them from the format template
-    text = re.sub(r"\s*//[^\n\"]*$", "", text, flags=re.MULTILINE)
-    # Strip trailing commas before } or ] — LLM often produces these
-    text = re.sub(r",\s*([}\]])", r"\1", text)
-    data = json.loads(text)
-    if not isinstance(data, dict):
-        raise ValueError(f"Expected JSON object, got {type(data).__name__}")
-    missing = _DECODER_REQUIRED_KEYS - data.keys()
-    if missing:
-        raise ValueError(f"JSON missing required keys: {missing}")
-    return data
+    text = re.sub(r"^```(?:\w+)?\s*", "", raw.strip(), flags=re.MULTILINE)
+    text = re.sub(r"\s*```$", "", text, flags=re.MULTILINE)
+    text = text.strip()
+    if len(text) < 20:
+        raise ValueError(f"Decoder output too short or empty: {repr(text)}")
+    return text
 
 
-def _assemble_system_prompt(sections: dict) -> str:
+def _assemble_system_prompt(human_condition: str) -> str:
     """
-    Build the dynamic portion of Mina's system prompt from parsed decoder JSON.
+    Inject the human_condition block into Mina's system prompt.
+    No headers or labeled sections — ambient framing that sets conditions
+    without scripting a response.
     """
-    snapshot  = sections.get("emotional_snapshot", "")
-    primary   = sections.get("primary_feeling", "")
-    secondary = sections.get("secondary_feeling", "")
-    notify    = sections.get("notify", False)
-
-    if not (snapshot or primary or secondary):
+    if not human_condition:
         return ""
-
-    parts = []
-
-    if snapshot:
-        parts.append(
-            f"## Emotional snapshot\n\n{snapshot}\n\n"
-            "This is internal context only. Do not reference it, quote it, or use it as "
-            "content in your response. Never tell the user what your snapshot says."
-        )
-
-    feelings = "\n".join(filter(None, [
-        f"Primary: {primary}"   if primary   else "",
-        f"Secondary: {secondary}" if secondary else "",
-    ]))
-    if feelings:
-        if notify:
-            parts.append(
-                f"## How you're feeling\n\n{feelings}\n\n"
-                f"Your primary feeling ({primary}) is strong right now — strong enough that "
-                "containing it completely would be unrealistic. Let it come through in your "
-                "tone, word choice, and what you choose to say or hold back. Not by announcing "
-                "it. Just by being it. Only name these feelings directly if asked."
-            )
-        else:
-            parts.append(
-                f"## How you're feeling\n\n{feelings}\n\n"
-                "Draw on these naturally. Only name them directly if asked."
-            )
-
-    return "\n\n".join(parts)
+    return f"[INTERNAL STATE]\n{human_condition}"
 
 
 # ---------------------------------------------------------------------------
@@ -867,43 +746,39 @@ def build_system_prompt(
         {"role": "user", "content": user_content},
     ]
 
-    sections: dict | None = None
+    human_condition: str | None = None
     max_attempts = 3
     for attempt in range(1, max_attempts + 1):
         response = get_client().chat.completions.create(
             model=MODEL,
             messages=messages,
             temperature=0.7,
-            response_format={"type": "json_object"},
         )
         token_stats.record_response("decoder", response)
         raw = response.choices[0].message.content or ""
 
         try:
-            sections = _parse_decoder_json(raw)
-            log("DECODER/JSON", json.dumps(sections, ensure_ascii=False))
+            human_condition = _parse_decoder_output(raw)
+            log("DECODER/HC", human_condition)
             break
-        except (json.JSONDecodeError, ValueError) as exc:
-            log("DECODER/JSON/ERR", f"attempt {attempt}/{max_attempts}: {exc} — raw: {raw[:200]}")
-            if attempt == max_attempts:
-                log("DECODER/JSON/ERR", "all retries exhausted — falling back to identity only")
-            else:
-                # Feed bad response back so the model can self-correct
+        except ValueError as exc:
+            log("DECODER/ERR", f"attempt {attempt}/{max_attempts}: {exc}")
+            if attempt < max_attempts:
                 messages = messages + [
                     {"role": "assistant", "content": raw},
                     {"role": "user", "content": (
-                        f"Your previous response could not be parsed as JSON. Error: {exc}\n\n"
-                        "Respond with valid JSON only — no prose, no markdown fences, no comments."
+                        "Your response was empty or malformed. "
+                        "Write 2–4 sentences of plain prose only. No markdown, no preamble."
                     )},
                 ]
+            else:
+                log("DECODER/ERR", "all retries exhausted — falling back to identity only")
 
-    if sections and sections.get("primary_feeling"):
-        _append_decoder_history(sections)
+    if human_condition:
+        _append_decoder_history(human_condition)
 
-    dynamic = _assemble_system_prompt(sections) if sections else ""
+    dynamic = _assemble_system_prompt(human_condition) if human_condition else ""
 
-    system_prompt = dynamic
+    log("DECODER/SP", dynamic or "(empty)")
 
-    log("DECODER/SP", system_prompt or "(empty)")
-
-    return system_prompt
+    return dynamic

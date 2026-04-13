@@ -176,6 +176,129 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Plain-language translations — for non-technical overview
+  // ---------------------------------------------------------------------------
+
+  type Level = 'ok' | 'notice' | 'alert';
+  type Severity = 'mild' | 'moderate' | 'high';
+  interface PlainState { text: string; level: Level }
+  interface MoodState  { label: string; severity: Severity }
+
+  function lc(level: Level): string {
+    if (level === 'alert')  return 'text-error';
+    if (level === 'notice') return 'text-warning';
+    return 'text-success';
+  }
+
+  function sc(s: Severity): string {
+    if (s === 'high')     return 'bg-error';
+    if (s === 'moderate') return 'bg-warning';
+    return 'bg-success opacity-70';
+  }
+
+  function st(s: Severity): string {
+    if (s === 'high')     return 'text-error';
+    if (s === 'moderate') return 'text-warning';
+    return 'opacity-60';
+  }
+
+  function plainSleep(adenosine: number, melatonin: number, sleeping: boolean): PlainState {
+    if (sleeping)                                return { text: 'asleep',           level: 'ok'     };
+    if (adenosine > 85 || melatonin > 160)       return { text: 'exhausted',        level: 'alert'  };
+    if (adenosine > 70 || melatonin > 100)       return { text: 'getting sleepy',   level: 'notice' };
+    if (adenosine > 55 || melatonin > 40)        return { text: 'tired',            level: 'notice' };
+    if (adenosine > 35)                          return { text: 'alert',            level: 'ok'     };
+    return                                              { text: 'wide awake',       level: 'ok'     };
+  }
+
+  function plainFood(glucose: number): PlainState {
+    if (glucose < 55) return { text: 'very hungry',  level: 'alert'  };
+    if (glucose < 70) return { text: 'hungry',       level: 'notice' };
+    if (glucose < 80) return { text: 'peckish',      level: 'ok'     };
+    return                   { text: 'fine',         level: 'ok'     };
+  }
+
+  function plainWater(hydration: number): PlainState {
+    if (hydration < 54) return { text: 'very thirsty', level: 'alert'  };
+    if (hydration < 58) return { text: 'thirsty',      level: 'notice' };
+    return                     { text: 'fine',         level: 'ok'     };
+  }
+
+  function plainEnergy(v: number): PlainState {
+    if (v < 15) return { text: 'running on empty', level: 'alert'  };
+    if (v < 35) return { text: 'low',              level: 'notice' };
+    if (v < 55) return { text: 'okay',             level: 'ok'     };
+    if (v < 75) return { text: 'good',             level: 'ok'     };
+    return             { text: 'energized',        level: 'ok'     };
+  }
+
+  function plainThinking(v: number): PlainState {
+    if (v < 8)  return { text: 'offline',    level: 'alert'  };
+    if (v < 25) return { text: 'very foggy', level: 'alert'  };
+    if (v < 50) return { text: 'foggy',      level: 'notice' };
+    if (v < 72) return { text: 'clear',      level: 'ok'     };
+    return             { text: 'sharp',      level: 'ok'     };
+  }
+
+  function plainWithPeople(warmth: number, loneliness: number): PlainState {
+    if (loneliness > 80) return { text: 'lonely, wanting connection', level: 'alert'  };
+    if (loneliness > 68) return { text: 'missing people',             level: 'notice' };
+    if (warmth > 65)     return { text: 'warm and open',              level: 'ok'     };
+    if (warmth < 30)     return { text: 'closed off',                 level: 'notice' };
+    return                      { text: 'neutral',                    level: 'ok'     };
+  }
+
+  function plainLoad(al: number): string {
+    if (al < 0.15) return 'not worn down';
+    if (al < 0.30) return 'doing well';
+    if (al < 0.50) return 'some wear';
+    if (al < 0.65) return 'wearing down';
+    if (al < 0.80) return 'running low';
+    if (al < 0.92) return 'near limit';
+    return                'breaking down';
+  }
+
+  function notableMoods(d: StateData): MoodState[] {
+    const out: MoodState[] = [];
+    const anx = d.third_order?.anxiety    ?? 0;
+    const dep = d.third_order?.depression ?? 0;
+    const bor = d.third_order?.boredom    ?? 0;
+    const lon = d.third_order?.loneliness ?? 0;
+    const flo = d.third_order?.flow       ?? 0;
+    const hed = d.second_order?.hedonic_tone ?? 50;
+
+    if (flo > 65) out.push({ label: 'in the zone',            severity: 'mild'     });
+
+    if      (bor > 88) out.push({ label: 'desperately bored', severity: 'high'     });
+    else if (bor > 74) out.push({ label: 'bored',             severity: 'moderate' });
+    else if (bor > 60) out.push({ label: 'a little bored',    severity: 'mild'     });
+
+    if      (anx > 84) out.push({ label: 'very anxious',      severity: 'high'     });
+    else if (anx > 68) out.push({ label: 'anxious',           severity: 'moderate' });
+    else if (anx > 52) out.push({ label: 'mildly anxious',    severity: 'mild'     });
+
+    if      (dep > 84) out.push({ label: 'deeply low',        severity: 'high'     });
+    else if (dep > 68) out.push({ label: 'feeling down',      severity: 'moderate' });
+    else if (dep > 52) out.push({ label: 'a bit flat',        severity: 'mild'     });
+
+    if      (lon > 80) out.push({ label: 'lonely',            severity: 'high'     });
+    else if (lon > 68) out.push({ label: 'missing people',    severity: 'mild'     });
+
+    if (out.length === 0 && hed < 25)
+      out.push({ label: 'going through the motions',          severity: 'moderate' });
+
+    return out;
+  }
+
+  function hasVitalAlert(d: StateData): boolean {
+    const vs = d.vital_signs;
+    if (!vs) return false;
+    const danger = new Set(['BRADYCARDIA', 'DANGEROUS', 'CRITICALLY DEPRESSED', 'CRITICAL', 'HYPERTENSIVE', 'HYPOTENSIVE', 'HYPERVENTILATING', 'FEVER', 'HIGH FEVER']);
+    return [vs.heart_rate?.label, vs.blood_pressure?.label, vs.respiration_rate?.label, vs.spo2?.label]
+      .some(l => l && danger.has(l));
+  }
+
+  // ---------------------------------------------------------------------------
   // Data loading
   // ---------------------------------------------------------------------------
 
@@ -299,123 +422,182 @@
 
     <!-- ═══════════════════════════════ OVERVIEW ═══════════════════════════ -->
     {#if activeTab === 'overview'}
-      {@const al = data.allostatic_load ?? 0}
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div class="flex flex-col gap-4">
-          <!-- Status + allostatic load -->
-          <div class="card bg-base-200 p-4">
-            <div class="flex items-center justify-between mb-3">
-              <div class="flex items-center gap-2">
-                <span class="text-xs opacity-50">Status:</span>
-                {#if data.sleeping}
-                  <span class="badge badge-info">Sleeping</span>
-                {:else}
-                  <span class="badge badge-success">Awake</span>
-                {/if}
-              </div>
-              <div class="flex items-center gap-2">
-                <span class="text-xs opacity-50">Allostatic Load</span>
-                <span class="badge badge-xs {labelBadge('allostatic_load', al)}">{labelName('allostatic_load', al)}</span>
-              </div>
-            </div>
-            <progress class="progress w-full {alColor(al)}" value={al} max="1"></progress>
-          </div>
+      {@const al        = data.allostatic_load ?? 0}
+      {@const phase     = data.body?.circadian_phase ?? 0}
+      {@const phaseEntry = getLabel('circadian_phase', phase)}
+      {@const adenosine = data.body?.adenosine ?? 25}
+      {@const melatonin = data.chemicals?.melatonin?.value ?? 5}
+      {@const glucose   = data.chemicals?.glucose?.value ?? 85}
+      {@const hydration = data.chemicals?.hydration?.value ?? 62}
+      {@const energy    = data.second_order?.energy ?? 50}
+      {@const clarity   = data.second_order?.cognitive_clarity ?? 50}
+      {@const warmth    = data.second_order?.social_warmth ?? 50}
+      {@const loneliness = data.third_order?.loneliness ?? 0}
+      {@const distress  = data.third_order?.physical_distress ?? 0}
+      {@const moods     = notableMoods(data)}
+      {@const sleepSt   = plainSleep(adenosine, melatonin, data.sleeping)}
+      {@const foodSt    = plainFood(glucose)}
+      {@const waterSt   = plainWater(hydration)}
+      {@const energySt  = plainEnergy(energy)}
+      {@const thinkSt   = plainThinking(clarity)}
+      {@const peopleSt  = plainWithPeople(warmth, loneliness)}
 
-          <!-- Second-order -->
-          <div class="card bg-base-200 p-4">
-            <h2 class="text-xs font-semibold opacity-50 uppercase tracking-wider mb-3">Second-Order</h2>
-            <div class="flex flex-col gap-3">
-              {#each SECOND_ORDER as f}
-                <DerivedMeter field={f.field} label={f.label} value={data.second_order[f.field] ?? 0} tooltip={f.tooltip} />
-              {/each}
-            </div>
+      <!-- Context strip -->
+      <div class="card bg-base-200 px-5 py-3 mb-4">
+        <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+          <div class="flex items-center gap-2">
+            {#if data.sleeping}
+              <span class="badge badge-info badge-sm">Sleeping</span>
+            {:else}
+              <span class="badge badge-success badge-sm">Awake</span>
+            {/if}
           </div>
-
-          <!-- Third-order -->
-          <div class="card bg-base-200 p-4">
-            <h2 class="text-xs font-semibold opacity-50 uppercase tracking-wider mb-3">Third-Order</h2>
-            <div class="flex flex-col gap-3">
-              {#each THIRD_ORDER as f}
-                <DerivedMeter field={f.field} label={f.label} value={data.third_order[f.field] ?? 0} tooltip={f.tooltip} />
-              {/each}
-            </div>
+          <div class="opacity-20 hidden sm:block text-xs">|</div>
+          <div class="flex items-center gap-2">
+            {#if phaseEntry}
+              <span class="opacity-50 text-xs">{phaseEntry.name.toLowerCase()}</span>
+              <span class="opacity-30 text-xs">—</span>
+              <span class="opacity-40 text-xs">{phaseEntry.implication.toLowerCase()}</span>
+            {/if}
+          </div>
+          <div class="opacity-20 hidden sm:block text-xs">|</div>
+          <div class="flex items-center gap-2">
+            <span class="opacity-40 text-xs">stress reserve</span>
+            <progress class="progress w-20 {alColor(al)}" value={al} max="1"></progress>
+            <span class="opacity-50 text-xs">{plainLoad(al)}</span>
           </div>
         </div>
+      </div>
 
-        <div class="flex flex-col gap-4">
-          <!-- Vital Signs -->
-          {#if data.vital_signs && Object.keys(data.vital_signs).length > 0}
-            {@const vs = data.vital_signs}
-            <div class="card bg-base-200 p-4">
-              <h2 class="text-xs font-semibold opacity-50 uppercase tracking-wider mb-3">Vital Signs</h2>
-              <div class="grid grid-cols-2 gap-3">
-                {#if vs.heart_rate}
-                  <div>
-                    <span class="text-xs opacity-50">Heart Rate</span>
-                    <div class="text-2xl font-mono font-bold {vitalLabelColor(vs.heart_rate.label)}">{vs.heart_rate.value?.toFixed(0)}<span class="text-sm font-normal opacity-60"> BPM</span></div>
-                    <div class="text-xs {vitalLabelColor(vs.heart_rate.label)}">{vs.heart_rate.label}</div>
-                  </div>
-                {/if}
-                {#if vs.blood_pressure}
-                  <div>
-                    <span class="text-xs opacity-50">Blood Pressure</span>
-                    <div class="text-2xl font-mono font-bold {vitalLabelColor(vs.blood_pressure.label)}">{vs.blood_pressure.systolic?.toFixed(0)}/{vs.blood_pressure.diastolic?.toFixed(0)}<span class="text-sm font-normal opacity-60"> mmHg</span></div>
-                    <div class="text-xs {vitalLabelColor(vs.blood_pressure.label)}">{vs.blood_pressure.label}</div>
-                  </div>
-                {/if}
-                {#if vs.respiration_rate}
-                  <div>
-                    <span class="text-xs opacity-50">Respiration</span>
-                    <div class="text-2xl font-mono font-bold {vitalLabelColor(vs.respiration_rate.label)}">{vs.respiration_rate.value?.toFixed(1)}<span class="text-sm font-normal opacity-60"> br/min</span></div>
-                    <div class="text-xs {vitalLabelColor(vs.respiration_rate.label)}">{vs.respiration_rate.label}</div>
-                  </div>
-                {/if}
-                {#if vs.spo2}
-                  {@const c = vs.spo2.label === 'NORMAL' ? 'text-success' : vs.spo2.label === 'LOW' ? 'text-warning' : 'text-error'}
-                  <div>
-                    <span class="text-xs opacity-50">SpO₂</span>
-                    <div class="text-2xl font-mono font-bold {c}">{vs.spo2.value?.toFixed(1)}<span class="text-sm font-normal opacity-60">%</span></div>
-                    <div class="text-xs {c}">{vs.spo2.label}</div>
-                  </div>
-                {/if}
-              </div>
-              <p class="text-xs opacity-30 mt-3">Derived from chemistry — substance-gated danger only.</p>
+      <!-- Main grid -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+        <!-- Left: How she's feeling emotionally -->
+        <div class="card bg-base-200 p-5">
+          <h2 class="text-xs font-semibold opacity-40 uppercase tracking-wider mb-4">How she's feeling</h2>
+          {#if moods.length === 0}
+            <div class="flex items-center gap-3">
+              <div class="w-2 h-2 rounded-full bg-success shrink-0"></div>
+              <span class="text-sm opacity-50">Emotionally calm — nothing notable</span>
+            </div>
+          {:else}
+            <div class="flex flex-col gap-3">
+              {#each moods as mood}
+                <div class="flex items-center gap-3">
+                  <div class="w-2 h-2 rounded-full {sc(mood.severity)} shrink-0"></div>
+                  <span class="text-sm {st(mood.severity)}">{mood.label}</span>
+                </div>
+              {/each}
             </div>
           {/if}
+        </div>
 
-          <!-- Session Tokens -->
-          {#if tokens}
-            <div class="card bg-base-200 p-4">
-              <h2 class="text-xs font-semibold opacity-50 uppercase tracking-wider mb-3">Session Tokens</h2>
-              <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm mb-3">
-                <span>Started <span class="font-mono opacity-70">{sessionAge(tokens.session_start)}</span></span>
-                <span>Turns <span class="font-mono font-bold">{tokens.turns}</span></span>
-                <span>In <span class="font-mono font-bold text-info">{fmtNum(tokens.total_input)}</span></span>
-                <span>Out <span class="font-mono font-bold text-success">{fmtNum(tokens.total_output)}</span></span>
-                {#if tokens.total_reasoning > 0}
-                  <span>Reasoning <span class="font-mono font-bold text-warning">{fmtNum(tokens.total_reasoning)}</span></span>
-                {/if}
+        <!-- Right: Body + Mind -->
+        <div class="flex flex-col gap-4">
+
+          <!-- Body needs -->
+          <div class="card bg-base-200 p-5">
+            <h2 class="text-xs font-semibold opacity-40 uppercase tracking-wider mb-4">Body</h2>
+            <div class="flex flex-col gap-2">
+              <div class="flex justify-between items-baseline">
+                <span class="text-sm opacity-40">Sleep</span>
+                <span class="text-sm font-medium {lc(sleepSt.level)}">{sleepSt.text}</span>
               </div>
-              {#if Object.keys(tokens.by_label).length > 0}
-                <div class="overflow-x-auto">
-                  <table class="table table-xs w-full">
-                    <thead><tr class="opacity-50"><th>Call</th><th class="text-right">In</th><th class="text-right">Out</th></tr></thead>
-                    <tbody>
-                      {#each Object.entries(tokens.by_label) as [lbl, counts]}
-                        <tr>
-                          <td class="opacity-70">{TOKEN_LABEL_NAMES[lbl] ?? lbl}</td>
-                          <td class="text-right font-mono text-info">{fmtNum(counts.input)}</td>
-                          <td class="text-right font-mono text-success">{fmtNum(counts.output)}</td>
-                        </tr>
-                      {/each}
-                    </tbody>
-                  </table>
+              <div class="flex justify-between items-baseline">
+                <span class="text-sm opacity-40">Food</span>
+                <span class="text-sm font-medium {lc(foodSt.level)}">{foodSt.text}</span>
+              </div>
+              <div class="flex justify-between items-baseline">
+                <span class="text-sm opacity-40">Water</span>
+                <span class="text-sm font-medium {lc(waterSt.level)}">{waterSt.text}</span>
+              </div>
+              {#if distress > 25}
+                <div class="flex justify-between items-baseline">
+                  <span class="text-sm opacity-40">Comfort</span>
+                  <span class="text-sm font-medium {distress > 45 ? 'text-error' : 'text-warning'}">
+                    {distress > 45 ? 'hurting' : 'mild discomfort'}
+                  </span>
                 </div>
               {/if}
             </div>
-          {/if}
+          </div>
+
+          <!-- Mind -->
+          <div class="card bg-base-200 p-5">
+            <h2 class="text-xs font-semibold opacity-40 uppercase tracking-wider mb-4">Mind</h2>
+            <div class="flex flex-col gap-2">
+              <div class="flex justify-between items-baseline">
+                <span class="text-sm opacity-40">Energy</span>
+                <span class="text-sm font-medium {lc(energySt.level)}">{energySt.text}</span>
+              </div>
+              <div class="flex justify-between items-baseline">
+                <span class="text-sm opacity-40">Thinking</span>
+                <span class="text-sm font-medium {lc(thinkSt.level)}">{thinkSt.text}</span>
+              </div>
+              <div class="flex justify-between items-baseline">
+                <span class="text-sm opacity-40">With people</span>
+                <span class="text-sm font-medium {lc(peopleSt.level)}">{peopleSt.text}</span>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
+
+      <!-- Vitals — only shown when something is actually wrong -->
+      {#if hasVitalAlert(data)}
+        {@const vs = data.vital_signs}
+        <div class="card bg-base-200 p-5 mt-4 border border-error border-opacity-30">
+          <h2 class="text-xs font-semibold text-error uppercase tracking-wider mb-3">Physical alert</h2>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {#if vs.heart_rate}
+              <div>
+                <span class="text-xs opacity-40">Heart Rate</span>
+                <div class="text-xl font-mono font-bold {vitalLabelColor(vs.heart_rate.label)}">{vs.heart_rate.value?.toFixed(0)}<span class="text-xs font-normal opacity-50"> BPM</span></div>
+                <div class="text-xs {vitalLabelColor(vs.heart_rate.label)}">{vs.heart_rate.label}</div>
+              </div>
+            {/if}
+            {#if vs.blood_pressure}
+              <div>
+                <span class="text-xs opacity-40">Blood Pressure</span>
+                <div class="text-xl font-mono font-bold {vitalLabelColor(vs.blood_pressure.label)}">{vs.blood_pressure.systolic?.toFixed(0)}/{vs.blood_pressure.diastolic?.toFixed(0)}</div>
+                <div class="text-xs {vitalLabelColor(vs.blood_pressure.label)}">{vs.blood_pressure.label}</div>
+              </div>
+            {/if}
+            {#if vs.respiration_rate}
+              <div>
+                <span class="text-xs opacity-40">Respiration</span>
+                <div class="text-xl font-mono font-bold {vitalLabelColor(vs.respiration_rate.label)}">{vs.respiration_rate.value?.toFixed(1)}<span class="text-xs font-normal opacity-50"> /min</span></div>
+                <div class="text-xs {vitalLabelColor(vs.respiration_rate.label)}">{vs.respiration_rate.label}</div>
+              </div>
+            {/if}
+            {#if vs.spo2}
+              {@const c = vitalLabelColor(vs.spo2.label)}
+              <div>
+                <span class="text-xs opacity-40">SpO₂</span>
+                <div class="text-xl font-mono font-bold {c}">{vs.spo2.value?.toFixed(1)}<span class="text-xs font-normal opacity-50">%</span></div>
+                <div class="text-xs {c}">{vs.spo2.label}</div>
+              </div>
+            {/if}
+          </div>
+        </div>
+      {/if}
+
+      <!-- Session footer -->
+      {#if tokens}
+        <div class="mt-4 pt-3 border-t border-base-300">
+          <div class="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs opacity-40">
+            <span class="font-semibold uppercase tracking-wider">Session</span>
+            <span>Started <span class="font-mono">{sessionAge(tokens.session_start)}</span></span>
+            <span>Turns <span class="font-mono font-bold">{tokens.turns}</span></span>
+            <span>In <span class="font-mono">{fmtNum(tokens.total_input)}</span></span>
+            <span>Out <span class="font-mono">{fmtNum(tokens.total_output)}</span></span>
+            {#if tokens.total_reasoning > 0}
+              <span>Reasoning <span class="font-mono">{fmtNum(tokens.total_reasoning)}</span></span>
+            {/if}
+          </div>
+        </div>
+      {/if}
 
     <!-- ════════════════════════════════ NEURO ════════════════════════════════ -->
     {:else if activeTab === 'neuro'}

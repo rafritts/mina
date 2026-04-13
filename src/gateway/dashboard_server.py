@@ -193,7 +193,8 @@ def _build_state_response(s) -> dict:
 
     # Body / circadian
     b = s.body
-    current_hour = (time.time() % 86400) / 3600.0
+    lt = time.localtime()
+    current_hour = lt.tm_hour + lt.tm_min / 60.0 + lt.tm_sec / 3600.0
     circadian_phase = round(current_hour / 24.0, 4)
     body_out = {
         "core_temp":      round(b.get("core_temp",   37.0), 2),

@@ -67,7 +67,8 @@ Only include chemical fields that actually change from the external event."""
 
 _EVENT_OVERRIDE_GUIDANCE = """\
 event_override — set to true ONLY when a discrete biological event with a known sharp signature occurs.
-When true, your deltas bypass saturation scaling and personality modulation and are applied directly.
+When true, your deltas bypass personality modulation and momentum dampening and are applied directly.
+Saturation is still enforced — use the calibrated magnitudes below and they will land correctly.
 Use calibrated magnitudes for these events:
 
 - Peak resolution: dopamine -100 to -150, sleep_pressure +30 to +40, norepinephrine -60 to -100
@@ -94,7 +95,7 @@ _MOMENTUM_CEILINGS: dict[str, float] = {
     "serotonin":       3.5,   # ng/mL — very slow, tight
     "endorphins":     30.0,   # pg/mL — physical activity sustains this more
     "acetylcholine":  14.0,   # nmol/L — cognitive engagement
-    "norepinephrine": 80.0,   # pg/mL — arousal
+    "norepinephrine": 400.0,  # pg/mL — arousal; resting 100–400, needs sustained elevation to dampen
 }
 
 
