@@ -23,8 +23,6 @@ PAUSED_FLAG      = os.path.join(RUN_DIR, ".paused")
 INJECT_FILE      = os.path.join(RUN_DIR, "subconscious_inject.md")
 OUTBOX_FILE      = os.path.join(RUN_DIR, "outbox.jsonl")
 OVERDOSE_TIMER_FILE = os.path.join(RUN_DIR, "overdose_timer.json")
-PERSONALITY_FILE = os.path.join(REPO_ROOT, "personality.json")
-
 # LLM configuration — read once at import time
 MODEL    = os.getenv("MODEL",    "grok-4-1-fast-reasoning")
 BASE_URL = os.getenv("BASE_URL", "https://api.x.ai/v1")

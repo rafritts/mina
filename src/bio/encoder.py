@@ -17,7 +17,7 @@ import os
 import re
 
 from ..infra.client import get_client, ENCODER_MODEL as MODEL
-from ..infra.config import PERSONALITY_FILE
+from ..infra.config import load_config
 from .state import BiologicalState
 
 # ---------------------------------------------------------------------------
@@ -171,12 +171,8 @@ def _apply_saturation(deltas: dict, state: BiologicalState) -> dict:
 
 
 def _load_personality() -> dict:
-    """Load personality.json. Returns empty dict if not found."""
-    try:
-        with open(PERSONALITY_FILE) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+    """Load personality settings from config.json. Returns empty dict on failure."""
+    return load_config()
 
 
 def _personality_multipliers(personality: dict) -> dict[str, float]:

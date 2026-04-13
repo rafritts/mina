@@ -1,21 +1,16 @@
 """
 Default starting values for all biological state tiers.
 
-chemical_defaults() is overrideable by personality.json neurochemical_baselines.
+chemical_defaults() is overrideable by config.json neurochemical_baselines.
 All other defaults are fixed at canonical physiological resting values.
 """
 from __future__ import annotations
 
-import json
-import os
-
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.abspath(__file__)
-))))
+from ...infra.config import load_config
 
 
 def chemical_defaults() -> dict[str, float]:
-    """Base defaults, overrideable by personality.json neurochemical_baselines."""
+    """Base defaults, overrideable by config.json neurochemical_baselines."""
     defaults = {
         "cortisol":        250.0,   # nmol/L — circadian midpoint
         "norepinephrine":  200.0,   # pg/mL
@@ -33,10 +28,7 @@ def chemical_defaults() -> dict[str, float]:
         "glutamate":         4.0,   # µmol/L — CSF proxy resting baseline
     }
     try:
-        pf = os.path.join(_PROJECT_ROOT, "personality.json")
-        with open(pf) as f:
-            p = json.load(f)
-        nb = p.get("neurochemical_baselines", {})
+        nb = load_config().get("neurochemical_baselines", {})
         if "oxytocin_resting" in nb:
             defaults["oxytocin"] = float(nb["oxytocin_resting"])
         if "serotonin_resting" in nb:

@@ -5,5 +5,23 @@
   "sleep_window_start": 4,
   "sleep_window_end": 8,
   "naps_enabled": false,
-  "admin_name": "Ryan"
+  "admin_name": "Ryan",
+
+  "display_name": "Mina",
+  "voice_anchor": "MINA.md",
+  "personality_condition": null,
+  "big5": {
+    "openness":          80,
+    "conscientiousness": 75,
+    "extraversion":      85,
+    "agreeableness":     70,
+    "neuroticism":       65
+  },
+  "neurochemical_baselines": {
+    "oxytocin_resting":     4.0,
+    "serotonin_resting":   22.0,
+    "dopamine_sensitivity": 1.0
+  },
+
+  "customization_files": ["CUSTOMIZATION.md"]
 }

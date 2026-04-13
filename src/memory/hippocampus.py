@@ -22,7 +22,7 @@ import time
 from typing import Optional
 
 from ..infra.client import get_client, MODEL
-from ..infra.config import PROJECT_ROOT, REPO_ROOT
+from ..infra.config import PROJECT_ROOT, REPO_ROOT, load_config
 from ..infra.text_filter import apply_word_filter
 from ..bio.state import BiologicalState
 from ..bio.decoder import format_state_block
@@ -105,7 +105,8 @@ def build_kag_context() -> str:
     """Assemble the full KAG context block for the decoder prompt."""
     parts = []
 
-    mina_parts = [p for p in [read_identity("MINA.md"), read_identity("CUSTOMIZATION.md")] if p]
+    customization_files = load_config().get("customization_files", [])
+    mina_parts = [p for p in [read_identity("MINA.md")] + [read_identity(f) for f in customization_files] if p]
     mina = "\n\n---\n\n".join(mina_parts)
     if mina:
         parts.append(f"## Character\n{mina}")

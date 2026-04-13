@@ -17,7 +17,7 @@ import re
 import time
 
 from ..infra.client import get_client, DECODER_MODEL, CONTEXT_MODEL
-from ..infra.config import PERSONALITY_FILE, INJECT_FILE, RUN_DIR
+from ..infra.config import load_config, INJECT_FILE, RUN_DIR
 from .state import BiologicalState, derived, _CHEMICAL_DEFAULTS
 from .chemicals import REGISTRY, get_label
 
@@ -440,7 +440,8 @@ def build_memory_context(
     from ..memory.hippocampus import read_identity
 
     # Identity always goes in, unconditionally.
-    identity_parts = [p for p in [read_identity("MINA.md"), read_identity("CUSTOMIZATION.md")] if p]
+    customization_files = load_config().get("customization_files", [])
+    identity_parts = [p for p in [read_identity("MINA.md")] + [read_identity(f) for f in customization_files] if p]
     identity = "\n\n---\n\n".join(identity_parts)
 
     # LLM pass for the rest of KAG/RAG.
@@ -566,13 +567,8 @@ def format_state_block(state: BiologicalState) -> str:
 # ---------------------------------------------------------------------------
 
 def _load_personality_block() -> str:
-    """Load Big 5 from personality.json and format as a personality context block."""
-    import json as _json
-    try:
-        with open(PERSONALITY_FILE) as f:
-            p = _json.load(f)
-    except (FileNotFoundError, _json.JSONDecodeError):
-        return ""
+    """Load Big 5 from config.json and format as a personality context block."""
+    p = load_config()
     big5 = p.get("big5", {})
     if not big5:
         return ""
