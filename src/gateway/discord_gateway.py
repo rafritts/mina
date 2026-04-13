@@ -29,7 +29,7 @@ _DOTENV = find_dotenv(usecwd=True)
 load_dotenv(_DOTENV)
 _PROJECT_ROOT = os.path.dirname(_DOTENV)
 
-from ..runtime.cortex import run_turn, load_history, save_history, touch_last_active, HISTORY_MAX
+from ..runtime.cortex import run_turn, compact_history_if_needed, load_history, save_history, touch_last_active, HISTORY_MAX
 from ..runtime.heartbeat import bio_tick_loop
 from ..runtime.freetime import run_freetime as _run_freetime
 from ..infra.log import log
@@ -399,6 +399,9 @@ async def _run_turn(channel: discord.abc.Messageable, messages: list[discord.Mes
         return
 
     await _deliver(channel, reply, image_paths)
+
+    # Compact after delivery — user is reading the message while this LLM call runs
+    await compact_history_if_needed()
 
     # Update presence after turn
     await _update_presence(load_state())

@@ -429,19 +429,23 @@ async def run_turn(
             save_state(state)
 
     history.extend(new_entries)
-    save_history(history)  # save immediately so reply can be returned without waiting
-
-    if len(history) > HISTORY_COMPACT_AT:
-        # Run compaction in the background — reply is already on its way to Discord
-        # so the LLM call here adds zero perceived latency.
-        async def _background_compact():
-            h = load_history()
-            h = await asyncio.to_thread(_compact_history, h)
-            save_history(h)
-        asyncio.create_task(_background_compact())
+    save_history(history)
 
     from ..infra import token_stats as _ts
     _ts.increment_turns()
 
     touch_last_active()
     return reply, image_paths
+
+
+async def compact_history_if_needed() -> None:
+    """Compact conversation history if it exceeds the threshold.
+
+    Called by the gateway *after* delivering Mina's reply so the LLM call is
+    masked by the user reading the message — not before, where it would add
+    to perceived response latency.
+    """
+    history = load_history()
+    if len(history) > HISTORY_COMPACT_AT:
+        history = await asyncio.to_thread(_compact_history, history)
+        save_history(history)
