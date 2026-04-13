@@ -198,6 +198,25 @@ async def _update_presence(state) -> None:
         )
 
 
+IDLE_COMPACT_AFTER = 60  # seconds of no message before compacting
+
+
+async def _idle_compact_loop() -> None:
+    """Compact history once after IDLE_COMPACT_AFTER seconds of no new messages."""
+    from ..infra.config import LAST_ACTIVE_FILE
+    _last_compacted_at = 0.0
+    while True:
+        await asyncio.sleep(10)
+        try:
+            last_active = os.path.getmtime(LAST_ACTIVE_FILE)
+        except FileNotFoundError:
+            continue
+        if time.time() - last_active >= IDLE_COMPACT_AFTER and last_active > _last_compacted_at:
+            log("COMPACT", "Idle threshold reached — compacting history.")
+            await compact_history_if_needed()
+            _last_compacted_at = last_active
+
+
 async def _gateway_freetime_loop() -> None:
     """Periodically run Mina's autonomous freetime session."""
     from ..infra.config import PAUSED_FLAG, load_config
@@ -400,9 +419,6 @@ async def _run_turn(channel: discord.abc.Messageable, messages: list[discord.Mes
 
     await _deliver(channel, reply, image_paths)
 
-    # Compact after delivery — user is reading the message while this LLM call runs
-    await compact_history_if_needed()
-
     # Update presence after turn
     await _update_presence(load_state())
 
@@ -535,7 +551,8 @@ async def on_ready():
     asyncio.create_task(_gateway_freetime_loop())
     asyncio.create_task(_outbox_watcher())
     asyncio.create_task(_presence_loop())
-    log("GATEWAY", "Bio tick, freetime, outbox watcher, and presence loop started.")
+    asyncio.create_task(_idle_compact_loop())
+    log("GATEWAY", "Bio tick, freetime, outbox watcher, presence loop, and idle compact started.")
 
     # Write ready file (supervisor/CLI uses this to detect startup)
     os.makedirs(_RUN_DIR, exist_ok=True)

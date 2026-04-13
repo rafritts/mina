@@ -25,8 +25,7 @@ from ..bio.state import apply_deltas, load_and_advance, load_state, save_state
 from .tools import TOOLS, call_tool, handle_generate_image
 
 HISTORY_MAX = 200
-HISTORY_KEEP = 5
-HISTORY_COMPACT_AT = 10
+HISTORY_KEEP = 30  # 15 exchanges
 
 
 # ---------------------------------------------------------------------------
@@ -439,13 +438,9 @@ async def run_turn(
 
 
 async def compact_history_if_needed() -> None:
-    """Compact conversation history if it exceeds the threshold.
-
-    Called by the gateway *after* delivering Mina's reply so the LLM call is
-    masked by the user reading the message — not before, where it would add
-    to perceived response latency.
-    """
+    """Compact conversation history. Called after 60 s of idle time."""
     history = load_history()
-    if len(history) > HISTORY_COMPACT_AT:
-        history = await asyncio.to_thread(_compact_history, history)
-        save_history(history)
+    if len(history) <= HISTORY_KEEP:
+        return  # nothing old enough to summarize
+    history = await asyncio.to_thread(_compact_history, history)
+    save_history(history)
