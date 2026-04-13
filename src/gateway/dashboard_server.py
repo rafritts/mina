@@ -384,6 +384,7 @@ def get_tokens(request: Request):
 def get_substances(request: Request):
     _check_auth(request)
     from ..sim.neuro.substances import SUBSTANCE_DEFS
+    from ..bio.state import load_state
     s = load_state()
     result = {}
     for name, sub in SUBSTANCE_DEFS.items():
@@ -401,6 +402,7 @@ def get_substances(request: Request):
 def dose_substance(name: str, request: Request):
     _check_auth(request)
     from ..sim.neuro.substances import SUBSTANCE_DEFS
+    from ..bio.state import load_state, save_state, advance
 
     sub = SUBSTANCE_DEFS.get(name)
     if not sub:
