@@ -341,10 +341,14 @@ async def _outbox_watcher() -> None:
             try:
                 msg = json.loads(line)
                 content = msg.get("content", "").strip()
+                image_path = msg.get("image_path", "").strip()
                 if content:
                     for chunk in _chunk_text(content):
                         await channel.send(chunk)
                     log("OUTBOX", f"Delivered: {content[:80]}")
+                if image_path and os.path.exists(image_path):
+                    await channel.send(file=discord.File(image_path))
+                    log("OUTBOX", f"Delivered image: {os.path.basename(image_path)}")
             except (json.JSONDecodeError, discord.DiscordException) as e:
                 log("OUTBOX/ERROR", str(e))
 
@@ -1164,7 +1168,7 @@ async def cmd_context(interaction: discord.Interaction):
     await interaction.response.send_message("\n".join(lines), ephemeral=True)
 
 
-@tree.command(name="fix-false-positive", description="LLM pass to scrub age-ambiguous language that triggers Grok's CSAM filter from history, KAG, and RAG.")
+@tree.command(name="fix-false-positive", description="Scrub age-ambiguous language triggering Grok's CSAM filter from history, KAG, and RAG.")
 async def cmd_fix_false_positive(interaction: discord.Interaction):
     # Grok's CSAM filter flags words or phrases it reads as referencing a minor —
     # age-ambiguous language, infantilizing descriptors, "girl" in adult contexts, etc.

@@ -18,7 +18,7 @@ import time
 
 from openai import OpenAI
 
-from ..infra.config import HISTORY_FILE, PAUSED_FLAG, PROJECT_ROOT, load_config
+from ..infra.config import HISTORY_FILE, OUTBOX_FILE, PAUSED_FLAG, PROJECT_ROOT, load_config
 from ..infra.client import get_client, MODEL
 from .cortex import apply_ts_label
 from ..infra.log import log as _log_raw
@@ -317,6 +317,10 @@ async def _run_mina_free_time(
             if name == "generate_image":
                 result = await handle_generate_image(args)
                 tool_result = result if result else "[Image blocked or failed]"
+                if result and result.endswith(".png") and os.path.exists(result):
+                    os.makedirs(os.path.dirname(OUTBOX_FILE), exist_ok=True)
+                    with open(OUTBOX_FILE, "a") as f:
+                        f.write(json.dumps({"image_path": result, "timestamp": time.time()}) + "\n")
                 try:
                     from ..infra.events import emit_tool
                     emit_tool(name, args, tool_result, source="freetime")
