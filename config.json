@@ -23,5 +23,5 @@
     "dopamine_sensitivity": 1.0
   },
 
-  "customization_files": ["CUSTOMIZATION.md"]
+  "customization_files": ["identity/CUSTOMIZATION.md"]
 }

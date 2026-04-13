@@ -440,8 +440,16 @@ def build_memory_context(
     from ..memory.hippocampus import read_identity
 
     # Identity always goes in, unconditionally.
+    def _read_file(path: str) -> str:
+        try:
+            from ..infra.config import REPO_ROOT
+            with open(os.path.join(REPO_ROOT, path)) as fh:
+                return fh.read()
+        except FileNotFoundError:
+            return ""
+
     customization_files = load_config().get("customization_files", [])
-    identity_parts = [p for p in [read_identity("MINA.md")] + [read_identity(f) for f in customization_files] if p]
+    identity_parts = [p for p in [read_identity("MINA.md")] + [_read_file(f) for f in customization_files] if p]
     identity = "\n\n---\n\n".join(identity_parts)
 
     # LLM pass for the rest of KAG/RAG.

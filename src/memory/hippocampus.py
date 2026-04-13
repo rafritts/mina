@@ -105,8 +105,15 @@ def build_kag_context() -> str:
     """Assemble the full KAG context block for the decoder prompt."""
     parts = []
 
+    def _read_file(path: str) -> str:
+        try:
+            with open(os.path.join(REPO_ROOT, path)) as fh:
+                return fh.read()
+        except FileNotFoundError:
+            return ""
+
     customization_files = load_config().get("customization_files", [])
-    mina_parts = [p for p in [read_identity("MINA.md")] + [read_identity(f) for f in customization_files] if p]
+    mina_parts = [p for p in [read_identity("MINA.md")] + [_read_file(f) for f in customization_files] if p]
     mina = "\n\n---\n\n".join(mina_parts)
     if mina:
         parts.append(f"## Character\n{mina}")
