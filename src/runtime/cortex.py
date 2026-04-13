@@ -429,9 +429,16 @@ async def run_turn(
             save_state(state)
 
     history.extend(new_entries)
+    save_history(history)  # save immediately so reply can be returned without waiting
+
     if len(history) > HISTORY_COMPACT_AT:
-        history = await asyncio.to_thread(_compact_history, history)
-    save_history(history)
+        # Run compaction in the background — reply is already on its way to Discord
+        # so the LLM call here adds zero perceived latency.
+        async def _background_compact():
+            h = load_history()
+            h = await asyncio.to_thread(_compact_history, h)
+            save_history(h)
+        asyncio.create_task(_background_compact())
 
     from ..infra import token_stats as _ts
     _ts.increment_turns()
