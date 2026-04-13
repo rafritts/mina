@@ -25,8 +25,8 @@ from ..bio.state import apply_deltas, load_and_advance, load_state, save_state
 from .tools import TOOLS, call_tool, handle_generate_image
 
 HISTORY_MAX = 200
-HISTORY_KEEP = 10
-HISTORY_COMPACT_AT = 50
+HISTORY_KEEP = 5
+HISTORY_COMPACT_AT = 20
 
 
 # ---------------------------------------------------------------------------
@@ -121,21 +121,22 @@ def _compact_history(history: list[dict]) -> list[dict]:
             content = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
         ts = m.get("ts")
         time_prefix = f"[{_rel_time(ts)}] " if ts else ""
-        lines.append(f"{time_prefix}{role.upper()}: {content[:400]}")
+        lines.append(f"{time_prefix}{role.upper()}: {content[:600]}")
 
     try:
         response = get_client().chat.completions.create(
             model=MODEL,
             messages=[
                 {"role": "system", "content": (
-                    "Summarize this conversation excerpt in 4-8 bullet points. "
-                    "Cover: what was discussed, notable moments, things to remember. "
-                    "Be concise. No preamble."
+                    "Summarize this conversation excerpt in 10-15 detailed bullet points. "
+                    "Cover: topics discussed, emotional tone, decisions made, things said that "
+                    "Mina should remember, and any unresolved threads. "
+                    "Be thorough — this summary is the only record of these messages. No preamble."
                 )},
                 {"role": "user", "content": "\n".join(lines)},
             ],
             temperature=0.3,
-            max_tokens=400,
+            max_tokens=900,
         )
         from ..infra import token_stats as _ts
         _ts.record_response("compact", response)
