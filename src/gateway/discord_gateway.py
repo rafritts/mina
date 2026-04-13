@@ -662,10 +662,13 @@ def _wipe_user_data() -> list[str]:
 @tree.command(name="new", description="Clear conversation history and restart.")
 async def cmd_new(interaction: discord.Interaction):
     save_history([])
-    await interaction.response.send_message("History cleared. Restarting...", ephemeral=True)
-    os.makedirs(_RUN_DIR, exist_ok=True)
-    with open(_RESTART_PENDING_FILE, "w") as f:
-        json.dump({"token": interaction.token, "application_id": interaction.application_id}, f)
+    try:
+        await interaction.response.send_message("History cleared. Restarting...", ephemeral=True)
+        os.makedirs(_RUN_DIR, exist_ok=True)
+        with open(_RESTART_PENDING_FILE, "w") as f:
+            json.dump({"token": interaction.token, "application_id": interaction.application_id}, f)
+    except Exception:
+        pass
     os._exit(42)
 
 
@@ -993,12 +996,14 @@ async def cmd_resume(interaction: discord.Interaction):
 
 @tree.command(name="stop", description="Stop Mina (supervisor will not restart until 'mina unstop').")
 async def cmd_stop(interaction: discord.Interaction):
-    await interaction.response.send_message(
-        "Stopping. Run `mina unstop` then `mina start` to bring her back.", ephemeral=True
-    )
+    try:
+        await interaction.response.send_message(
+            "Stopping. Run `mina unstop` then `mina start` to bring her back.", ephemeral=True
+        )
+    except Exception:
+        pass
     os.makedirs(_RUN_DIR, exist_ok=True)
     open(_STOPPED_FLAG, "w").close()
-    await asyncio.sleep(0.5)
     os._exit(0)
 
 
