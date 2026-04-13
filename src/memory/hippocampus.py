@@ -22,12 +22,12 @@ import time
 from typing import Optional
 
 from ..infra.client import get_client, MODEL
-from ..infra.config import PROJECT_ROOT
+from ..infra.config import PROJECT_ROOT, REPO_ROOT
 from ..bio.state import BiologicalState
 from ..bio.decoder import format_state_block
 
-_IDENTITY_DIR = os.path.join(PROJECT_ROOT, "identity")
-_KAG_DIR      = os.path.join(PROJECT_ROOT, "memory", "kag")
+_IDENTITY_DIR = os.path.join(REPO_ROOT, "identity")
+_KAG_DIR      = os.path.join(REPO_ROOT, "memory", "kag")
 _RAG_DIR      = os.path.join(PROJECT_ROOT, "memory", "rag")
 
 # Lazy-initialized ChromaDB client and collection
