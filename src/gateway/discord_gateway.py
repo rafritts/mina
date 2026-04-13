@@ -1212,9 +1212,6 @@ async def cmd_fix_false_positive(interaction: discord.Interaction):
         kag_modified = await asyncio.to_thread(kag_apply_replacements, replacements)
         rag_hits = await asyncio.to_thread(rag_apply_replacements, replacements)
 
-        channel = interaction.channel or await client.fetch_channel(interaction.channel_id)
-        await channel.send("⚠️ This conversation has been reviewed and cleaned for potential CSAM filter violations.")
-
         repl_summary = ", ".join(f'"{r["find"]}" → "{r["replace"]}"' for r in replacements)
         parts = [
             f"Replacements derived: {repl_summary}",
