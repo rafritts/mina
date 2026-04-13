@@ -13,8 +13,7 @@ from ..sim.engine import advance
 from ..sim.psych.derived import derived
 from ..sim.bio.defaults import CHEMICAL_DEFAULTS as _CHEMICAL_DEFAULTS
 
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_STATE_FILE = os.path.join(_PROJECT_ROOT, "run", "state.json")
+from ..infra.config import STATE_FILE as _STATE_FILE
 
 
 def load_state() -> BiologicalState:

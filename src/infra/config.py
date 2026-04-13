@@ -11,7 +11,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # sr
 REPO_ROOT    = os.path.dirname(PROJECT_ROOT)                                 # repo root
 
 # Runtime directory — ephemeral files live under src/run/
-RUN_DIR = os.path.join(PROJECT_ROOT, "run")
+RUN_DIR = os.path.join(REPO_ROOT, "run")
 
 # Canonical file paths
 STATE_FILE       = os.path.join(RUN_DIR, "state.json")

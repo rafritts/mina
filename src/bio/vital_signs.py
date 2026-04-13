@@ -61,8 +61,7 @@ from ..sim.constants import (
     VAGAL_TONE_HRV_SLOPE,
 )
 
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_OVERDOSE_TIMER_FILE = os.path.join(_PROJECT_ROOT, "run", "overdose_timer.json")
+from ..infra.config import OVERDOSE_TIMER_FILE as _OVERDOSE_TIMER_FILE
 
 
 # ---------------------------------------------------------------------------

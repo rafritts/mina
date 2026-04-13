@@ -409,7 +409,7 @@ async def run_freetime(force: bool = False) -> None:
     # Danger detection
     try:
         from ..bio.vital_signs import vital_signs, process_danger
-        _INJECT_FILE = os.path.join(PROJECT_ROOT, "run", "subconscious_inject.md")
+        from ..infra.config import INJECT_FILE as _INJECT_FILE
         vs = vital_signs(state)
         danger_text = process_danger(state, vs)
         if danger_text:
