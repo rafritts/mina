@@ -21,6 +21,7 @@ ADMIN_INSTRUCTIONS.md
 memory/rag/
 memory/kag/
 src/memory/rag/
+src/memory/kag/
 
 # Generated images
 memory/images/
