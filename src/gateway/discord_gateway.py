@@ -33,7 +33,7 @@ from ..runtime.cortex import run_turn, compact_history_if_needed, load_history, 
 from ..runtime.heartbeat import bio_tick_loop
 from ..runtime.freetime import run_freetime as _run_freetime
 from ..infra.log import log
-from ..infra.text_filter import apply_word_filter
+from ..infra.text_filter import apply_word_filter, apply_replacements, llm_derive_replacements
 
 # Suppress noisy-but-harmless WebSocket transport errors on reconnect
 class _SuppressResetError(logging.Filter):
@@ -43,7 +43,7 @@ class _SuppressResetError(logging.Filter):
 logging.getLogger("discord.client").addFilter(_SuppressResetError())
 logging.getLogger("discord.gateway").addFilter(_SuppressResetError())
 from ..bio.state import load_and_advance, save_state, load_state, apply_deltas, log_state, derived
-from ..memory.hippocampus import build_kag_context, build_rag_context, rag_wipe, rag_fix_word_filter, kag_fix_word_filter
+from ..memory.hippocampus import build_kag_context, build_rag_context, rag_wipe, rag_fix_word_filter, kag_fix_word_filter, kag_apply_replacements, rag_apply_replacements
 _CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
 _RUN_DIR = os.path.join(_PROJECT_ROOT, "run")
 _LOG_FILE = os.path.join(_PROJECT_ROOT, "logs", "mina.log")
@@ -1164,27 +1164,33 @@ async def cmd_context(interaction: discord.Interaction):
     await interaction.response.send_message("\n".join(lines), ephemeral=True)
 
 
-@tree.command(name="fix-false-positive", description="Retroactively replace 'girl/girls' → 'woman/women' in history, KAG, and RAG.")
+@tree.command(name="fix-false-positive", description="LLM pass to scrub age-ambiguous language that triggers Grok's CSAM filter from history, KAG, and RAG.")
 async def cmd_fix_false_positive(interaction: discord.Interaction):
-    # Grok's CSAM filter is extremely strict — it will flag "girl" in any intimate
-    # context, even benign phrasing like "hot and ready girl". Run this after a
-    # flagged conversation to scrub the term from history, KAG, and RAG so it
-    # doesn't persist into future context and retrigger the filter.
+    # Grok's CSAM filter flags words or phrases it reads as referencing a minor —
+    # age-ambiguous language, infantilizing descriptors, "girl" in adult contexts, etc.
+    # This command gives the full conversation to an LLM to identify exactly what
+    # triggered the filter, then applies the derived replacements everywhere it's stored.
     await interaction.response.defer(ephemeral=True)
     try:
-        # --- History ---
         history = load_history()
-        history_hits = 0
+
+        # LLM pass: identify what needs to change
+        replacements = await asyncio.to_thread(llm_derive_replacements, history)
+        if not replacements:
+            await interaction.followup.send("LLM found nothing to replace.", ephemeral=True)
+            return
+
+        # Apply to history
         def _fix_content(content):
             if isinstance(content, str):
-                fixed = apply_word_filter(content)
+                fixed = apply_replacements(content, replacements)
                 return fixed, fixed != content
             if isinstance(content, list):
                 changed = False
                 result = []
                 for item in content:
                     if isinstance(item, dict) and item.get("type") == "text":
-                        fixed = apply_word_filter(item["text"])
+                        fixed = apply_replacements(item["text"], replacements)
                         changed = changed or fixed != item["text"]
                         result.append({**item, "text": fixed})
                     else:
@@ -1192,6 +1198,7 @@ async def cmd_fix_false_positive(interaction: discord.Interaction):
                 return result, changed
             return content, False
 
+        history_hits = 0
         new_history = []
         for entry in history:
             content, changed = _fix_content(entry.get("content", ""))
@@ -1201,17 +1208,16 @@ async def cmd_fix_false_positive(interaction: discord.Interaction):
         if history_hits:
             save_history(new_history)
 
-        # --- KAG files ---
-        kag_modified = kag_fix_word_filter()
+        # Apply to KAG and RAG
+        kag_modified = await asyncio.to_thread(kag_apply_replacements, replacements)
+        rag_hits = await asyncio.to_thread(rag_apply_replacements, replacements)
 
-        # --- RAG (re-embeds changed entries via Ollama — runs in thread) ---
-        rag_hits = await asyncio.to_thread(rag_fix_word_filter)
-
-        parts = [f"history messages patched: {history_hits}"]
-        if kag_modified:
-            parts.append(f"KAG files patched: {', '.join(kag_modified)}")
-        else:
-            parts.append("KAG files: none needed patching")
+        repl_summary = ", ".join(f'"{r["find"]}" → "{r["replace"]}"' for r in replacements)
+        parts = [
+            f"Replacements derived: {repl_summary}",
+            f"History messages patched: {history_hits}",
+        ]
+        parts.append(f"KAG files patched: {', '.join(kag_modified)}" if kag_modified else "KAG files: none needed patching")
         parts.append(f"RAG entries re-embedded: {rag_hits}")
         await interaction.followup.send("\n".join(parts), ephemeral=True)
     except Exception as e:

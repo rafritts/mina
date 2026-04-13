@@ -23,7 +23,7 @@ from typing import Optional
 
 from ..infra.client import get_client, MODEL
 from ..infra.config import PROJECT_ROOT, REPO_ROOT, load_config
-from ..infra.text_filter import apply_word_filter
+from ..infra.text_filter import apply_word_filter, apply_replacements
 from ..bio.state import BiologicalState
 from ..bio.decoder import format_state_block
 
@@ -315,6 +315,55 @@ def kag_fix_word_filter() -> list[str]:
             write_knowledge(fname, filtered)
             modified.append(f"KNOWLEDGE/{fname}")
     return modified
+
+
+def kag_apply_replacements(replacements: list[dict]) -> list[str]:
+    """Apply an LLM-derived replacement list to all KAG files. Returns modified filenames."""
+    modified = []
+    for fname in ["RELATIONSHIP.md", "REFLECTION.md", "PENDING.md"]:
+        content = read_kag(fname)
+        if not content:
+            continue
+        fixed = apply_replacements(content, replacements)
+        if fixed != content:
+            write_kag(fname, fixed)
+            modified.append(fname)
+    for fname in list_knowledge():
+        content = read_knowledge(fname)
+        if not content:
+            continue
+        fixed = apply_replacements(content, replacements)
+        if fixed != content:
+            write_knowledge(fname, fixed)
+            modified.append(f"KNOWLEDGE/{fname}")
+    return modified
+
+
+def rag_apply_replacements(replacements: list[dict]) -> int:
+    """Apply an LLM-derived replacement list to RAG entries. Returns count updated."""
+    collection = _get_collection()
+    if collection is None:
+        return 0
+    try:
+        all_data = collection.get()
+    except Exception:
+        return 0
+
+    ids       = all_data.get("ids", []) or []
+    documents = all_data.get("documents", []) or []
+    metadatas = all_data.get("metadatas", []) or []
+
+    hit_ids, hit_docs, hit_metas = [], [], []
+    for doc_id, doc, meta in zip(ids, documents, metadatas):
+        fixed = apply_replacements(doc, replacements)
+        if fixed != doc:
+            hit_ids.append(doc_id)
+            hit_docs.append(fixed)
+            hit_metas.append(meta)
+
+    if hit_ids:
+        collection.update(ids=hit_ids, documents=hit_docs, metadatas=hit_metas)
+    return len(hit_ids)
 
 
 # ---------------------------------------------------------------------------
