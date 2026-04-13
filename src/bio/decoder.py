@@ -16,7 +16,7 @@ import os
 import re
 import time
 
-from ..infra.client import get_client, MODEL
+from ..infra.client import get_client, DECODER_MODEL, CONTEXT_MODEL
 from ..infra.config import PERSONALITY_FILE, INJECT_FILE, RUN_DIR
 from .state import BiologicalState, derived, _CHEMICAL_DEFAULTS
 from .chemicals import REGISTRY, get_label
@@ -461,7 +461,7 @@ def build_memory_context(
         ]
 
         response = get_client().chat.completions.create(
-            model=MODEL,
+            model=CONTEXT_MODEL,
             messages=messages,
             temperature=0.3,
             max_tokens=300,
@@ -750,7 +750,7 @@ def build_system_prompt(
     max_attempts = 3
     for attempt in range(1, max_attempts + 1):
         response = get_client().chat.completions.create(
-            model=MODEL,
+            model=DECODER_MODEL,
             messages=messages,
             temperature=0.7,
         )

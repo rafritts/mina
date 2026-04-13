@@ -16,7 +16,7 @@ import json
 import os
 import re
 
-from ..infra.client import get_client, MODEL
+from ..infra.client import get_client, ENCODER_MODEL as MODEL
 from ..infra.config import PERSONALITY_FILE
 from .state import BiologicalState
 
