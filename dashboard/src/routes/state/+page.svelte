@@ -2,7 +2,6 @@
   import { onMount, onDestroy } from 'svelte';
   import { apiFetch, type StateData, type TokenStats } from '$lib/api';
   import { getLabel, getLabelWithDepth, COLOR_CLASSES, DISPLAY_RANGES } from '$lib/labels';
-  import { PRESETS } from '$lib/presets';
   import ChemicalSlider   from '$lib/components/ChemicalSlider.svelte';
   import ChemicalReadOnly from '$lib/components/ChemicalReadOnly.svelte';
   import DerivedMeter     from '$lib/components/DerivedMeter.svelte';
@@ -20,8 +19,6 @@
 
   let localValues = $state<Record<string, number>>({});
   let saving      = $state(new Set<string>());
-  let applyingPreset  = $state('');
-  let presetSnapshot  = $state<Record<string, number> | null>(null);
   let refreshInterval: ReturnType<typeof setInterval>;
 
   // ---------------------------------------------------------------------------
@@ -346,31 +343,6 @@
     finally { saving = new Set([...saving].filter(f => f !== field)); }
   }
 
-  // ---------------------------------------------------------------------------
-  // Presets
-  // ---------------------------------------------------------------------------
-
-  async function applyPreset(preset: typeof PRESETS[0]) {
-    applyingPreset = preset.name;
-    presetSnapshot = { ...localValues };
-    try {
-      await apiFetch('/api/state', { method: 'PATCH', body: JSON.stringify(preset.values) });
-      for (const [k, v] of Object.entries(preset.values)) localValues[k] = v;
-      await load();
-    } catch (e) { error = String(e); presetSnapshot = null; }
-    finally { applyingPreset = ''; }
-  }
-
-  async function undoPreset() {
-    if (!presetSnapshot) return;
-    const snap = presetSnapshot;
-    presetSnapshot = null;
-    try {
-      await apiFetch('/api/state', { method: 'PATCH', body: JSON.stringify(snap) });
-      for (const [k, v] of Object.entries(snap)) localValues[k] = v;
-      await load();
-    } catch (e) { error = String(e); }
-  }
 </script>
 
 <div class="max-w-6xl mx-auto">
@@ -382,23 +354,6 @@
     </div>
   </div>
 
-  <!-- Presets bar -->
-  <div class="card bg-base-200 p-4 mb-4">
-    <h2 class="text-xs font-semibold opacity-50 uppercase tracking-wider mb-3">Presets</h2>
-    <div class="flex flex-wrap gap-2">
-      {#each PRESETS as preset}
-        <div class="tooltip tooltip-bottom" data-tip={preset.description}>
-          <button class="btn btn-sm {preset.btnClass}" onclick={() => applyPreset(preset)} disabled={!!applyingPreset}>
-            {#if applyingPreset === preset.name}<span class="loading loading-spinner loading-xs"></span>{/if}
-            {preset.name}
-          </button>
-        </div>
-      {/each}
-      {#if presetSnapshot}
-        <button class="btn btn-sm btn-ghost gap-1" onclick={undoPreset}>↩ Undo</button>
-      {/if}
-    </div>
-  </div>
 
   {#if !data}
     <div class="flex justify-center py-20"><span class="loading loading-spinner loading-lg"></span></div>
