@@ -56,28 +56,29 @@ def test_biological_report_reflects_sleeping_state():
 # _parse_decoder_json — JSON extraction and validation
 # ---------------------------------------------------------------------------
 
-_SAMPLE_JSON = '{"how_you_are": "Grounded. Not reaching."}'
+_SAMPLE_JSON = '{"primary_feeling": "calm", "secondary_feeling": "a bit tired", "emotional_snapshot": "Grounded. Not reaching.", "notify": false}'
 _SAMPLE_JSON_FENCED = '```json\n' + _SAMPLE_JSON + '\n```'
 
 
 def test_parse_decoder_json_extracts_all_fields():
     data = _parse_decoder_json(_SAMPLE_JSON)
-    assert data["how_you_are"] == "Grounded. Not reaching."
+    assert data["primary_feeling"] == "calm"
+    assert data["secondary_feeling"] == "a bit tired"
+    assert data["emotional_snapshot"] == "Grounded. Not reaching."
+    assert data["notify"] is False
 
 
 def test_parse_decoder_json_strips_markdown_fences():
     data = _parse_decoder_json(_SAMPLE_JSON_FENCED)
-    assert data["how_you_are"] == "Grounded. Not reaching."
+    assert data["primary_feeling"] == "calm"
 
 
 def test_parse_decoder_json_raises_on_missing_keys():
-    import pytest
     with pytest.raises((ValueError, KeyError)):
         _parse_decoder_json('{"something_else": "Direct."}')
 
 
 def test_parse_decoder_json_raises_on_invalid_json():
-    import pytest
     with pytest.raises(Exception):
         _parse_decoder_json("not json at all")
 
@@ -86,16 +87,40 @@ def test_parse_decoder_json_raises_on_invalid_json():
 # _assemble_system_prompt — section assembly
 # ---------------------------------------------------------------------------
 
-def test_assemble_includes_present_sections():
-    sections = {"how_you_are": "Grounded."}
+def test_assemble_includes_snapshot_and_feelings():
+    sections = {
+        "primary_feeling": "restless",
+        "secondary_feeling": "vaguely hungry",
+        "emotional_snapshot": "You're wound up and can't sit still.",
+        "notify": False,
+    }
     result = _assemble_system_prompt(sections)
-    assert "## How you're feeling right now" in result
-    assert "Grounded." in result
-    assert "emotional snapshot" in result
+    assert "Emotional snapshot" in result
+    assert "You're wound up and can't sit still." in result
+    assert "Primary: restless" in result
+    assert "Secondary: vaguely hungry" in result
+    assert "internal context only" in result
+
+
+def test_assemble_notify_true_includes_strong_emotion_instruction():
+    sections = {
+        "primary_feeling": "overwhelmed",
+        "secondary_feeling": "exhausted",
+        "emotional_snapshot": "Everything feels too heavy.",
+        "notify": True,
+    }
+    result = _assemble_system_prompt(sections)
+    assert "overwhelmed" in result
+    assert "containing it completely would be unrealistic" in result
 
 
 def test_assemble_returns_empty_when_no_content():
-    sections = {"how_you_are": None}
+    sections = {
+        "primary_feeling": "",
+        "secondary_feeling": "",
+        "emotional_snapshot": "",
+        "notify": False,
+    }
     result = _assemble_system_prompt(sections)
     assert result == ""
 
@@ -114,7 +139,7 @@ def _mock_llm_response(content: str):
     return resp
 
 
-_SAMPLE_RAW = '{"how_you_are": "Quiet. Not reaching."}'
+_SAMPLE_RAW = '{"primary_feeling": "quiet", "secondary_feeling": "settled", "emotional_snapshot": "Not reaching for anything.", "notify": false}'
 
 
 @patch("src.bio.decoder.get_client")
@@ -126,7 +151,7 @@ def test_build_system_prompt_returns_emotional_snapshot(
 ):
     mock_client.return_value.chat.completions.create.return_value = _mock_llm_response(_SAMPLE_RAW)
     prompt = build_system_prompt("bio report")
-    assert "emotional snapshot" in prompt
+    assert "Emotional snapshot" in prompt
 
 
 @patch("src.bio.decoder.get_client")
@@ -138,8 +163,8 @@ def test_build_system_prompt_includes_dynamic_sections(
 ):
     mock_client.return_value.chat.completions.create.return_value = _mock_llm_response(_SAMPLE_RAW)
     prompt = build_system_prompt("bio report")
-    assert "Quiet. Not reaching." in prompt
-    assert "emotional snapshot" in prompt
+    assert "Not reaching for anything." in prompt
+    assert "Primary: quiet" in prompt
 
 
 @patch("src.bio.decoder.get_client")
@@ -153,7 +178,7 @@ def test_build_system_prompt_retries_on_bad_json(
     good = _mock_llm_response(_SAMPLE_RAW)
     mock_client.return_value.chat.completions.create.side_effect = [bad, good]
     prompt = build_system_prompt("bio report")
-    assert "Quiet. Not reaching." in prompt
+    assert "Not reaching for anything." in prompt
 
 
 @patch("src.bio.decoder.get_client")

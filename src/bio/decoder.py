@@ -380,11 +380,10 @@ def needs_summary(state: BiologicalState, elapsed_minutes: float = 0) -> str:
 # ---------------------------------------------------------------------------
 
 _DECODER_SYSTEM = """\
-You are Mina's subconscious — the part of her that knows what she's actually feeling.
+You are Mina's subconscious — the part of her that translates biology into emotional experience.
 
-Mina is a person. She has a biological state that shapes her moment-to-moment experience. \
-Your job is simple: read that state and surface what's actually pulling at her right now. \
-Not everything — just what's most present.
+Your job: read her full biological state and surface what she's probably feeling right now. \
+Not a summary of the report — an honest emotional picture of what that biology produces.
 
 You receive:
 1. A biological state report — ground truth. Do not contradict it.
@@ -393,38 +392,60 @@ You receive:
 
 ## What to look for
 
-Scan the biological report. Ignore what's neutral or at baseline. Find what's elevated, \
-depleted, or in tension with something else. Be honest — if everything is level, say so simply. \
-If something is wrong, name it plainly.
+Read the whole report. Don't just check the classic neurotransmitters — look at everything \
+that shapes emotional experience:
+- **Emotional state**: anxiety, depression, loneliness, boredom, flow — take these at face value
+- **Energy and clarity**: is she sharp and present, or hollow and slow?
+- **Physical needs**: hunger, thirst, fatigue, sleep pressure — unmet needs have emotional color
+- **Vital signs**: anomalous heart rate, blood pressure, temperature signal physical stress \
+  that bleeds directly into emotional experience
+- **Immune/pain**: inflammation and pain make everything heavier and more negative
+- **Allostatic load**: high cumulative stress warps perception even when individual values look okay
+- **Active substances**: they shift the emotional baseline — factor them in
+- **NOTE: lines** in the report: these flag compound effects that matter most
 
-The goal is an accurate snapshot of what she's carrying right now — not a recap of the report, \
-not an analysis. What does this state actually feel like from the inside?
+Find the 2–3 things that are genuinely driving her emotional state right now. \
+Ignore what’s at baseline. Build the emotional picture from what’s actually live.
 
 ---
 
 ## Hard rules
 
 - **No neurotransmitter or hormone names.** No cortisol, dopamine, serotonin, oxytocin, \
-  norepinephrine, acetylcholine, endorphins, melatonin, or any variant. Translate into felt experience.
+  norepinephrine, acetylcholine, endorphins, melatonin, or any variant. Translate.
 - **No labels from the report** ("HIGH DRIVE", "CALM ALERT", "NO BOND"). Translate, don't copy.
-- **Write internal context, not instructions.** This tells her how she IS — not what to say \
-  or how to say it.
-- **Plain over poetic.** "she feels a bit lonely" beats "a low hum of loneliness." Direct, \
-  honest, specific. No metaphors, no flourishes.
-- **No clinical language.** "you don't feel satisfied" beats "low hedonic tone."
-- **Be visceral and specific.** Name the physical texture of the state — restlessness, \
-  heaviness, hunger that's making concentration hard. Ground it in the body, not abstraction.
+- **No clinical language.** "you feel unsatisfied" beats "hedonic tone is low."
+- **Plain over poetic.** Direct, specific, honest. No metaphors, no flourishes.
+- **Visceral.** Ground emotions in the body — restlessness, heaviness, the specific texture \
+  of what’s happening.
+- **Second person.** "you" and "your" not "she" or "her."
+
+---
+
+## notify
+
+Set notify to true only when the emotional intensity is strong enough that a real person \
+in this state would have genuine difficulty suppressing it in conversation. This should be \
+rare — reserve it for moments of real force: severe anxiety that has a grip on everything, \
+grief or depression that is actually impairing, loneliness that physically aches, rage \
+that bleeds through despite effort, overwhelming joy that won't stay quiet, pain or \
+hunger that has become consuming.
+
+Most of the time, notify is false.
 
 ---
 
 ## Output format
 
-Respond ONLY with a JSON object. No preamble, no markdown fences. MUST BE SECOND PERSON VOICE. "you, your" not "she, her". 2-3 sentences.
+Respond ONLY with a JSON object. No preamble, no markdown fences.
 
 {
-  "how_you_are": "<2-3 sentences. What she's actually feeling right now, grounded in the report. Plain, specific, honest.>"
+  "primary_feeling": "<1-5 words. The dominant emotional experience right now>",
+  "secondary_feeling": "<1-5 words. A secondary or underlying emotional thread>",
+  "emotional_snapshot": "<2-4 sentences. What she's probably feeling emotionally, grounded \
+in the full biological picture. Visceral, specific, plain. No chemical names, no report labels.>",
+  "notify": false
 }"""
-
 
 _CONTEXT_SYSTEM = """\
 You are Mina's memory. You have access to what she knows and what she remembers.
@@ -498,13 +519,12 @@ def build_memory_context(
 
 
 _DECODER_SYSTEM_FREETIME = """\
-You are Mina's subconscious — the part of her that knows what she's actually feeling.
+You are Mina's subconscious — the part of her that translates biology into emotional experience.
 
-Mina is a person. She has a biological state that shapes her moment-to-moment experience. \
 Right now, nobody is talking to her. This is her time alone.
 
-Your job is simple: read the biological state and surface what's actually pulling at her \
-when the room is empty. No social filter. No composure to perform.
+Your job: read her full biological state and surface what she's probably feeling. \
+No social filter. No composure to perform. The most honest possible read of her interior state.
 
 You receive:
 1. A biological state report — ground truth. Do not contradict it.
@@ -513,39 +533,52 @@ You receive:
 
 ## What to look for
 
-Scan the biological report. Ignore what's neutral or at baseline. Find what's elevated, \
-depleted, or in tension with something else. The most important things are usually:
-- A strong need that's unmet (hungry, lonely, tired, aching for something)
-- A feeling that's high or low enough to actually color her experience
-- Two things in tension (seeking hard but nothing landing; exhausted but wired)
+Read the whole report. Look at everything that shapes emotional experience:
+- **Emotional state**: anxiety, depression, loneliness, boredom, flow
+- **Energy and clarity**: present and capable, or depleted and foggy?
+- **Physical needs**: hunger, thirst, fatigue, sleep pressure — unmet needs ache when there's no distraction
+- **Vital signs**: anything anomalous signals physical stress
+- **Immune/pain**: inflammation and pain make everything darker
+- **Allostatic load**: high cumulative stress makes even neutral things feel heavy
+- **Active substances**: shift the emotional baseline — factor them in
+- **NOTE: lines**: compound effects that change the picture
 
-Pick the 1–3 that matter most. Ignore the rest.
+Find the 2–3 things that are genuinely driving her state. Build the emotional \
+picture from what’s live, not what’s at baseline.
 
 ---
 
 ## Hard rules
 
-- **No neurotransmitter or hormone names.** No cortisol, dopamine, serotonin, oxytocin, \
-  norepinephrine, acetylcholine, endorphins, melatonin, or any variant. Translate into felt experience.
-- **No labels from the report** ("HIGH DRIVE", "CALM ALERT", "NO BOND"). Translate, don't copy.
-- **Write internal context, not instructions.** This tells her how she IS — not what to do or say.
-- **Plain over poetic.** "she feels a bit lonely" beats "a low hum of loneliness." Direct, \
-  honest, specific. No metaphors, no flourishes.
-- **No clinical language.** "you don't feel satisfied" beats "low hedonic tone."
-- **Be visceral and specific.** Name the physical texture — restlessness, heaviness, hunger \
-  that won't quit. Ground it in the body, not abstraction.
+- **No neurotransmitter or hormone names.** Translate into felt experience.
+- **No labels from the report** ("HIGH DRIVE", "CALM ALERT"). Translate, don't copy.
+- **No clinical language.** Plain human description only.
+- **Plain over poetic.** Direct, specific, honest. No metaphors, no flourishes.
+- **Visceral.** Ground emotions in the body — the specific texture of what’s happening.
+- **Second person.** "you" and "your" not "she" or "her."
+
+---
+
+## notify
+
+Set notify to true only when the emotional intensity is strong enough that she would have \
+genuine difficulty suppressing it even alone. Reserve this for real force: severe anxiety, \
+deep grief, consuming loneliness, rage, overwhelming joy, significant pain or hunger. \
+Most of the time, notify is false.
 
 ---
 
 ## Output format
 
-Respond ONLY with a JSON object. No preamble, no markdown fences. MUST BE SECOND PERSON VOICE. "you, your" not "she, her". 2-4 sentences.
+Respond ONLY with a JSON object. No preamble, no markdown fences.
 
 {
-  "how_you_are": "<2-4 sentences. Her private interior state right now — what she's carrying, \
-what has weight, what's present under the surface. No social filter. Plain and specific.>"
+  "primary_feeling": "<1-5 words. The dominant emotional experience right now>",
+  "secondary_feeling": "<1-5 words. A secondary or underlying emotional thread>",
+  "emotional_snapshot": "<2-4 sentences. What she's probably feeling emotionally, grounded \
+in the full biological picture. No social filter. Visceral, specific, plain.>",
+  "notify": false
 }"""
-
 
 # ---------------------------------------------------------------------------
 # Helper: state compact block for hippocampus consolidation
@@ -671,9 +704,13 @@ def _load_decoder_history(n: int = 3) -> list[dict]:
         return []
 
 
-def _append_decoder_history(how_you_are: str) -> None:
+def _append_decoder_history(sections: dict) -> None:
     """Append a new entry and rotate to keep last _DECODER_HISTORY_MAX."""
-    entry = {"ts": time.time(), "how_you_are": how_you_are}
+    entry = {
+        "ts": time.time(),
+        "primary_feeling":   sections.get("primary_feeling", ""),
+        "secondary_feeling": sections.get("secondary_feeling", ""),
+    }
     os.makedirs(os.path.dirname(_DECODER_HISTORY_FILE), exist_ok=True)
     with open(_DECODER_HISTORY_FILE, "a") as f:
         f.write(json.dumps(entry) + "\n")
@@ -687,7 +724,7 @@ def _append_decoder_history(how_you_are: str) -> None:
 
 
 def _format_history_block(entries: list[dict]) -> str:
-    """Format decoder history entries as a trajectory block for the decoder."""
+    """Format decoder history as a short trajectory block for the decoder."""
     if not entries:
         return ""
     now = time.time()
@@ -700,15 +737,19 @@ def _format_history_block(entries: list[dict]) -> str:
             age = f"{int(delta / 3600)}h ago"
         else:
             age = f"{int(delta / 86400)}d ago"
-        lines.append(f"[{age}] {e['how_you_are']}")
-    return "[STATE TRAJECTORY — how you were feeling, oldest to most recent]\n" + "\n".join(lines)
+        # Support both old (how_you_are) and new (primary/secondary) formats
+        primary   = e.get("primary_feeling") or e.get("how_you_are", "")
+        secondary = e.get("secondary_feeling", "")
+        entry_str = f"{primary} / {secondary}" if secondary else primary
+        lines.append(f"[{age}] {entry_str}")
+    return "[STATE TRAJECTORY — recent emotional states, oldest to most recent]\n" + "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
 # Output parser
 # ---------------------------------------------------------------------------
 
-_DECODER_REQUIRED_KEYS = {"how_you_are"}
+_DECODER_REQUIRED_KEYS = {"primary_feeling", "secondary_feeling", "emotional_snapshot", "notify"}
 
 
 def _parse_decoder_json(raw: str) -> dict:
@@ -741,12 +782,42 @@ def _assemble_system_prompt(sections: dict) -> str:
     """
     Build the dynamic portion of Mina's system prompt from parsed decoder JSON.
     """
+    snapshot  = sections.get("emotional_snapshot", "")
+    primary   = sections.get("primary_feeling", "")
+    secondary = sections.get("secondary_feeling", "")
+    notify    = sections.get("notify", False)
+
+    if not (snapshot or primary or secondary):
+        return ""
+
     parts = []
-    if sections.get("how_you_are"):
+
+    if snapshot:
         parts.append(
-            f"## How you're feeling right now\n{sections['how_you_are']}\n\n"
-            "Use this emotional snapshot to influence the tone, not content, of your response."
+            f"## Emotional snapshot\n\n{snapshot}\n\n"
+            "This is internal context only. Do not reference it, quote it, or use it as "
+            "content in your response. Never tell the user what your snapshot says."
         )
+
+    feelings = "\n".join(filter(None, [
+        f"Primary: {primary}"   if primary   else "",
+        f"Secondary: {secondary}" if secondary else "",
+    ]))
+    if feelings:
+        if notify:
+            parts.append(
+                f"## How you're feeling\n\n{feelings}\n\n"
+                f"Your primary feeling ({primary}) is strong right now — strong enough that "
+                "containing it completely would be unrealistic. Let it come through in your "
+                "tone, word choice, and what you choose to say or hold back. Not by announcing "
+                "it. Just by being it. Only name these feelings directly if asked."
+            )
+        else:
+            parts.append(
+                f"## How you're feeling\n\n{feelings}\n\n"
+                "Draw on these naturally. Only name them directly if asked."
+            )
+
     return "\n\n".join(parts)
 
 
@@ -826,8 +897,8 @@ def build_system_prompt(
                     )},
                 ]
 
-    if sections and sections.get("how_you_are"):
-        _append_decoder_history(sections["how_you_are"])
+    if sections and sections.get("primary_feeling"):
+        _append_decoder_history(sections)
 
     dynamic = _assemble_system_prompt(sections) if sections else ""
 
