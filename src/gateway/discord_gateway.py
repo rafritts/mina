@@ -1140,6 +1140,10 @@ async def cmd_context(interaction: discord.Interaction):
 
 @tree.command(name="fix-false-positive", description="Retroactively replace 'girl/girls' → 'woman/women' in history, KAG, and RAG.")
 async def cmd_fix_false_positive(interaction: discord.Interaction):
+    # Grok's CSAM filter is extremely strict — it will flag "girl" in any intimate
+    # context, even benign phrasing like "hot and ready girl". Run this after a
+    # flagged conversation to scrub the term from history, KAG, and RAG so it
+    # doesn't persist into future context and retrigger the filter.
     await interaction.response.defer(ephemeral=True)
     try:
         # --- History ---
