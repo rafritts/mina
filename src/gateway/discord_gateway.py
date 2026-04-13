@@ -29,7 +29,7 @@ _DOTENV = find_dotenv(usecwd=True)
 load_dotenv(_DOTENV)
 _PROJECT_ROOT = os.path.dirname(_DOTENV)
 
-from ..runtime.cortex import run_turn, compact_history_if_needed, load_history, save_history, touch_last_active, HISTORY_MAX
+from ..runtime.cortex import run_turn, compact_history_if_needed, load_history, save_history, touch_last_active, HISTORY_MAX, HISTORY_FORCE_AT
 from ..runtime.heartbeat import bio_tick_loop
 from ..runtime.freetime import run_freetime as _run_freetime
 from ..infra.log import log
@@ -418,6 +418,12 @@ async def _run_turn(channel: discord.abc.Messageable, messages: list[discord.Mes
         return
 
     await _deliver(channel, reply, image_paths)
+
+    # Force compact if history has grown past 40 exchanges — runs after delivery
+    # so the user is reading the reply while the LLM call happens.
+    if len(load_history()) > HISTORY_FORCE_AT:
+        log("COMPACT", "Force threshold reached — compacting history.")
+        await compact_history_if_needed()
 
     # Update presence after turn
     await _update_presence(load_state())

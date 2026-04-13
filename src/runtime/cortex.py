@@ -25,8 +25,9 @@ from ..bio.state import apply_deltas, load_and_advance, load_state, save_state
 from .tools import TOOLS, call_tool, handle_generate_image
 
 HISTORY_MAX = 200
-HISTORY_KEEP = 30       # messages to retain after compaction (15 exchanges)
-HISTORY_COMPACT_AT = 60 # messages before compaction triggers (30 exchanges)
+HISTORY_KEEP = 30        # messages to retain after compaction (15 exchanges)
+HISTORY_COMPACT_AT = 60  # idle-based compaction threshold (30 exchanges)
+HISTORY_FORCE_AT = 80    # hard cap — compact immediately regardless of idle (40 exchanges)
 
 
 # ---------------------------------------------------------------------------
