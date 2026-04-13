@@ -21,7 +21,12 @@ import io
 import aiohttp
 import discord
 from discord import app_commands
+from dotenv import load_dotenv, find_dotenv
 from PIL import Image
+
+_DOTENV = find_dotenv(usecwd=True)
+load_dotenv(_DOTENV)
+_PROJECT_ROOT = os.path.dirname(_DOTENV)
 
 from ..runtime.cortex import run_turn, load_history, save_history, touch_last_active, HISTORY_MAX
 from ..runtime.heartbeat import bio_tick_loop
@@ -37,8 +42,6 @@ logging.getLogger("discord.client").addFilter(_SuppressResetError())
 logging.getLogger("discord.gateway").addFilter(_SuppressResetError())
 from ..bio.state import load_and_advance, save_state, load_state, apply_deltas, log_state, derived
 from ..memory.hippocampus import build_kag_context, build_rag_context, rag_wipe
-
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
 _RUN_DIR = os.path.join(_PROJECT_ROOT, "run")
 _LOG_FILE = os.path.join(_PROJECT_ROOT, "logs", "mina.log")

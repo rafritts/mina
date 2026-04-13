@@ -869,6 +869,7 @@ dependencies = [
     { name = "openai" },
     { name = "pillow" },
     { name = "pytest" },
+    { name = "python-dotenv" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -881,6 +882,7 @@ requires-dist = [
     { name = "openai", specifier = ">=2.30.0" },
     { name = "pillow", specifier = ">=12.2.0" },
     { name = "pytest", specifier = ">=9.0.3" },
+    { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.44.0" },
 ]
 

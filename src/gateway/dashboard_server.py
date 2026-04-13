@@ -16,9 +16,11 @@ import sys
 import time
 from pathlib import Path
 
-# Make project root importable so we can reuse state.py, bio_report.py, etc.
-_PROJECT_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(_PROJECT_ROOT))
+from dotenv import load_dotenv, find_dotenv
+
+_DOTENV = find_dotenv(usecwd=True)
+load_dotenv(_DOTENV)
+_PROJECT_ROOT = Path(os.path.dirname(_DOTENV))
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse

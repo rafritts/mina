@@ -12,5 +12,6 @@ dependencies = [
     "openai>=2.30.0",
     "pillow>=12.2.0",
     "pytest>=9.0.3",
+    "python-dotenv>=1.2.2",
     "uvicorn[standard]>=0.44.0",
 ]
