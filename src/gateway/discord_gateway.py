@@ -1003,10 +1003,13 @@ async def cmd_stop(interaction: discord.Interaction):
 
 @tree.command(name="restart", description="Restart Mina.")
 async def cmd_restart(interaction: discord.Interaction):
-    await interaction.response.send_message("Restarting... this message will update when she's back.", ephemeral=True)
-    os.makedirs(_RUN_DIR, exist_ok=True)
-    with open(_RESTART_PENDING_FILE, "w") as f:
-        json.dump({"token": interaction.token, "application_id": interaction.application_id}, f)
+    try:
+        await interaction.response.send_message("Restarting... this message will update when she's back.", ephemeral=True)
+        os.makedirs(_RUN_DIR, exist_ok=True)
+        with open(_RESTART_PENDING_FILE, "w") as f:
+            json.dump({"token": interaction.token, "application_id": interaction.application_id}, f)
+    except Exception:
+        pass
     os._exit(42)
 
 
