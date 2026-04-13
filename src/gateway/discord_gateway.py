@@ -1047,13 +1047,17 @@ async def cmd_clean(interaction: discord.Interaction, n: int = 0):
             if n > 0 and (len(bulk_batch) + len(old_msgs)) >= n:
                 break
 
-        # Bulk delete in chunks of 100
+        # Bulk delete in chunks of 100 (guild channels only — DMChannel lacks this)
+        can_bulk = hasattr(channel, "delete_messages")
         for i in range(0, len(bulk_batch), 100):
             chunk = bulk_batch[i:i + 100]
-            await channel.delete_messages(chunk)
-            deleted_count += len(chunk)
+            if can_bulk:
+                await channel.delete_messages(chunk)
+                deleted_count += len(chunk)
+            else:
+                old_msgs = chunk + old_msgs  # fall through to individual deletion
 
-        # Individual delete for messages older than 14 days
+        # Individual delete for messages older than 14 days (or all messages in DMs)
         for msg in old_msgs:
             await msg.delete()
             deleted_count += 1
