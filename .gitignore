@@ -20,6 +20,7 @@ ADMIN_INSTRUCTIONS.md
 # Memory (personal/runtime data — not for version control)
 memory/rag/
 memory/kag/
+src/memory/rag/
 
 # Generated images
 memory/images/
