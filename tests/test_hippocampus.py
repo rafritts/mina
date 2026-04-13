@@ -11,7 +11,72 @@ from src.memory.hippocampus import (
     _parse_json_robust,
     _extract_tag,
     _parse_consolidation_output,
+    _IDENTITY_DIR,
+    _KAG_DIR,
+    read_identity,
+    read_kag,
 )
+from src.infra.config import REPO_ROOT, PROJECT_ROOT, PERSONALITY_FILE, CONFIG_FILE
+
+
+# ---------------------------------------------------------------------------
+# Path resolution — ensure injected files are reachable after src/ restructure
+# ---------------------------------------------------------------------------
+
+def test_repo_root_is_not_src():
+    """PROJECT_ROOT points at src/; REPO_ROOT must be one level up."""
+    assert os.path.basename(PROJECT_ROOT) == "src"
+    assert REPO_ROOT == os.path.dirname(PROJECT_ROOT)
+
+
+def test_identity_dir_exists():
+    assert os.path.isdir(_IDENTITY_DIR), f"identity dir not found: {_IDENTITY_DIR}"
+
+
+def test_kag_dir_exists():
+    assert os.path.isdir(_KAG_DIR), f"KAG dir not found: {_KAG_DIR}"
+
+
+def test_personality_file_exists():
+    assert os.path.isfile(PERSONALITY_FILE), f"personality.json not found: {PERSONALITY_FILE}"
+
+
+def test_config_file_exists():
+    assert os.path.isfile(CONFIG_FILE), f"config.json not found: {CONFIG_FILE}"
+
+
+def test_mina_md_readable():
+    content = read_identity("MINA.md")
+    assert content, "MINA.md returned empty — file missing or unreadable"
+
+
+def test_customization_md_readable():
+    content = read_identity("CUSTOMIZATION.md")
+    assert content, "CUSTOMIZATION.md returned empty — file missing or unreadable"
+
+
+def test_relationship_md_readable():
+    content = read_kag("RELATIONSHIP.md")
+    assert content, "RELATIONSHIP.md returned empty — file missing or unreadable"
+
+
+def test_reflection_md_readable():
+    content = read_kag("REFLECTION.md")
+    assert content is not None  # allowed to be empty string, but not a file-not-found silent failure
+
+
+def test_identity_files_not_under_src():
+    """Guard against regression: identity dir must not be inside src/."""
+    assert not _IDENTITY_DIR.startswith(PROJECT_ROOT), (
+        f"_IDENTITY_DIR is inside src/ — path resolution regression: {_IDENTITY_DIR}"
+    )
+
+
+def test_kag_dir_not_under_src():
+    """Guard against regression: KAG dir must not be inside src/."""
+    assert not _KAG_DIR.startswith(PROJECT_ROOT), (
+        f"_KAG_DIR is inside src/ — path resolution regression: {_KAG_DIR}"
+    )
 
 
 # ---------------------------------------------------------------------------
