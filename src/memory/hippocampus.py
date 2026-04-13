@@ -128,7 +128,7 @@ def build_kag_context() -> str:
         if content:
             parts.append(f"## Knowledge: {fname}\n{content}")
 
-    return apply_word_filter("\n\n---\n\n".join(parts))
+    return "\n\n---\n\n".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -256,7 +256,7 @@ def build_rag_context(query: str, n_results: int = 5) -> str:
     if not memories:
         return ""
     lines = "\n".join(f"- {m}" for m in memories)
-    return apply_word_filter(f"## Relevant Memories\n{lines}")
+    return f"## Relevant Memories\n{lines}"
 
 
 def rag_fix_word_filter() -> int:
