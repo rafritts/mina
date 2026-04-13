@@ -25,7 +25,8 @@ from ..bio.state import apply_deltas, load_and_advance, load_state, save_state
 from .tools import TOOLS, call_tool, handle_generate_image
 
 HISTORY_MAX = 200
-HISTORY_KEEP = 30  # 15 exchanges
+HISTORY_KEEP = 30       # messages to retain after compaction (15 exchanges)
+HISTORY_COMPACT_AT = 60 # messages before compaction triggers (30 exchanges)
 
 
 # ---------------------------------------------------------------------------
@@ -440,7 +441,7 @@ async def run_turn(
 async def compact_history_if_needed() -> None:
     """Compact conversation history. Called after 60 s of idle time."""
     history = load_history()
-    if len(history) <= HISTORY_KEEP:
-        return  # nothing old enough to summarize
+    if len(history) <= HISTORY_COMPACT_AT:
+        return  # window not full yet
     history = await asyncio.to_thread(_compact_history, history)
     save_history(history)
