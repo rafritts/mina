@@ -23,6 +23,7 @@ from typing import Optional
 
 from ..infra.client import get_client, MODEL
 from ..infra.config import PROJECT_ROOT, REPO_ROOT
+from ..infra.text_filter import apply_word_filter
 from ..bio.state import BiologicalState
 from ..bio.decoder import format_state_block
 
@@ -127,7 +128,7 @@ def build_kag_context() -> str:
         if content:
             parts.append(f"## Knowledge: {fname}\n{content}")
 
-    return "\n\n---\n\n".join(parts)
+    return apply_word_filter("\n\n---\n\n".join(parts))
 
 
 # ---------------------------------------------------------------------------
@@ -255,7 +256,7 @@ def build_rag_context(query: str, n_results: int = 5) -> str:
     if not memories:
         return ""
     lines = "\n".join(f"- {m}" for m in memories)
-    return f"## Relevant Memories\n{lines}"
+    return apply_word_filter(f"## Relevant Memories\n{lines}")
 
 
 # ---------------------------------------------------------------------------

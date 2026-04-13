@@ -33,6 +33,7 @@ from ..runtime.cortex import run_turn, load_history, save_history, touch_last_ac
 from ..runtime.heartbeat import bio_tick_loop
 from ..runtime.freetime import run_freetime as _run_freetime
 from ..infra.log import log
+from ..infra.text_filter import apply_word_filter
 
 # Suppress noisy-but-harmless WebSocket transport errors on reconnect
 class _SuppressResetError(logging.Filter):
@@ -336,6 +337,7 @@ async def _outbox_watcher() -> None:
 async def _deliver(channel: discord.abc.Messageable, reply: str, image_paths: list[str]) -> None:
     """Send chunked text then any images to the channel."""
     if reply:
+        reply = apply_word_filter(reply)
         for chunk in _chunk_text(reply):
             await channel.send(chunk)
             if len(_chunk_text(reply)) > 1:
@@ -362,6 +364,9 @@ async def _run_turn(channel: discord.abc.Messageable, messages: list[discord.Mes
         username = messages[0].author.display_name
         lines = [f"{m.author.display_name}: {m.content}" for m in messages]
         user_input = "\n".join(lines)
+
+    # Sanitise before Grok sees it — avoids the LLM echoing flagged terms back
+    user_input = apply_word_filter(user_input)
 
     # Collect first image attachment across all batched messages
     image_b64 = None
