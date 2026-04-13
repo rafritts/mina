@@ -26,7 +26,7 @@ from .tools import TOOLS, call_tool, handle_generate_image
 
 HISTORY_MAX = 200
 HISTORY_KEEP = 5
-HISTORY_COMPACT_AT = 20
+HISTORY_COMPACT_AT = 10
 
 
 # ---------------------------------------------------------------------------
