@@ -43,13 +43,13 @@ Always respond with a JSON object. Always include "no_external_deltas" and "reas
 If nothing external happened (ongoing internal state, nothing happened, quiet period):
 {
   "no_external_deltas": true,
-  "reasoning": "<one sentence: why there is nothing external to encode>"
+  "reasoning": "<10 words max: why nothing to encode>"
 }
 
 If an external event occurred:
 {
   "no_external_deltas": false,
-  "reasoning": "<one sentence: what external event triggered these specific deltas>",
+  "reasoning": "<10 words max: event + why these deltas>",
   "cortisol": <number>,       // nmol/L delta
   "dopamine": <number>,       // pg/mL delta
   "serotonin": <number>,      // ng/mL delta
