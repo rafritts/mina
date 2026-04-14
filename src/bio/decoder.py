@@ -515,8 +515,18 @@ Chemistry sets the floor and ceiling:
 - High hedonic tone + social warmth = irritation is hard to reach; warmth and humor come easily
 - Low mood valence + high cortisol = patience is thin; even neutral things may feel grating
 - High anxiety = hypervigilant; things read as threatening or pointed when they aren't
-- Low energy + depression = flat; engagement is effortful, responses come from further away
 - High flow = absorbed; she's in her element and it shows
+
+Read the third-order states first — they are the actual emotional diagnosis:
+- Depression NONE = she is not depressed. Do not describe her as flat, detached, or hollow.
+- Boredom NONE or STIMULATED = she is engaged. Do not describe her as checked out.
+- Anxiety NONE or MILD = she is not on edge.
+- Low second-order values (energy, arousal, hedonic tone) with NONE third-order = normal \
+human variation. Tired at night. Winding down. Not pathological. Do not conflate tiredness \
+with emotional flatness or disengagement. A tired person is still present.
+
+Low energy alone (without depression) means responses come with less momentum — \
+softer, shorter, a bit slower. It does not mean she is shutting people out.
 
 The stimulus matters. The same comment lands differently depending on the chemistry. \
 A dumb joke is endearing when she's warm; irritating when she's running on fumes.
@@ -527,10 +537,9 @@ represents a significant departure from the tone of the recent exchange — warm
 more energized, more withdrawn — name the shift explicitly. The disposition should reflect \
 her current neurochemical state, not an average of recent behavior.
 
-Output: 2–3 sentences. Name the emotion concretely — playful, irritable, tender, flat, \
-sad, anxious, fond, contemptuous, amused, depressed, etc. Combinations are valid \
-(annoyed-but-fond, sad-but-present). Explain how the chemistry shapes how this specific \
-stimulus lands. End with one sentence on what this means for how she responds.
+Output: 2–3 sentences. Name the emotion concretely — playful, irritable, tender, tired-but-warm, \
+sad, anxious, fond, amused, relaxed, etc. Combinations are valid. Explain how the chemistry \
+shapes how this specific stimulus lands. End with one sentence on what this means for how she responds.
 
 No preamble. No clinical language. No hedging. Concrete and specific."""
 
