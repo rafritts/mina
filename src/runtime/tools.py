@@ -18,7 +18,11 @@ from ..bio.state import BiologicalState, save_state
 
 _BASE_URL_SEARCH = os.getenv("BASE_URL", "https://api.x.ai/v1")
 _API_KEY_SEARCH  = os.getenv("XAI_API_KEY", os.getenv("OPENAI_API_KEY", ""))
-_SEARCH_MODEL    = "grok-3-latest"
+
+# Web/X search use the same model as the main conversation so the setting stays in sync.
+# The Responses API requires a model that supports server-side tools (web_search, x_search).
+from ..infra.config import MODEL as _MAIN_MODEL
+_SEARCH_MODEL = os.getenv("SEARCH_MODEL", _MAIN_MODEL)
 
 _search_client = None
 
@@ -412,7 +416,7 @@ def handle_web_search(args: dict) -> str:
         response = _get_search_client().responses.create(
             model=_SEARCH_MODEL,
             tools=[{"type": "web_search"}],
-            input=query,
+            input=[{"role": "user", "content": query}],
         )
         return response.output_text or "[web_search: no results]"
     except Exception as e:
@@ -427,7 +431,7 @@ def handle_x_search(args: dict) -> str:
         response = _get_search_client().responses.create(
             model=_SEARCH_MODEL,
             tools=[{"type": "x_search"}],
-            input=query,
+            input=[{"role": "user", "content": query}],
         )
         return response.output_text or "[x_search: no results]"
     except Exception as e:
