@@ -30,6 +30,10 @@ MODEL    = os.getenv("MODEL",    "grok-4-1-fast-reasoning")
 BASE_URL = os.getenv("BASE_URL", "https://api.x.ai/v1")
 API_KEY  = os.getenv("XAI_API_KEY", os.getenv("OPENAI_API_KEY", "sk-placeholder"))
 
+# Ollama — local inference (OpenAI-compatible). To use:
+#   BASE_URL=http://localhost:11434/v1  MODEL=gemma4:31b  API_KEY=ollama
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+
 # Per-role model overrides — each falls back to MODEL if not set
 ENCODER_MODEL = os.getenv("ENCODER_MODEL", MODEL)
 #DECODER_MODEL = os.getenv("DECODER_MODEL", "grok-4.20-0309-reasoning")
