@@ -42,7 +42,7 @@ _OLLAMA_KEY   = "ollama"
 # num_ctx: context window size. kv_cache_type: f16 / q8_0 / q4_0. num_gpu: GPU layers.
 OLLAMA_OPTIONS: dict = {
     "num_ctx": 32768,
-    "num_gpu": 99,
+    "num_gpu": 999,
     "kv_cache_type": "f16",
 }
 
