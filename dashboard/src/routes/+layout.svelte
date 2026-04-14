@@ -132,9 +132,11 @@
         {#if billingUsed !== null}
           {@const allowed = proRated()}
           {@const over = billingUsed > allowed}
-          <span class="text-xs tabular-nums opacity-50" title="Spent vs pro-rated allowance for today's date">
+          <span class="text-xs tabular-nums opacity-50 flex items-center gap-1.5">
+            <span class="opacity-60">spent</span>
             <span class={over ? 'text-warning' : ''}>${billingUsed.toFixed(2)}</span>
-            <span class="opacity-40"> / </span>
+            <span class="opacity-30">/</span>
+            <span class="opacity-60">allowed</span>
             <span>${allowed.toFixed(2)}</span>
           </span>
         {/if}
