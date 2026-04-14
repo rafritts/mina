@@ -624,7 +624,7 @@ def adjudicate_emotion(
             model=DECODER_MODEL,
             messages=messages,
             temperature=0.6,
-            max_tokens=200,
+            max_tokens=2048,
         )
         token_stats.record_response("adjudicator", response)
         raw = (response.choices[0].message.content or "").strip()
@@ -752,7 +752,7 @@ def build_memory_context(
             model=CONTEXT_MODEL,
             messages=messages,
             temperature=0.3,
-            max_tokens=600,
+            max_tokens=2048,
         )
         token_stats.record_response("context", response)
         llm_context = (response.choices[0].message.content or "").strip()
