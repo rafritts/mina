@@ -155,7 +155,7 @@ _BIOLOGICAL_TOOLS = [
                 "properties": {
                     "prompt": {
                         "type": "string",
-                        "description": "Image description (Danbooru-style tags). MINA.md appearance tags are prepended automatically for self-images.",
+                        "description": "Image description as Danbooru-style tags.",
                     },
                     "dimensions": {
                         "type": "string",
@@ -441,7 +441,6 @@ def handle_x_search(args: dict) -> str:
 async def handle_generate_image(args: dict) -> str:
     """Generate an image via ComfyUI. Returns path or error string."""
     from skills.comfyui.comfyui_skill import generate_image
-    from ..memory.hippocampus import read_identity
 
     prompt          = args.get("prompt", "")
     dimensions      = args.get("dimensions", "832x1216")
@@ -449,17 +448,6 @@ async def handle_generate_image(args: dict) -> str:
     negative_prompt = args.get("negative_prompt", None)
     workflow        = args.get("workflow", "upscale")
     seed            = args.get("seed", None)
-
-    mina_identity = read_identity("MINA.md")
-    appearance_tags = ""
-    if mina_identity:
-        for line in mina_identity.splitlines():
-            stripped = line.strip()
-            if stripped.lower().startswith("prompt:"):
-                appearance_tags = stripped[len("prompt:"):].strip()
-                break
-    if appearance_tags and appearance_tags not in prompt:
-        prompt = f"{appearance_tags}, {prompt}"
 
     from ..infra.log import log
     log("COMFY", f"workflow={workflow} dimensions={dimensions} seed={seed}")
