@@ -75,8 +75,9 @@ from src.sim.constants import (
     BIG5_A_WARMTH_SCALE,
     BIG5_C_DEPRESSION_SCALE,
     BIG5_C_ENERGY_SCALE,
+    BIG5_E_AROUSAL_OPTIMAL_BASE,
+    BIG5_E_AROUSAL_OPTIMAL_SCALE,
     BIG5_E_AROUSAL_SCALE,
-    BIG5_E_HEDONIC_SCALE,
     BIG5_E_WARMTH_SCALE,
     BIG5_N_ANXIETY_SCALE,
     BIG5_N_DEPRESSION_SCALE,
@@ -262,11 +263,11 @@ def derived(s) -> dict:
     )
 
     # HEDONIC TONE: reward (D2), endorphins, serotonin, anandamide.
-    # Extraversion raises the floor (positive affect at rest). Openness raises it too
-    # (more things are interesting and rewarding). Blunted by inflammation and allostatic load.
+    # Openness raises the floor — curious people find more things rewarding.
+    # Extraversion is NOT wired here: introverts aren't less happy, just differently stimulated.
+    # Blunted by inflammation and allostatic load.
     hedonic_tone = _clamp(
         HEDONIC_OFFSET
-        + _p(E, BIG5_E_HEDONIC_SCALE)
         + _p(O, BIG5_O_HEDONIC_SCALE)
         + (effective_dopamine_reward * HEDONIC_DOPAMINE_REWARD_WEIGHT)
         + (_n("endorphins", s)       * HEDONIC_ENDORPHIN_WEIGHT)
@@ -351,9 +352,13 @@ def derived(s) -> dict:
         - DEPRESSION_OFFSET
     )
 
-    # BOREDOM: Openness raises the threshold — curious people are harder to bore.
+    # BOREDOM: driven by arousal deficit from optimal, not absolute low arousal.
+    # Introverts have a low optimal (~25); extraverts need high arousal (~60) to feel engaged.
+    # Openness raises the threshold further — curious people are harder to bore at any arousal level.
+    optimal_arousal = BIG5_E_AROUSAL_OPTIMAL_BASE + E * BIG5_E_AROUSAL_OPTIMAL_SCALE
+    arousal_deficit = max(0.0, optimal_arousal - arousal)   # understimulation relative to need
     boredom = _clamp(
-        (100 - arousal)         * BOREDOM_AROUSAL_WEIGHT
+        (arousal_deficit        * BOREDOM_AROUSAL_WEIGHT)
         + (100 - hedonic_tone)  * BOREDOM_HEDONIC_WEIGHT
         + (100 - energy)        * BOREDOM_ENERGY_WEIGHT
         + (100 - cognitive_clarity) * BOREDOM_CLARITY_WEIGHT

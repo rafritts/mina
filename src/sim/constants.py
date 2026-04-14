@@ -604,18 +604,26 @@ BOREDOM_OFFSET                        = 20.0
 # Big5 personality → second-order baseline adjustments
 # Formula: adjustment = (trait_0_to_1 - 0.5) * 2 * scale
 # At trait=0.5 (average person), adjustment=0. Positive scale = trait raises the value.
-BIG5_E_AROUSAL_SCALE    = 15.0   # extraversion: activated, enthusiastic baseline
-BIG5_E_WARMTH_SCALE     = 12.0   # extraversion: warmer at rest
-BIG5_E_HEDONIC_SCALE    = 10.0   # extraversion: positive affect floor
-BIG5_A_WARMTH_SCALE     = 12.0   # agreeableness: warmer, more trusting
-BIG5_A_ANXIETY_SCALE    = 8.0    # agreeableness: lower baseline anxiety (trusting world)
-BIG5_O_HEDONIC_SCALE    = 10.0   # openness: more things are interesting → hedonic lift
-BIG5_O_BOREDOM_SCALE    = 12.0   # openness: harder to bore
-BIG5_N_ANXIETY_SCALE    = 14.0   # neuroticism: raises anxiety floor
-BIG5_N_VALENCE_SCALE    = 10.0   # neuroticism: negative bias on mood valence
-BIG5_N_DEPRESSION_SCALE = 8.0    # neuroticism: more susceptible to depression signal
-BIG5_C_ENERGY_SCALE     = 10.0   # conscientiousness: purposeful → higher energy floor
-BIG5_C_DEPRESSION_SCALE = 8.0    # conscientiousness: resilience lowers depression floor
+# Big5 personality → second-order baseline adjustments
+# Boredom uses optimal arousal (E-dependent), not absolute 100-arousal.
+# Hedonic tone is NOT wired to E — introverts aren't less happy, just differently stimulated.
+BIG5_E_AROUSAL_SCALE          = 15.0   # extraversion raises arousal floor (extraverts more activated at rest)
+BIG5_E_WARMTH_SCALE           = 12.0   # extraversion raises warmth floor
+BIG5_A_WARMTH_SCALE           = 12.0   # agreeableness raises warmth floor
+BIG5_A_ANXIETY_SCALE          = 8.0    # agreeableness lowers anxiety (more trusting world)
+BIG5_O_HEDONIC_SCALE          = 12.0   # openness raises hedonic tone (more things are interesting)
+BIG5_O_BOREDOM_SCALE          = 12.0   # openness raises boredom threshold (harder to bore)
+BIG5_N_ANXIETY_SCALE          = 14.0   # neuroticism raises anxiety floor
+BIG5_N_VALENCE_SCALE          = 10.0   # neuroticism: negative mood valence bias
+BIG5_N_DEPRESSION_SCALE       = 8.0    # neuroticism raises depression susceptibility
+BIG5_C_ENERGY_SCALE           = 10.0   # conscientiousness raises energy floor (purposeful)
+BIG5_C_DEPRESSION_SCALE       = 8.0    # conscientiousness lowers depression floor (resilience)
+
+# Optimal arousal set-point (E-dependent)
+# Introverts function best at low arousal; extraverts need high arousal to feel right.
+# Boredom = max(0, optimal - current_arousal) * weight — not 100-arousal.
+BIG5_E_AROUSAL_OPTIMAL_BASE   = 15.0   # optimal arousal for pure introvert (E=0)
+BIG5_E_AROUSAL_OPTIMAL_SCALE  = 50.0   # extraversion adds up to 50 points of arousal need
 
 # Third-order: Loneliness (SPEC-28 — decoupled from social_warmth, driven by isolation + bond deficit)
 LONELINESS_ISOLATION_WEIGHT           = 0.60   # isolation_pressure (0-100 AU) drives loneliness
