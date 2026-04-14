@@ -18,13 +18,14 @@ import time
 
 from openai import OpenAI
 
-from ..infra.config import HISTORY_FILE, OUTBOX_FILE, PAUSED_FLAG, PROJECT_ROOT, load_config
+from ..infra.config import DECODER_WINDOW_FILE, OUTBOX_FILE, PAUSED_FLAG, PROJECT_ROOT, load_config
 from ..infra.client import get_client, MODEL
 from .cortex import apply_ts_label
 from ..infra.log import log as _log_raw
-from ..bio.decoder import biological_report, build_system_prompt, build_memory_context, needs_summary
+from ..bio.decoder import biological_report, adjudicate_emotion, build_memory_context, needs_summary
 from ..bio.encoder import encode_stimulus, encode_response, evaluate_activity_deltas
-from ..memory.hippocampus import build_kag_context, build_rag_context, rag_add, write_kag, consolidate
+from ..memory.hippocampus import build_kag_context, build_rag_context, rag_add, rag_prune, write_kag, consolidate
+from .cortex import DECODER_WINDOW_SIZE, MINA_IMMEDIATE_WINDOW, _format_rag_block, _rag_write_and_trim
 from ..bio.state import (
     BiologicalState,
     apply_deltas,
@@ -37,18 +38,18 @@ from .tools import HEARTBEAT_TOOLS, call_tool, handle_generate_image
 _LAST_ACTIVE_FILE = os.path.join(PROJECT_ROOT, ".last_user_active")
 
 
-def _load_history() -> list[dict]:
+def _load_decoder_window() -> list[dict]:
     try:
-        with open(HISTORY_FILE) as f:
+        with open(DECODER_WINDOW_FILE) as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return []
 
 
-def _save_history(history: list[dict]) -> None:
-    os.makedirs(os.path.dirname(HISTORY_FILE), exist_ok=True)
-    with open(HISTORY_FILE, "w") as f:
-        json.dump(history, f, indent=2)
+def _save_decoder_window(window: list[dict]) -> None:
+    os.makedirs(os.path.dirname(DECODER_WINDOW_FILE), exist_ok=True)
+    with open(DECODER_WINDOW_FILE, "w") as f:
+        json.dump(window, f, indent=2)
 
 
 def _user_recently_active(window_seconds: int = 60) -> bool:
@@ -247,9 +248,9 @@ async def _run_mina_free_time(
     """
     full_system = system_prompt + _build_freetime_suffix(state)
 
-    # Base messages — history context, stripping internal system markers
+    # Base messages — immediate window only, stripping internal system markers
     base_messages = [{"role": "system", "content": full_system}]
-    for msg in history[-10:]:
+    for msg in history:
         role = msg.get("role", "")
         if role == "system":
             continue
@@ -379,12 +380,14 @@ async def run_freetime(force: bool = False) -> None:
     # If deeply asleep and no interruption, skip Phase 2
     sleep_pressure_was_high = state.sleep_pressure < 20 and state.sleeping
 
-    history = _load_history()
+    decoder_window = _load_decoder_window()
+    cfg = load_config()
+    mina_immediate = cfg.get("mina_immediate_window", MINA_IMMEDIATE_WINDOW)
     kag_context = build_kag_context()
 
     # --- Phase 1: Hippocampus consolidation ---
     _log("Phase 1: memory consolidation.")
-    reflection = await asyncio.to_thread(consolidate, state, history, kag_context)
+    reflection = await asyncio.to_thread(consolidate, state, decoder_window, kag_context)
 
     _log(f"Reflection summary: {reflection['reflection_summary']}")
 
@@ -397,10 +400,17 @@ async def run_freetime(force: bool = False) -> None:
             write_kag(filename.replace("KNOWLEDGE/", "KNOWLEDGE" + os.sep), content)
             _log(f"KAG updated: {filename}")
 
+    # RAG TTL pruning
+    ttl = cfg.get("rag_ttl_days", 0)
+    if ttl:
+        pruned = rag_prune(ttl_days=int(ttl))
+        if pruned:
+            _log(f"RAG pruned {pruned} entries older than {ttl} days.")
+
     # --- Phase 2: Mina's free time ---
     if state.sleeping and sleep_pressure_was_high:
         _log("Phase 2: Mina is in deep sleep — skipping free time.")
-        _save_history(history)
+        _save_decoder_window(decoder_window)
         return
 
     _log("Phase 2: Mina's free time.")
@@ -433,27 +443,47 @@ async def run_freetime(force: bool = False) -> None:
         state = apply_deltas(state, stimulus_deltas)
         save_state(state)
 
-    # [2] biological_report — deterministic, from updated state
+    # [2] biological_report — deterministic, logged only (not injected into prompts)
     report = biological_report(state)
 
-    # [3] decoder + memory context — run in parallel
+    # [3] emotion adjudication + memory context — run in parallel
+    # Build time context: current clock + how long she's been alone
+    _ft_now_str = time.strftime("%-I:%M %p", time.localtime())
+    _ft_day_str = time.strftime("%A", time.localtime())
+    _ft_time_parts = [f"Current time: {_ft_day_str} {_ft_now_str}"]
+    try:
+        with open(_LAST_ACTIVE_FILE) as _f:
+            _ft_last = float(_f.read().strip())
+        _ft_idle = time.time() - _ft_last
+        if _ft_idle < 3600:
+            _ft_time_parts.append(f"Alone for: {int(_ft_idle / 60)} minutes")
+        elif _ft_idle < 86400:
+            _ft_time_parts.append(f"Alone for: {_ft_idle / 3600:.1f} hours")
+        else:
+            _ft_time_parts.append(f"Alone for: {int(_ft_idle / 86400)} days")
+    except (FileNotFoundError, ValueError):
+        pass
+    _ft_time_context = "\n".join(_ft_time_parts)
+
     system_prompt, memory_context = await asyncio.gather(
-        asyncio.to_thread(build_system_prompt, report, "freetime"),
+        asyncio.to_thread(adjudicate_emotion, state, stimulus_text, "freetime", _ft_time_context),
         asyncio.to_thread(build_memory_context, stimulus_text, kag_context, rag_context),
     )
 
     if not system_prompt:
-        _log("No system prompt from decoder — skipping Mina turn.")
+        _log("No emotional disposition from adjudicator — skipping Mina turn.")
         _save_history(history)
         return
 
     if memory_context:
         system_prompt = memory_context + "\n\n---\n\n" + system_prompt
 
-    # [4] Mina's free time turn
-    new_entries, pending_dos = await _run_mina_free_time(state, system_prompt, history)
+    # [4] Mina's free time turn — she sees only the immediate window, not the full decoder window
+    new_entries, pending_dos = await _run_mina_free_time(
+        state, system_prompt, decoder_window[-mina_immediate:]
+    )
 
-    history.extend(new_entries)
+    decoder_window.extend(new_entries)
 
     # --- Phase 3: State update ---
     _log("Phase 3: applying state updates.")
@@ -491,7 +521,10 @@ async def run_freetime(force: bool = False) -> None:
         if response_deltas:
             state = apply_deltas(state, response_deltas)
             save_state(state)  # persist response deltas
-    _save_history(history)
+
+    # Write freetime entries to RAG and trim decoder window
+    decoder_window = _rag_write_and_trim(decoder_window)
+    _save_decoder_window(decoder_window)
 
     _log("Complete.")
 

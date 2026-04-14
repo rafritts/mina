@@ -1,10 +1,10 @@
 {
-  "heartbeat_interval_seconds": 1800,
+  "heartbeat_interval_seconds": 600,
   "time_compression_factor": 1.0,
   "comfyui_host": "localhost",
   "sleep_window_start": 4,
   "sleep_window_end": 8,
-  "naps_enabled": false,
+  "naps_enabled": true,
   "admin_name": "Ryan",
 
   "display_name": "Mina",
@@ -23,5 +23,7 @@
     "dopamine_sensitivity": 1.0
   },
 
-  "customization_files": ["identity/CUSTOMIZATION.md"]
+  "customization_files": ["identity/CUSTOMIZATION.md"],
+
+  "rag_ttl_days": 180
 }

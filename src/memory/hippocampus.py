@@ -267,6 +267,25 @@ def build_rag_context(query: str, n_results: int = 5) -> str:
     return f"## Relevant Memories\n{lines}"
 
 
+def rag_prune(ttl_days: int = 180) -> int:
+    """Delete RAG entries older than ttl_days. Returns count deleted."""
+    collection = _get_collection()
+    if collection is None:
+        return 0
+    cutoff = time.time() - (ttl_days * 86400)
+    try:
+        result = collection.get(where={"timestamp": {"$lt": cutoff}})
+        ids = result.get("ids", [])
+        if ids:
+            collection.delete(ids=ids)
+        return len(ids)
+    except Exception as e:
+        # ChromaDB may not support $lt on all versions — fail silently
+        from ..infra.log import log
+        log("RAG/PRUNE/ERR", str(e))
+        return 0
+
+
 def rag_fix_word_filter() -> int:
     """Scan every RAG entry and apply word filter in-place (re-embeds changed docs).
     Returns the number of entries updated."""

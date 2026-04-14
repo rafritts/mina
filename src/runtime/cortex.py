@@ -15,19 +15,22 @@ import time
 
 from ..infra.client import get_client, MODEL
 from ..infra.config import (
-    HISTORY_FILE, LAST_ACTIVE_FILE, ADMIN_FILE, PAUSED_FLAG, load_config
+    HISTORY_FILE, DECODER_WINDOW_FILE, LAST_ACTIVE_FILE, ADMIN_FILE, PAUSED_FLAG, load_config
 )
 from ..infra.log import log
-from ..bio.decoder import biological_report, build_system_prompt, build_memory_context, needs_summary
+from ..bio.decoder import biological_report, adjudicate_emotion, build_memory_context, needs_summary
 from ..memory.hippocampus import build_kag_context, build_rag_context
 from ..bio.encoder import encode_stimulus, encode_response, evaluate_activity_deltas
 from ..bio.state import apply_deltas, load_and_advance, load_state, save_state
 from .tools import TOOLS, call_tool, handle_generate_image
 
-HISTORY_MAX = 200
-HISTORY_KEEP = 30        # messages to retain after compaction (15 exchanges)
-HISTORY_COMPACT_AT = 60  # idle-based compaction threshold (30 exchanges)
-HISTORY_FORCE_AT = 80    # hard cap — compact immediately regardless of idle (40 exchanges)
+DECODER_WINDOW_SIZE   = 20  # sliding window depth (~10 exchanges)
+MINA_IMMEDIATE_WINDOW = 4   # messages Mina receives directly (2 exchanges)
+
+# Backward-compat constants — gateway imports these for display/checks
+HISTORY_MAX      = DECODER_WINDOW_SIZE      # used by /context display
+HISTORY_FORCE_AT = DECODER_WINDOW_SIZE + 1  # disables gateway force-compact check
+HISTORY_KEEP     = MINA_IMMEDIATE_WINDOW    # no longer used for compaction
 
 
 # ---------------------------------------------------------------------------
@@ -82,76 +85,114 @@ def apply_ts_label(msg: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# History management
+# Decoder window management
 # ---------------------------------------------------------------------------
 
-def load_history() -> list[dict]:
+def _format_rag_block(window: list[dict]) -> str:
+    """Format a window of messages as a text block for RAG storage."""
+    lines = []
+    for m in window:
+        role = m.get("role")
+        if role not in ("user", "assistant"):
+            continue
+        content = m.get("content", "")
+        if isinstance(content, list):
+            content = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
+        content = str(content).strip()
+        if not content:
+            continue  # skip empty assistant messages (pure tool calls)
+        ts = m.get("ts")
+        prefix = f"[{_rel_time(ts)}] " if ts else ""
+        role_label = "USER" if role == "user" else "MINA"
+        lines.append(f"{prefix}{role_label}: {content[:400]}")
+    return "\n".join(lines)
+
+
+def _migrate_history_if_needed() -> list[dict] | None:
+    """
+    One-time migration from conversation.json → RAG + decoder window.
+    Returns the initial decoder window if migration ran, None if not needed.
+    """
+    if os.path.exists(DECODER_WINDOW_FILE) or not os.path.exists(HISTORY_FILE):
+        return None
+
     try:
         with open(HISTORY_FILE) as f:
+            old_history = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+
+    log("SPEC27", f"Migrating {len(old_history)} messages from conversation.json → RAG + decoder window.")
+
+    # Write all old entries to RAG in overlapping blocks
+    if old_history:
+        from ..memory.hippocampus import rag_add as _rag_add
+        for i in range(0, len(old_history), DECODER_WINDOW_SIZE):
+            chunk = old_history[i:i + DECODER_WINDOW_SIZE]
+            block = _format_rag_block(chunk)
+            if block:
+                _rag_add(block, {"source": "conversation_migration", "ts": time.time()})
+
+    # Seed decoder window from the tail of old history
+    window = old_history[-DECODER_WINDOW_SIZE:] if old_history else []
+
+    # Archive the old file so migration doesn't re-run
+    try:
+        os.rename(HISTORY_FILE, HISTORY_FILE + ".archived")
+        log("SPEC27", "Archived conversation.json → conversation.json.archived")
+    except Exception as e:
+        log("SPEC27/ERR", f"Could not archive conversation.json: {e}")
+
+    return window
+
+
+def load_decoder_window() -> list[dict]:
+    """Load the decoder sliding window. Runs one-time migration on first boot."""
+    migrated = _migrate_history_if_needed()
+    if migrated is not None:
+        save_decoder_window(migrated)
+        return migrated
+    try:
+        with open(DECODER_WINDOW_FILE) as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return []
 
 
+def save_decoder_window(window: list[dict]) -> None:
+    """Save the decoder window, enforcing the DECODER_WINDOW_SIZE cap."""
+    if len(window) > DECODER_WINDOW_SIZE:
+        window = window[-DECODER_WINDOW_SIZE:]
+    os.makedirs(os.path.dirname(DECODER_WINDOW_FILE), exist_ok=True)
+    with open(DECODER_WINDOW_FILE, "w") as f:
+        json.dump(window, f, indent=2)
+
+
+def _rag_write_and_trim(window: list[dict]) -> list[dict]:
+    """
+    Write the last DECODER_WINDOW_SIZE messages as a RAG block (high-overlap
+    sliding blocks → near-guaranteed cache hits on retrieval), then trim the
+    window to DECODER_WINDOW_SIZE.  Returns the (possibly trimmed) window.
+    """
+    from ..memory.hippocampus import rag_add
+    block = _format_rag_block(window[-DECODER_WINDOW_SIZE:])
+    if block:
+        rag_add(block, {"source": "conversation", "ts": time.time()})
+    if len(window) > DECODER_WINDOW_SIZE:
+        window = window[-DECODER_WINDOW_SIZE:]
+    return window
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat aliases (discord_gateway.py imports these)
+# ---------------------------------------------------------------------------
+
+def load_history() -> list[dict]:
+    return load_decoder_window()
+
+
 def save_history(history: list[dict]) -> None:
-    if len(history) > HISTORY_MAX:
-        history = history[-HISTORY_MAX:]
-    os.makedirs(os.path.dirname(HISTORY_FILE), exist_ok=True)
-    with open(HISTORY_FILE, "w") as f:
-        json.dump(history, f, indent=2)
-
-
-def _compact_history(history: list[dict]) -> list[dict]:
-    """
-    Summarize all but the last HISTORY_KEEP messages into a compact block.
-    Returns [compact_system_msg] + last HISTORY_KEEP messages.
-    Falls back to uncompacted history on LLM error — never loses messages.
-    """
-    overflow = history[:-HISTORY_KEEP]
-    recent   = history[-HISTORY_KEEP:]
-
-    to_summarize = [m for m in overflow if m.get("role") in ("user", "assistant")]
-    if not to_summarize:
-        return recent
-
-    lines = []
-    for m in to_summarize:
-        role = m.get("role", "?")
-        content = m.get("content", "")
-        if isinstance(content, list):
-            content = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
-        ts = m.get("ts")
-        time_prefix = f"[{_rel_time(ts)}] " if ts else ""
-        lines.append(f"{time_prefix}{role.upper()}: {content[:600]}")
-
-    try:
-        response = get_client().chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": (
-                    "Summarize this conversation excerpt in 10-15 detailed bullet points. "
-                    "Cover: topics discussed, emotional tone, decisions made, things said that "
-                    "Mina should remember, and any unresolved threads. "
-                    "Be thorough — this summary is the only record of these messages. No preamble."
-                )},
-                {"role": "user", "content": "\n".join(lines)},
-            ],
-            temperature=0.3,
-            max_tokens=900,
-        )
-        from ..infra import token_stats as _ts
-        _ts.record_response("compact", response)
-        summary = response.choices[0].message.content or ""
-    except Exception as e:
-        log("COMPACT/ERROR", str(e))
-        return history  # fall back to uncompacted on error
-
-    if not summary:
-        return recent
-
-    compact_msg = {"role": "system", "content": f"[COMPACT]\n{summary}"}
-    log("COMPACT", f"Summarized {len(overflow)} messages into {len(summary)} chars")
-    return [compact_msg] + recent
+    save_decoder_window(history)
 
 
 def touch_last_active() -> None:
@@ -334,6 +375,14 @@ async def run_turn(
         (reply_text, image_paths) — reply is the final assistant text;
         image_paths is a list of generated .png file paths (may be empty).
     """
+    # Capture idle time before touching — we want the gap since the previous message
+    try:
+        with open(LAST_ACTIVE_FILE) as _f:
+            _prev_active = float(_f.read().strip())
+        _idle_seconds = time.time() - _prev_active
+    except (FileNotFoundError, ValueError):
+        _idle_seconds = None
+
     touch_last_active()
 
     paused = os.path.exists(PAUSED_FLAG)
@@ -360,11 +409,13 @@ async def run_turn(
     except Exception as _e:
         log("DANGER/ERROR", str(_e))
 
-    # [2] biological_report — deterministic, from updated state
+    # [2] biological_report — deterministic, logged only (not injected into prompts)
     report = biological_report(state)
     log("BIO/REPORT", f"\n{report}")
 
-    history = load_history()
+    decoder_window = load_decoder_window()
+    cfg = load_config()
+    mina_immediate = cfg.get("mina_immediate_window", MINA_IMMEDIATE_WINDOW)
 
     # Build user content — multimodal if image attached
     if image_b64:
@@ -375,14 +426,33 @@ async def run_turn(
         log("VISION", f"Image attached ({image_mime})")
     else:
         user_content = f"{username}: {user_input}"
-    history.append({"role": "user", "content": user_content, "ts": time.time()})
+    decoder_window.append({"role": "user", "content": user_content, "ts": time.time()})
 
-    # [3] decoder + memory context — run in parallel
+    # [3] emotion adjudication + memory context — run in parallel
+    # adjudicate_emotion: derived emotional profile + stimulus → concrete emotional disposition
     kag_context = build_kag_context()
     rag_context = build_rag_context(user_input)
+    stimulus = f"{username}: {user_input}"
+
+    # Build time context: clock time + how long since the previous message
+    _now_str = time.strftime("%-I:%M %p", time.localtime())
+    _day_str  = time.strftime("%A", time.localtime())
+    _time_context_parts = [f"Current time: {_day_str} {_now_str}"]
+    if _idle_seconds is not None and _idle_seconds > 90:
+        if _idle_seconds < 3600:
+            _time_context_parts.append(f"Last message: {int(_idle_seconds / 60)} minutes ago")
+        elif _idle_seconds < 86400:
+            _time_context_parts.append(f"Last message: {_idle_seconds / 3600:.1f} hours ago")
+        else:
+            _time_context_parts.append(f"Last message: {int(_idle_seconds / 86400)} days ago")
+    else:
+        _time_context_parts.append("Ongoing conversation")
+    _time_context = "\n".join(_time_context_parts)
+
     system_prompt, memory_context = await asyncio.gather(
-        asyncio.to_thread(build_system_prompt, report),
-        asyncio.to_thread(build_memory_context, f"{username}: {user_input}", kag_context, rag_context),
+        # Full decoder window gives adjudicator conversational context to name shifts
+        asyncio.to_thread(adjudicate_emotion, state, stimulus, "active", _time_context, decoder_window),
+        asyncio.to_thread(build_memory_context, stimulus, kag_context, rag_context),
     )
     if not system_prompt:
         system_prompt = "You are Mina. Respond naturally."
@@ -412,8 +482,10 @@ async def run_turn(
             _state_note_parts.append("[" + " ".join(_cog_lines) + "]")
     state_note = "\n".join(_state_note_parts)
 
-    # [4] Mina responds
-    new_entries, state, image_paths = await _mina_turn(system_prompt, history, state, state_note)
+    # [4] Mina responds — she only sees the immediate window, not the full decoder window
+    new_entries, state, image_paths = await _mina_turn(
+        system_prompt, decoder_window[-mina_immediate:], state, state_note
+    )
     save_state(state)
 
     reply = ""
@@ -429,8 +501,10 @@ async def run_turn(
             state = apply_deltas(state, response_deltas)
             save_state(state)
 
-    history.extend(new_entries)
-    save_history(history)
+    # Append response entries to the decoder window, write to RAG, trim, save
+    decoder_window.extend(new_entries)
+    decoder_window = _rag_write_and_trim(decoder_window)
+    save_decoder_window(decoder_window)
 
     from ..infra import token_stats as _ts
     _ts.increment_turns()
@@ -440,9 +514,5 @@ async def run_turn(
 
 
 async def compact_history_if_needed() -> None:
-    """Compact conversation history. Called after 60 s of idle time."""
-    history = load_history()
-    if len(history) <= HISTORY_COMPACT_AT:
-        return  # window not full yet
-    history = await asyncio.to_thread(_compact_history, history)
-    save_history(history)
+    """No-op — compaction replaced by RAG aging in SPEC-27. Kept for gateway compat."""
+    pass

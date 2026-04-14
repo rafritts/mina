@@ -16,13 +16,15 @@ RUN_DIR = os.path.join(REPO_ROOT, "run")
 # Canonical file paths
 STATE_FILE       = os.path.join(RUN_DIR, "state.json")
 CONFIG_FILE      = os.path.join(REPO_ROOT, "config.json")
-HISTORY_FILE     = os.path.join(RUN_DIR, "conversation.json")
+HISTORY_FILE         = os.path.join(RUN_DIR, "conversation.json")   # kept for migration detection
+DECODER_WINDOW_FILE  = os.path.join(RUN_DIR, "decoder_window.json")
 LAST_ACTIVE_FILE = os.path.join(PROJECT_ROOT, ".last_user_active")
 ADMIN_FILE       = os.path.join(RUN_DIR, "ADMIN_INSTRUCTIONS.md")
 PAUSED_FLAG      = os.path.join(RUN_DIR, ".paused")
 INJECT_FILE      = os.path.join(RUN_DIR, "subconscious_inject.md")
-OUTBOX_FILE      = os.path.join(RUN_DIR, "outbox.jsonl")
-OVERDOSE_TIMER_FILE = os.path.join(RUN_DIR, "overdose_timer.json")
+OUTBOX_FILE          = os.path.join(RUN_DIR, "outbox.jsonl")
+OVERDOSE_TIMER_FILE  = os.path.join(RUN_DIR, "overdose_timer.json")
+FOLLOWUP_QUEUE_FILE  = os.path.join(RUN_DIR, "followup_queue.json")
 # LLM configuration — read once at import time
 MODEL    = os.getenv("MODEL",    "grok-4-1-fast-reasoning")
 BASE_URL = os.getenv("BASE_URL", "https://api.x.ai/v1")

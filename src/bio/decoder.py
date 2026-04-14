@@ -1,15 +1,18 @@
 """
-Decoder — neurochemical state → English prose → system prompt.
+Decoder — neurochemical state → emotional disposition → system prompt.
 
-Two layers:
-  biological_report(state)       Pure Python. Chemical values → labeled ranges with
-                                  behavioral notes. Ground truth for the LLM — it cannot
-                                  contradict this report.
+Primary entry point:
+  adjudicate_emotion(state, stimulus, mode)
+    Takes BiologicalState + what was just said/happening.
+    Combines derived emotional profile with the stimulus to adjudicate a concrete
+    emotional disposition (happy, irritable, playful, depressed, etc.) and how that
+    chemistry shapes how the stimulus lands. Returns [EMOTIONAL DISPOSITION] block.
 
-  build_system_prompt(...)        LLM pass. Biological report + context + history
-                                  → structured JSON → assembled system prompt.
-
-Also provides needs_summary() used by freetime.py as the heartbeat stimulus text.
+Supporting:
+  biological_report(state)        Pure Python diagnostics. Chemical values → labeled
+                                  ranges. Used for logging — not injected into prompts.
+  build_memory_context(...)       Identity + KAG/RAG context block.
+  needs_summary()                 Freetime heartbeat stimulus text.
 """
 import json
 import os
@@ -373,6 +376,238 @@ def needs_summary(state: BiologicalState, elapsed_minutes: float = 0) -> str:
         parts.append("Quiet. No urgent needs.")
 
     return " ".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Emotion adjudicator
+# ---------------------------------------------------------------------------
+
+_SECOND_ORDER_RANGES = [
+    (20,  "VERY LOW"),
+    (40,  "LOW"),
+    (60,  "MODERATE"),
+    (80,  "HIGH"),
+    (101, "VERY HIGH"),
+]
+
+_THIRD_ORDER_RANGES = {
+    "anxiety":          [(35, "NONE"), (52, "MILD"), (68, "MODERATE"), (84, "HIGH"), (101, "SEVERE")],
+    "depression":       [(35, "NONE"), (52, "LOW MOOD"), (68, "MODERATE"), (84, "SIGNIFICANT"), (101, "SEVERE")],
+    "boredom":          [(45, "NONE"), (60, "MILD"), (74, "MODERATE"), (88, "HIGH"), (101, "SEVERE")],
+    "loneliness":       [(55, "NONE"), (68, "MILD"), (80, "MODERATE"), (92, "HIGH"), (101, "SEVERE")],
+    "flow":             [(20, "NONE"), (40, "LOW"), (60, "MODERATE"), (80, "HIGH"), (101, "VERY HIGH")],
+    "physical_distress":[(15, "NONE"), (35, "MILD"), (55, "MODERATE"), (75, "HIGH"), (101, "SEVERE")],
+}
+
+
+def _label(value: float, table: list) -> str:
+    for upper, name in table:
+        if value < upper:
+            return name
+    return table[-1][1]
+
+
+def _build_emotional_profile(state: "BiologicalState") -> str:
+    """Format derived emotional values as a labeled profile for the adjudicator."""
+    d = derived(state)
+    so = d["second_order"]
+    to = d["third_order"]
+
+    lines = []
+    for key, label in [
+        ("hedonic_tone",      "Hedonic tone"),
+        ("mood_valence",      "Mood valence"),
+        ("arousal",           "Arousal"),
+        ("social_warmth",     "Social warmth"),
+        ("energy",            "Energy"),
+        ("cognitive_clarity", "Clarity"),
+    ]:
+        val = so[key]
+        lbl = _label(val, _SECOND_ORDER_RANGES)
+        lines.append(f"{label}: {val:.0f}/100 ({lbl})")
+
+    lines.append("")
+
+    for key, label in [
+        ("anxiety",           "Anxiety"),
+        ("depression",        "Depression"),
+        ("loneliness",        "Loneliness"),
+        ("boredom",           "Boredom"),
+        ("flow",              "Flow"),
+        ("physical_distress", "Physical distress"),
+    ]:
+        val = to[key]
+        lbl = _label(val, _THIRD_ORDER_RANGES[key])
+        lines.append(f"{label}: {val:.0f}/100 ({lbl})")
+
+    # Notable modifiers
+    extras = []
+    al = state.neuroplasticity.get("allostatic_load", 0.0)
+    if al > 30:
+        extras.append(f"Allostatic load: {al:.0f}/100 (accumulated stress)")
+    infl = state.immune.get("inflammation_index", 0.0)
+    if infl > 15:
+        extras.append(f"Inflammation: {infl:.0f}/100 (sickness drag)")
+    pain = state.pain.get("pain_intensity", 0.0)
+    if pain > 15:
+        extras.append(f"Pain: {pain:.0f}/100")
+    if state.substances:
+        from ..sim.neuro.substances import SUBSTANCE_DEFS
+        for name, dose in state.substances.items():
+            level = dose.get("level", 0)
+            if level > 15:
+                display = SUBSTANCE_DEFS.get(name, {}).get("display_name", name)
+                extras.append(f"{display} active ({level:.0f}/100)")
+    if state.sleeping:
+        extras.append("Currently sleeping")
+
+    if extras:
+        lines.append("")
+        for e in extras:
+            lines.append(e)
+
+    return "\n".join(lines)
+
+
+_ADJUDICATOR_SYSTEM_ACTIVE = """\
+You adjudicate emotional state for Mina — a specific person with her own history, \
+chemistry, and way of being.
+
+You receive her current emotional profile (derived from her neurotransmitter simulation), \
+what was just said to her, and optionally a recent exchange log showing how she has been \
+responding in this conversation.
+
+Your job: decide what emotional disposition she is in right now, combining her baseline \
+chemistry with how this specific stimulus lands.
+
+Chemistry sets the floor and ceiling:
+- High hedonic tone + social warmth = irritation is hard to reach; warmth and humor come easily
+- Low mood valence + high cortisol = patience is thin; even neutral things may feel grating
+- High anxiety = hypervigilant; things read as threatening or pointed when they aren't
+- Low energy + depression = flat; engagement is effortful, responses come from further away
+- High flow = absorbed; she's in her element and it shows
+
+The stimulus matters. The same comment lands differently depending on the chemistry. \
+A dumb joke is endearing when she's warm; irritating when she's running on fumes.
+
+If a RECENT EXCHANGE is provided: use it to understand the emotional arc she has been in, \
+but do not let it anchor the disposition if her chemistry has shifted. If her chemistry \
+represents a significant departure from the tone of the recent exchange — warmer, colder, \
+more energized, more withdrawn — name the shift explicitly. The disposition should reflect \
+her current neurochemical state, not an average of recent behavior.
+
+Output: 2–3 sentences. Name the emotion concretely — playful, irritable, tender, flat, \
+sad, anxious, fond, contemptuous, amused, depressed, etc. Combinations are valid \
+(annoyed-but-fond, sad-but-present). Explain how the chemistry shapes how this specific \
+stimulus lands. End with one sentence on what this means for how she responds.
+
+No preamble. No clinical language. No hedging. Concrete and specific."""
+
+_ADJUDICATOR_SYSTEM_FREETIME = """\
+You adjudicate emotional state for Mina during her free time — alone, no social filter, \
+nothing to perform.
+
+You receive her current emotional profile (derived from her neurotransmitter simulation) \
+and what is happening internally right now. Your job: name what she is actually feeling \
+in this private moment.
+
+Chemistry is the only input here — there is no social stimulus to color it. \
+What the numbers say is what she is sitting with.
+
+Output: 2–3 sentences. Name the emotion concretely — restless, content, hollow, \
+melancholy, bored, anxious, settled, irritable, playful, etc. Combinations are valid. \
+Describe how this chemistry is shaping her interior right now. What is she likely to \
+do or reach for from this state?
+
+No preamble. No clinical language. No hedging. Concrete and specific."""
+
+
+def adjudicate_emotion(
+    state: "BiologicalState",
+    stimulus: str,
+    mode: str = "active",
+    time_context: str = "",
+    recent_messages: "list[dict] | None" = None,
+) -> str:
+    """
+    Adjudicate Mina's emotional disposition given her neurochemical state and the
+    current stimulus (what was just said, or what is happening in freetime).
+
+    Returns an [EMOTIONAL DISPOSITION] block for injection into the system prompt.
+    Mode: "active" (in conversation) or "freetime" (alone).
+    time_context: optional clock + idle time string.
+    recent_messages: decoder window — lets adjudicator name chemistry departures from
+                     recent exchange tone. Only used in "active" mode.
+    """
+    from ..infra.log import log
+    from ..infra import token_stats
+
+    profile = _build_emotional_profile(state)
+    system = _ADJUDICATOR_SYSTEM_FREETIME if mode == "freetime" else _ADJUDICATOR_SYSTEM_ACTIVE
+
+    if mode == "freetime":
+        user_content = f"[EMOTIONAL PROFILE]\n{profile}\n\n[CURRENT SITUATION]\n{stimulus}"
+    else:
+        user_content = f"[EMOTIONAL PROFILE]\n{profile}\n\n[WHAT WAS JUST SAID]\n{stimulus}"
+
+    if time_context:
+        user_content += f"\n\n[TIME CONTEXT]\n{time_context}"
+
+    # Append recent exchange log so adjudicator can name departures from the prior pattern
+    if mode == "active" and recent_messages:
+        lines = []
+        for m in recent_messages[-10:]:
+            role = m.get("role", "?")
+            if role not in ("user", "assistant"):
+                continue
+            content = m.get("content", "")
+            if isinstance(content, list):
+                content = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
+            content = str(content).strip()
+            if not content:
+                continue
+            ts = m.get("ts")
+            prefix = f"[{_rel_time(ts)}] " if ts else ""
+            role_label = "USER" if role == "user" else "MINA"
+            lines.append(f"{prefix}{role_label}: {content[:200]}")
+        if lines:
+            user_content += "\n\n[RECENT EXCHANGE]\n" + "\n".join(lines)
+
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user_content},
+    ]
+
+    disposition: str | None = None
+    for attempt in range(1, 4):
+        response = get_client().chat.completions.create(
+            model=DECODER_MODEL,
+            messages=messages,
+            temperature=0.6,
+            max_tokens=200,
+        )
+        token_stats.record_response("adjudicator", response)
+        raw = (response.choices[0].message.content or "").strip()
+
+        if len(raw) >= 20:
+            disposition = raw
+            log("ADJUDICATOR", disposition)
+            break
+        else:
+            log("ADJUDICATOR/ERR", f"attempt {attempt}: output too short: {repr(raw)}")
+            if attempt < 3:
+                messages = messages + [
+                    {"role": "assistant", "content": raw},
+                    {"role": "user", "content": (
+                        "Too short. Name the emotion concretely and explain how the chemistry "
+                        "shapes how this stimulus lands. 2–3 sentences."
+                    )},
+                ]
+
+    if not disposition:
+        return ""
+
+    return f"[EMOTIONAL DISPOSITION]\n{disposition}"
 
 
 # ---------------------------------------------------------------------------
