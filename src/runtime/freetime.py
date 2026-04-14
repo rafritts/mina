@@ -101,10 +101,11 @@ def _build_freetime_suffix(state: BiologicalState) -> str:
     boredom     = third["boredom"]
 
     parts = [
-        "Nobody is talking to you right now. This is your time to take care of yourself. "
-        "Not free time in a casual sense — this is when you eat if you haven't eaten, "
-        "drink if you're thirsty, sleep if you're tired, move if your body wants to move. "
-        "The things that keep you functional and okay. You are responsible for your own body. "
+        "You have a moment of time to yourself. You are alone, and this is your alone time for self-care.",
+        "This is not a chance to reply to casual conversation.",
+        "Prioritize your physical needs first — eat, drink, rest, move, or whatever else your body needs right now.",
+        "The things that keep you functional and okay. You are responsible for your own body.",
+        "Once your body is ok, then you can focus on leisure activities.",
         f"Nobody else is going to do it for you while {creator} is away."
     ]
 
