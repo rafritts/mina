@@ -71,10 +71,15 @@ from src.sim.constants import (
     HEDONIC_INFLAMMATION_WEIGHT,
     HEDONIC_OFFSET,
     HEDONIC_SEROTONIN_WEIGHT,
+    LONELINESS_BOND_OXY_THRESHOLD,
+    LONELINESS_BOND_WEIGHT,
+    LONELINESS_E_BASE,
+    LONELINESS_E_SCALE,
     LONELINESS_INFLAMMATION_WEIGHT,
+    LONELINESS_ISOLATION_WEIGHT,
     LONELINESS_OFFSET,
-    LONELINESS_OXYTOCIN_WEIGHT,
-    LONELINESS_WARMTH_WEIGHT,
+    WARMTH_E_BASE,
+    WARMTH_E_SCALE,
     MELATONIN_DRAG_MULTIPLIER,
     MELATONIN_DRAG_THRESHOLD,
     NORM_ADENOSINE_SLEEP_PRESSURE_MIN,
@@ -103,6 +108,25 @@ from src.sim.constants import (
     WARMTH_SEROTONIN_WEIGHT,
     WARMTH_VASOPRESSIN_WEIGHT,
 )
+
+
+_extraversion_cache: float = 0.5
+_extraversion_cache_ts: float = 0.0
+
+
+def _extraversion() -> float:
+    """Return Big 5 Extraversion as 0.0–1.0. Cached for 60s to avoid hot-path disk reads."""
+    global _extraversion_cache, _extraversion_cache_ts
+    import time as _time
+    now = _time.time()
+    if now - _extraversion_cache_ts > 60.0:
+        try:
+            from src.infra.config import load_config
+            _extraversion_cache = float(load_config().get("big5", {}).get("extraversion", 50)) / 100.0
+            _extraversion_cache_ts = now
+        except Exception:
+            pass
+    return _extraversion_cache
 
 
 def _n(name: str, s) -> float:
@@ -221,13 +245,18 @@ def derived(s) -> dict:
 
     # SOCIAL WARMTH: oxytocin (bonding), serotonin (security), vasopressin (pair-bond).
     # Reduced by cortisol (threat response) and pain.
+    # SPEC-28: Extraversion amplifies warmth — extroverts derive more reward from connection.
+    E = _extraversion()
+    warmth_amp = WARMTH_E_BASE + E * WARMTH_E_SCALE
     social_warmth = _clamp(
-        WARMTH_OFFSET
-        + (_n("oxytocin", s)   * WARMTH_OXYTOCIN_WEIGHT)
-        + (effective_serotonin * WARMTH_SEROTONIN_WEIGHT)
-        + (vasopressin_n       * WARMTH_VASOPRESSIN_WEIGHT)
-        - (_n("cortisol", s)   * WARMTH_CORTISOL_WEIGHT)
-        - (pain_int            * WARMTH_PAIN_WEIGHT)
+        _clamp(
+            WARMTH_OFFSET
+            + (_n("oxytocin", s)   * WARMTH_OXYTOCIN_WEIGHT)
+            + (effective_serotonin * WARMTH_SEROTONIN_WEIGHT)
+            + (vasopressin_n       * WARMTH_VASOPRESSIN_WEIGHT)
+            - (_n("cortisol", s)   * WARMTH_CORTISOL_WEIGHT)
+            - (pain_int            * WARMTH_PAIN_WEIGHT)
+        ) * warmth_amp
     )
 
     # AROUSAL: norepinephrine (locus coeruleus), cortisol (HPA), E/I balance.
@@ -287,11 +316,19 @@ def derived(s) -> dict:
         - BOREDOM_OFFSET
     )
 
+    # SPEC-28: Loneliness decoupled from social_warmth.
+    # Driven by isolation_pressure (persistent accumulator), bond deficit (oxytocin vs threshold),
+    # and inflammation (sickness → withdrawal). Extraversion amplifies felt loneliness.
+    isolation_pressure = s.body.get("isolation_pressure", 0.0)
+    bond_deficit = max(0.0, 1.0 - (_n("oxytocin", s) / LONELINESS_BOND_OXY_THRESHOLD))
+    extroversion_amp = LONELINESS_E_BASE + E * LONELINESS_E_SCALE
     loneliness = _clamp(
-        (100 - social_warmth)    * LONELINESS_WARMTH_WEIGHT
-        + (100 - _n("oxytocin", s)) * LONELINESS_OXYTOCIN_WEIGHT
-        + (infl                  * LONELINESS_INFLAMMATION_WEIGHT)  # sickness → isolation
-        - LONELINESS_OFFSET
+        _clamp(
+            (isolation_pressure    * LONELINESS_ISOLATION_WEIGHT)
+            + (bond_deficit * 100  * LONELINESS_BOND_WEIGHT)
+            + (infl                * LONELINESS_INFLAMMATION_WEIGHT)
+            - LONELINESS_OFFSET
+        ) * extroversion_amp
     )
 
     flow = _clamp(

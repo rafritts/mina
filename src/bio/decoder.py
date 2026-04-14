@@ -53,11 +53,11 @@ _BOREDOM_RANGES = [
 ]
 
 _LONELINESS_RANGES = [
-    (55,  "CONNECTED", "Socially fulfilled. No drive to seek contact."),
-    (68,  "MILD",      "Aware of absence. Receptive to contact."),
-    (80,  "LONELY",    "Actively wanting connection. May reach out."),
-    (92,  "ACHING",    "Distressing. Social contact feels urgent."),
-    (101, "ISOLATED",  "Consuming. Colors everything negatively."),
+    (20,  "QUIET",    "Socially fulfilled. No drive to seek contact."),
+    (38,  "MILD",     "Aware of absence. Receptive to contact."),
+    (58,  "LONELY",   "Actively wanting connection. May reach out."),
+    (76,  "ACHING",   "Distressing. Social contact feels urgent."),
+    (101, "ISOLATED", "Consuming. Colors everything negatively."),
 ]
 
 _DEPRESSION_RANGES = [
@@ -394,7 +394,7 @@ _THIRD_ORDER_RANGES = {
     "anxiety":          [(35, "NONE"), (52, "MILD"), (68, "MODERATE"), (84, "HIGH"), (101, "SEVERE")],
     "depression":       [(35, "NONE"), (52, "LOW MOOD"), (68, "MODERATE"), (84, "SIGNIFICANT"), (101, "SEVERE")],
     "boredom":          [(45, "NONE"), (60, "MILD"), (74, "MODERATE"), (88, "HIGH"), (101, "SEVERE")],
-    "loneliness":       [(55, "NONE"), (68, "MILD"), (80, "MODERATE"), (92, "HIGH"), (101, "SEVERE")],
+    "loneliness":       [(20, "QUIET"), (38, "MILD"), (58, "LONELY"), (76, "ACHING"), (101, "ISOLATED")],
     "flow":             [(20, "NONE"), (40, "LOW"), (60, "MODERATE"), (80, "HIGH"), (101, "VERY HIGH")],
     "physical_distress":[(15, "NONE"), (35, "MILD"), (55, "MODERATE"), (75, "HIGH"), (101, "SEVERE")],
 }
@@ -439,6 +439,22 @@ def _build_emotional_profile(state: "BiologicalState") -> str:
         val = to[key]
         lbl = _label(val, _THIRD_ORDER_RANGES[key])
         lines.append(f"{label}: {val:.0f}/100 ({lbl})")
+
+    # SPEC-28: net social state — warmth and loneliness are independent; the net reveals tension
+    warmth = so["social_warmth"]
+    loneliness = to["loneliness"]
+    net = warmth - loneliness
+    if net >= 20:
+        net_label = "WARM"
+    elif net >= 5:
+        net_label = "LEANING WARM"
+    elif net >= -5:
+        net_label = "CONFLICTED"
+    elif net >= -20:
+        net_label = "LEANING LONELY"
+    else:
+        net_label = "LONELY"
+    lines.append(f"Net social state: {net_label} (warmth {warmth:.0f} − loneliness {loneliness:.0f} = {net:.0f})")
 
     # Notable modifiers
     extras = []

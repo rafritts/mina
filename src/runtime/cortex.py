@@ -396,7 +396,9 @@ async def run_turn(
     stimulus_deltas = await asyncio.to_thread(encode_stimulus, state, stimulus)
     if stimulus_deltas:
         state = apply_deltas(state, stimulus_deltas)
-        save_state(state)
+    # SPEC-28: mark contact so isolation_pressure decays during active conversation
+    state.body["recent_contact_ts"] = time.time()
+    save_state(state)
 
     # [1b] Danger detection — every turn so overdose can trigger during active sessions
     try:

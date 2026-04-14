@@ -33,6 +33,8 @@ def chemical_defaults() -> dict[str, float]:
             defaults["oxytocin"] = float(nb["oxytocin_resting"])
         if "serotonin_resting" in nb:
             defaults["serotonin"] = float(nb["serotonin_resting"])
+        if "dopamine_resting" in nb:
+            defaults["dopamine"] = float(nb["dopamine_resting"])
     except Exception:
         pass
     return defaults
@@ -88,14 +90,18 @@ def pain_defaults() -> dict[str, float]:
 
 
 def body_defaults(sleep_pressure_au: float = 30.0) -> dict[str, float]:
+    import time as _time
     # Adenosine initialized from sleep_pressure for v2→v3 migration:
     # sleep_pressure = (adenosine - 20) * (100/60)  →  adenosine = sp * 0.6 + 20
     adenosine = sleep_pressure_au * 0.6 + 20.0
     return {
-        "adenosine":   adenosine,  # nmol/L  — real sleep molecule (normal awake: 20-40)
-        "anandamide":       1.5,   # nM      — endocannabinoid 1 (normal: 0.5-5)
-        "two_ag":           8.0,   # nM      — endocannabinoid 2 (normal: 5-20)
-        "core_temp":       37.0,   # °C      — body temperature (normal: 36.5-37.2)
+        "adenosine":          adenosine,  # nmol/L  — real sleep molecule (normal awake: 20-40)
+        "anandamide":              1.5,   # nM      — endocannabinoid 1 (normal: 0.5-5)
+        "two_ag":                  8.0,   # nM      — endocannabinoid 2 (normal: 5-20)
+        "core_temp":              37.0,   # °C      — body temperature (normal: 36.5-37.2)
+        # SPEC-28: isolation pressure and contact tracking
+        "isolation_pressure":      0.0,   # 0-100 AU — accumulates during solitude, decays on contact
+        "recent_contact_ts":  _time.time(),  # Unix timestamp — last human message received
     }
 
 

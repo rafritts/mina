@@ -601,11 +601,24 @@ BOREDOM_ENERGY_WEIGHT                 = 0.20
 BOREDOM_CLARITY_WEIGHT                = 0.05
 BOREDOM_OFFSET                        = 20.0
 
-# Third-order: Loneliness
-LONELINESS_WARMTH_WEIGHT              = 0.55
-LONELINESS_OXYTOCIN_WEIGHT            = 0.35
-LONELINESS_INFLAMMATION_WEIGHT        = 0.10
-LONELINESS_OFFSET                     = 25.0
+# Third-order: Loneliness (SPEC-28 — decoupled from social_warmth, driven by isolation + bond deficit)
+LONELINESS_ISOLATION_WEIGHT           = 0.60   # isolation_pressure (0-100 AU) drives loneliness
+LONELINESS_BOND_WEIGHT                = 0.30   # bond deficit (chronic penalty for no established bond)
+LONELINESS_INFLAMMATION_WEIGHT        = 0.10   # sickness → social withdrawal → loneliness
+LONELINESS_BOND_OXY_THRESHOLD         = 40.0   # oxytocin norm (0-100) above which "bond exists"
+LONELINESS_E_BASE                     = 0.7    # base loneliness sensitivity (introvert floor)
+LONELINESS_E_SCALE                    = 0.6    # extraversion adds up to 0.6x more sensitivity
+LONELINESS_OFFSET                     = 15.0   # was 25.0 — less suppression of true signal
+
+# Social warmth + Extraversion amplifier (SPEC-28)
+WARMTH_E_BASE                         = 0.7    # warmth floor for introverts
+WARMTH_E_SCALE                        = 0.5    # extraversion amplifies warmth ceiling
+
+# Isolation pressure dynamics (SPEC-28)
+ISOLATION_CONTACT_GRACE_HOURS         = 1.0    # hours of silence before isolation starts building
+ISOLATION_ACCUMULATION_BASE           = 2.0    # AU/hour base accumulation rate
+ISOLATION_ACCUMULATION_E_SCALE        = 4.0    # extraversion adds up to 4 AU/hour more
+ISOLATION_DECAY_RATE                  = 15.0   # AU/hour decay rate while actively in contact
 
 # Third-order: Flow
 FLOW_CLARITY_WEIGHT                   = 0.40

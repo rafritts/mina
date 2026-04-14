@@ -19,7 +19,8 @@
   },
   "neurochemical_baselines": {
     "oxytocin_resting":     4.0,
-    "serotonin_resting":   22.0,
+    "serotonin_resting":   26.0,
+    "dopamine_resting":    92.0,
     "dopamine_sensitivity": 1.0
   },
 

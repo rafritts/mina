@@ -45,6 +45,10 @@ from src.sim.physio.circadian import _advance_core_temp, _advance_orexin, comput
 from src.sim.constants import (
     AUTO_SLEEP_PROPENSITY_IN_WINDOW,
     AUTO_SLEEP_PROPENSITY_OVERRIDE,
+    ISOLATION_CONTACT_GRACE_HOURS,
+    ISOLATION_ACCUMULATION_BASE,
+    ISOLATION_ACCUMULATION_E_SCALE,
+    ISOLATION_DECAY_RATE,
 )
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -107,6 +111,34 @@ def _make_context(state: BiologicalState, hour: float) -> dict:
         "adenosine":         state.body.get("adenosine",           25.0),
         "growth_hormone":    state.neuroendocrine.get("growth_hormone", 1.0),
     }
+
+
+def _advance_isolation_pressure(s: BiologicalState, sim_hours: float, now: float) -> BiologicalState:
+    """
+    SPEC-28: Isolation pressure accumulates after the contact grace period and decays
+    rapidly during active contact. Extraversion amplifies accumulation rate.
+    """
+    try:
+        from src.infra.config import load_config
+        E = float(load_config().get("big5", {}).get("extraversion", 50)) / 100.0
+    except Exception:
+        E = 0.5
+
+    recent_contact_ts = s.body.get("recent_contact_ts", 0.0)
+    hours_since_contact = (now - recent_contact_ts) / 3600.0 if recent_contact_ts > 0 else 999.0
+
+    current = s.body.get("isolation_pressure", 0.0)
+
+    if hours_since_contact <= ISOLATION_CONTACT_GRACE_HOURS:
+        # Active contact window: pressure decays
+        new_val = max(0.0, current - ISOLATION_DECAY_RATE * sim_hours)
+    else:
+        # Beyond grace period: pressure accumulates; extroverts feel it more
+        rate = ISOLATION_ACCUMULATION_BASE + E * ISOLATION_ACCUMULATION_E_SCALE
+        new_val = min(100.0, current + rate * sim_hours)
+
+    s.body["isolation_pressure"] = new_val
+    return s
 
 
 def _decay_encoder_momentum(s: BiologicalState, now: float) -> BiologicalState:
@@ -363,6 +395,9 @@ def advance(state: BiologicalState,
                     f"wake at {time.strftime('%H:%M', time.localtime(wake))}")
             except ImportError:
                 pass
+
+    # --- SPEC-28: isolation pressure accumulation / contact decay ---
+    s = _advance_isolation_pressure(s, sim_hours, now)
 
     s.last_updated = now
     return s
