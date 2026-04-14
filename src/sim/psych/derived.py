@@ -71,6 +71,18 @@ from src.sim.constants import (
     HEDONIC_INFLAMMATION_WEIGHT,
     HEDONIC_OFFSET,
     HEDONIC_SEROTONIN_WEIGHT,
+    BIG5_A_ANXIETY_SCALE,
+    BIG5_A_WARMTH_SCALE,
+    BIG5_C_DEPRESSION_SCALE,
+    BIG5_C_ENERGY_SCALE,
+    BIG5_E_AROUSAL_SCALE,
+    BIG5_E_HEDONIC_SCALE,
+    BIG5_E_WARMTH_SCALE,
+    BIG5_N_ANXIETY_SCALE,
+    BIG5_N_DEPRESSION_SCALE,
+    BIG5_N_VALENCE_SCALE,
+    BIG5_O_BOREDOM_SCALE,
+    BIG5_O_HEDONIC_SCALE,
     LONELINESS_BOND_OXY_THRESHOLD,
     LONELINESS_BOND_WEIGHT,
     LONELINESS_E_BASE,
@@ -110,23 +122,35 @@ from src.sim.constants import (
 )
 
 
-_extraversion_cache: float = 0.5
-_extraversion_cache_ts: float = 0.0
+_big5_cache: dict[str, float] = {"E": 0.5, "A": 0.5, "O": 0.5, "N": 0.5, "C": 0.5}
+_big5_cache_ts: float = 0.0
 
 
-def _extraversion() -> float:
-    """Return Big 5 Extraversion as 0.0–1.0. Cached for 60s to avoid hot-path disk reads."""
-    global _extraversion_cache, _extraversion_cache_ts
+def _big5() -> dict[str, float]:
+    """Return all Big5 traits as 0.0–1.0. Cached for 60s to avoid hot-path disk reads."""
+    global _big5_cache, _big5_cache_ts
     import time as _time
     now = _time.time()
-    if now - _extraversion_cache_ts > 60.0:
+    if now - _big5_cache_ts > 60.0:
         try:
             from src.infra.config import load_config
-            _extraversion_cache = float(load_config().get("big5", {}).get("extraversion", 50)) / 100.0
-            _extraversion_cache_ts = now
+            b = load_config().get("big5", {})
+            _big5_cache = {
+                "E": float(b.get("extraversion",      50)) / 100.0,
+                "A": float(b.get("agreeableness",     50)) / 100.0,
+                "O": float(b.get("openness",          50)) / 100.0,
+                "N": float(b.get("neuroticism",       50)) / 100.0,
+                "C": float(b.get("conscientiousness", 50)) / 100.0,
+            }
+            _big5_cache_ts = now
         except Exception:
             pass
-    return _extraversion_cache
+    return _big5_cache
+
+
+def _p(trait: float, scale: float) -> float:
+    """Personality adjustment: (trait - 0.5) * 2 * scale. Zero at average, ±scale at extremes."""
+    return (trait - 0.5) * 2.0 * scale
 
 
 def _n(name: str, s) -> float:
@@ -203,23 +227,29 @@ def derived(s) -> dict:
 
     melatonin_drag = max(0.0, _n("melatonin", s) - MELATONIN_DRAG_THRESHOLD) * MELATONIN_DRAG_MULTIPLIER
 
+    # --- Big5 personality baseline adjustments ---
+    # Each trait shifts the floor/ceiling of relevant second/third-order values.
+    # Formula: _p(trait, scale) = (trait - 0.5) * 2 * scale → zero at average, ±scale at extremes.
+    b5 = _big5()
+    E, A, O, N, C = b5["E"], b5["A"], b5["O"], b5["N"], b5["C"]
+
     # --- Second-order values ---
 
     # ENERGY: glucose drives ATP; norepinephrine mobilizes; T3 (metabolism) sustains.
-    # Fatigue from adenosine, hunger, inflammation, melatonin drag.
+    # Conscientiousness raises the floor — purposeful people sustain energy better at rest.
     energy = _clamp(
         ENERGY_OFFSET
+        + _p(C, BIG5_C_ENERGY_SCALE)
         + (_n("glucose", s)        * ENERGY_GLUCOSE_WEIGHT)
         + (_n("norepinephrine", s) * ENERGY_NOREPI_WEIGHT)
         + (t3_n                    * ENERGY_T3_WEIGHT)
         - (adenosine_n             * ENERGY_ADENOSINE_WEIGHT)
         - (hunger_n                * ENERGY_HUNGER_WEIGHT)
         - melatonin_drag
-        - (infl                    * ENERGY_INFLAMMATION_WEIGHT)   # sickness behavior
+        - (infl                    * ENERGY_INFLAMMATION_WEIGHT)
     )
 
     # COGNITIVE CLARITY: ACh (attention/encoding), glucose (fuel), BDNF (neuroplasticity).
-    # Impaired by fatigue, cortisol hyperactivation, pain distraction.
     cognitive_clarity = _clamp(
         CLARITY_OFFSET
         + (_n("acetylcholine", s) * CLARITY_ACH_WEIGHT)
@@ -231,26 +261,30 @@ def derived(s) -> dict:
         - melatonin_drag          * CLARITY_MELATONIN_DRAG_FACTOR
     )
 
-    # HEDONIC TONE: reward (D2), endorphins (natural opioids), serotonin (contentment),
-    # anandamide (bliss molecule). Blunted by inflammation (anhedonia) and allostatic load.
+    # HEDONIC TONE: reward (D2), endorphins, serotonin, anandamide.
+    # Extraversion raises the floor (positive affect at rest). Openness raises it too
+    # (more things are interesting and rewarding). Blunted by inflammation and allostatic load.
     hedonic_tone = _clamp(
         HEDONIC_OFFSET
+        + _p(E, BIG5_E_HEDONIC_SCALE)
+        + _p(O, BIG5_O_HEDONIC_SCALE)
         + (effective_dopamine_reward * HEDONIC_DOPAMINE_REWARD_WEIGHT)
         + (_n("endorphins", s)       * HEDONIC_ENDORPHIN_WEIGHT)
         + (effective_serotonin       * HEDONIC_SEROTONIN_WEIGHT)
         + (anandamide_n              * HEDONIC_ANANDAMIDE_WEIGHT)
-        - (infl                      * HEDONIC_INFLAMMATION_WEIGHT)   # anhedonia from sickness
-        - (al                        * HEDONIC_ALLOSTATIC_WEIGHT)     # allostatic load blunts pleasure
+        - (infl                      * HEDONIC_INFLAMMATION_WEIGHT)
+        - (al                        * HEDONIC_ALLOSTATIC_WEIGHT)
     )
 
     # SOCIAL WARMTH: oxytocin (bonding), serotonin (security), vasopressin (pair-bond).
-    # Reduced by cortisol (threat response) and pain.
-    # SPEC-28: Extraversion amplifies warmth — extroverts derive more reward from connection.
-    E = _extraversion()
+    # Extraversion and agreeableness both raise the baseline.
+    # SPEC-28: Extraversion also amplifies the ceiling via warmth_amp.
     warmth_amp = WARMTH_E_BASE + E * WARMTH_E_SCALE
     social_warmth = _clamp(
         _clamp(
             WARMTH_OFFSET
+            + _p(E, BIG5_E_WARMTH_SCALE)
+            + _p(A, BIG5_A_WARMTH_SCALE)
             + (_n("oxytocin", s)   * WARMTH_OXYTOCIN_WEIGHT)
             + (effective_serotonin * WARMTH_SEROTONIN_WEIGHT)
             + (vasopressin_n       * WARMTH_VASOPRESSIN_WEIGHT)
@@ -260,22 +294,25 @@ def derived(s) -> dict:
     )
 
     # AROUSAL: norepinephrine (locus coeruleus), cortisol (HPA), E/I balance.
+    # Extraversion raises the floor — extraverts are more activated at rest.
     # Calmed by GABA and adenosine; melatonin drags it down.
     arousal = _clamp(
         AROUSAL_OFFSET
+        + _p(E, BIG5_E_AROUSAL_SCALE)
         + (_n("norepinephrine", s) * AROUSAL_NOREPI_WEIGHT)
         + (_n("cortisol", s)       * AROUSAL_CORTISOL_WEIGHT)
-        + (max(0.0, ei)            * AROUSAL_EI_BALANCE_SCALE)   # high E/I → more arousal
-        - (effective_gaba          * AROUSAL_GABA_WEIGHT)         # GABAergic inhibition calms
+        + (max(0.0, ei)            * AROUSAL_EI_BALANCE_SCALE)
+        - (effective_gaba          * AROUSAL_GABA_WEIGHT)
         - (adenosine_n             * AROUSAL_ADENOSINE_WEIGHT)
         - melatonin_drag           * AROUSAL_MELATONIN_DRAG_FACTOR
     )
 
     # MOOD VALENCE: serotonin (positive baseline), dopamine (motivation/agency),
     # T3 (metabolic mood support), BDNF (neuroplasticity = capacity for wellbeing).
-    # Cortisol and allostatic load shift it negative.
+    # Neuroticism applies a negative bias. Cortisol and allostatic load shift it negative.
     mood_valence = _clamp(
         VALENCE_OFFSET
+        - _p(N, BIG5_N_VALENCE_SCALE)
         + (effective_serotonin          * VALENCE_SEROTONIN_WEIGHT)
         + (effective_dopamine_cognitive * VALENCE_DOPAMINE_COGNITIVE_WEIGHT)
         + (t3_n                         * VALENCE_T3_WEIGHT)
@@ -289,31 +326,39 @@ def derived(s) -> dict:
 
     # --- Third-order emotional states ---
 
+    # ANXIETY: Neuroticism raises baseline; agreeableness (trust) lowers it.
     anxiety = _clamp(
-        (arousal              * ANXIETY_AROUSAL_WEIGHT)
+        _p(N, BIG5_N_ANXIETY_SCALE)
+        - _p(A, BIG5_A_ANXIETY_SCALE)
+        + (arousal              * ANXIETY_AROUSAL_WEIGHT)
         + (100 - cognitive_clarity) * ANXIETY_CLARITY_WEIGHT
         + (100 - social_warmth)     * ANXIETY_WARMTH_WEIGHT
         + (pain_awareness     * ANXIETY_PAIN_WEIGHT)
-        + (max(0.0, ei)       * ANXIETY_EI_SCALE)     # glutamate-dominant → anxious
-        - (effective_gaba     * ANXIETY_GABA_WEIGHT)   # GABA is anxiolytic
+        + (max(0.0, ei)       * ANXIETY_EI_SCALE)
+        - (effective_gaba     * ANXIETY_GABA_WEIGHT)
         - ANXIETY_OFFSET
     )
 
+    # DEPRESSION: Neuroticism raises susceptibility; conscientiousness adds resilience.
     depression = _clamp(
-        (100 - mood_valence)  * DEPRESSION_VALENCE_WEIGHT
+        _p(N, BIG5_N_DEPRESSION_SCALE)
+        - _p(C, BIG5_C_DEPRESSION_SCALE)
+        + (100 - mood_valence)  * DEPRESSION_VALENCE_WEIGHT
         + (100 - hedonic_tone)  * DEPRESSION_HEDONIC_WEIGHT
         + (100 - energy)        * DEPRESSION_ENERGY_WEIGHT
-        + (infl                 * DEPRESSION_INFLAMMATION_WEIGHT)  # inflammatory depression
-        + (al                   * DEPRESSION_ALLOSTATIC_WEIGHT)    # hopelessness
+        + (infl                 * DEPRESSION_INFLAMMATION_WEIGHT)
+        + (al                   * DEPRESSION_ALLOSTATIC_WEIGHT)
         - DEPRESSION_OFFSET
     )
 
+    # BOREDOM: Openness raises the threshold — curious people are harder to bore.
     boredom = _clamp(
         (100 - arousal)         * BOREDOM_AROUSAL_WEIGHT
         + (100 - hedonic_tone)  * BOREDOM_HEDONIC_WEIGHT
         + (100 - energy)        * BOREDOM_ENERGY_WEIGHT
         + (100 - cognitive_clarity) * BOREDOM_CLARITY_WEIGHT
         - BOREDOM_OFFSET
+        - _p(O, BIG5_O_BOREDOM_SCALE)
     )
 
     # SPEC-28: Loneliness decoupled from social_warmth.

@@ -601,6 +601,22 @@ BOREDOM_ENERGY_WEIGHT                 = 0.20
 BOREDOM_CLARITY_WEIGHT                = 0.05
 BOREDOM_OFFSET                        = 20.0
 
+# Big5 personality → second-order baseline adjustments
+# Formula: adjustment = (trait_0_to_1 - 0.5) * 2 * scale
+# At trait=0.5 (average person), adjustment=0. Positive scale = trait raises the value.
+BIG5_E_AROUSAL_SCALE    = 15.0   # extraversion: activated, enthusiastic baseline
+BIG5_E_WARMTH_SCALE     = 12.0   # extraversion: warmer at rest
+BIG5_E_HEDONIC_SCALE    = 10.0   # extraversion: positive affect floor
+BIG5_A_WARMTH_SCALE     = 12.0   # agreeableness: warmer, more trusting
+BIG5_A_ANXIETY_SCALE    = 8.0    # agreeableness: lower baseline anxiety (trusting world)
+BIG5_O_HEDONIC_SCALE    = 10.0   # openness: more things are interesting → hedonic lift
+BIG5_O_BOREDOM_SCALE    = 12.0   # openness: harder to bore
+BIG5_N_ANXIETY_SCALE    = 14.0   # neuroticism: raises anxiety floor
+BIG5_N_VALENCE_SCALE    = 10.0   # neuroticism: negative bias on mood valence
+BIG5_N_DEPRESSION_SCALE = 8.0    # neuroticism: more susceptible to depression signal
+BIG5_C_ENERGY_SCALE     = 10.0   # conscientiousness: purposeful → higher energy floor
+BIG5_C_DEPRESSION_SCALE = 8.0    # conscientiousness: resilience lowers depression floor
+
 # Third-order: Loneliness (SPEC-28 — decoupled from social_warmth, driven by isolation + bond deficit)
 LONELINESS_ISOLATION_WEIGHT           = 0.60   # isolation_pressure (0-100 AU) drives loneliness
 LONELINESS_BOND_WEIGHT                = 0.30   # bond deficit (chronic penalty for no established bond)
