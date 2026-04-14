@@ -24,11 +24,12 @@
   let refreshInterval: ReturnType<typeof setInterval>;
 
   // History
-  let history      = $state<HistorySnapshot[]>([]);
-  let historyWindow = $state(6);   // hours
+  let history        = $state<HistorySnapshot[]>([]);
+  let historyWindow  = $state(6);
   let historyLoading = $state(false);
   let historyError   = $state('');
   let historyInterval: ReturnType<typeof setInterval>;
+  let historyChart   = $state<'bond' | 'stress' | 'mood' | 'neuro'>('bond');
 
   // ---------------------------------------------------------------------------
   // Field definitions
@@ -1044,142 +1045,78 @@
             return bands;
           })()}
 
-          <!-- Bond / Social chart -->
-          <div class="card bg-base-200 p-4">
-            <LineChart
-              title="Bond & Social"
-              height={200}
-              showSleep={true}
-              {sleepBands}
-              series={[
-                {
-                  key: 'oxytocin', label: 'Oxytocin (pg/mL)', color: '#f472b6',
-                  minVal: 0, maxVal: 100,
-                  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.oxytocin ?? 0 }))
-                },
-                {
-                  key: 'dopamine', label: 'Dopamine (ng/mL)', color: '#a78bfa',
-                  minVal: 0, maxVal: 200,
-                  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.dopamine ?? 0 }))
-                },
-                {
-                  key: 'serotonin', label: 'Serotonin (ng/mL)', color: '#34d399',
-                  minVal: 0, maxVal: 40,
-                  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.serotonin ?? 0 }))
-                },
-                {
-                  key: 'endorphins', label: 'Endorphins (AU)', color: '#fbbf24',
-                  minVal: 0, maxVal: 40,
-                  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.endorphins ?? 0 }))
-                },
-                {
-                  key: 'social_warmth', label: 'Social Warmth', color: '#fb923c',
-                  minVal: 0, maxVal: 100,
-                  points: history.map(s => ({ ts: s.ts, value: s.second_order?.social_warmth ?? 0 }))
-                },
-              ]}
-            />
+          <!-- Chart tab bar -->
+          <div class="tabs tabs-border">
+            {#each [
+              { id: 'bond',   label: 'Bond & Social'    },
+              { id: 'stress', label: 'Stress & Arousal' },
+              { id: 'mood',   label: 'Mood & Wellbeing' },
+              { id: 'neuro',  label: 'Neuro / Cognition'},
+            ] as ct}
+              <button
+                class="tab {historyChart === ct.id ? 'tab-active font-semibold' : 'opacity-60'}"
+                onclick={() => historyChart = ct.id as typeof historyChart}
+              >{ct.label}</button>
+            {/each}
           </div>
 
-          <!-- Stress / Arousal chart -->
-          <div class="card bg-base-200 p-4">
-            <LineChart
-              title="Stress & Arousal"
-              height={180}
-              showSleep={true}
-              {sleepBands}
-              series={[
-                {
-                  key: 'cortisol', label: 'Cortisol (nM)', color: '#f87171',
-                  minVal: 0, maxVal: 600,
-                  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.cortisol ?? 0 }))
-                },
-                {
-                  key: 'norepinephrine', label: 'Norepinephrine (pg/mL)', color: '#fb923c',
-                  minVal: 0, maxVal: 600,
-                  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.norepinephrine ?? 0 }))
-                },
-                {
-                  key: 'anxiety', label: 'Anxiety', color: '#ef4444',
-                  minVal: 0, maxVal: 100,
-                  points: history.map(s => ({ ts: s.ts, value: s.third_order?.anxiety ?? 0 }))
-                },
-                {
-                  key: 'arousal', label: 'Arousal', color: '#f59e0b',
-                  minVal: 0, maxVal: 100,
-                  points: history.map(s => ({ ts: s.ts, value: s.second_order?.arousal ?? 0 }))
-                },
-              ]}
-            />
-          </div>
-
-          <!-- Wellbeing chart -->
-          <div class="card bg-base-200 p-4">
-            <LineChart
-              title="Mood & Wellbeing"
-              height={180}
-              showSleep={true}
-              {sleepBands}
-              series={[
-                {
-                  key: 'mood_valence', label: 'Mood Valence', color: '#60a5fa',
-                  minVal: 0, maxVal: 100,
-                  points: history.map(s => ({ ts: s.ts, value: s.second_order?.mood_valence ?? 0 }))
-                },
-                {
-                  key: 'hedonic_tone', label: 'Hedonic Tone', color: '#818cf8',
-                  minVal: 0, maxVal: 100,
-                  points: history.map(s => ({ ts: s.ts, value: s.second_order?.hedonic_tone ?? 0 }))
-                },
-                {
-                  key: 'energy', label: 'Energy', color: '#4ade80',
-                  minVal: 0, maxVal: 100,
-                  points: history.map(s => ({ ts: s.ts, value: s.second_order?.energy ?? 0 }))
-                },
-                {
-                  key: 'loneliness', label: 'Loneliness', color: '#94a3b8',
-                  minVal: 0, maxVal: 100,
-                  points: history.map(s => ({ ts: s.ts, value: s.third_order?.loneliness ?? 0 }))
-                },
-                {
-                  key: 'depression', label: 'Depression', color: '#475569',
-                  minVal: 0, maxVal: 100,
-                  points: history.map(s => ({ ts: s.ts, value: s.third_order?.depression ?? 0 }))
-                },
-              ]}
-            />
-          </div>
-
-          <!-- Inhibitory/Excitatory -->
-          <div class="card bg-base-200 p-4">
-            <LineChart
-              title="Inhibitory / Excitatory & Cognition"
-              height={160}
-              showSleep={true}
-              {sleepBands}
-              series={[
-                {
-                  key: 'gaba', label: 'GABA (μM)', color: '#22d3ee',
-                  minVal: 0, maxVal: 500,
-                  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.gaba ?? 0 }))
-                },
-                {
-                  key: 'glutamate', label: 'Glutamate (μM)', color: '#f97316',
-                  minVal: 0, maxVal: 200,
-                  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.glutamate ?? 0 }))
-                },
-                {
-                  key: 'acetylcholine', label: 'Acetylcholine (nM)', color: '#a3e635',
-                  minVal: 0, maxVal: 600,
-                  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.acetylcholine ?? 0 }))
-                },
-                {
-                  key: 'cognitive_clarity', label: 'Clarity', color: '#e2e8f0',
-                  minVal: 0, maxVal: 100,
-                  points: history.map(s => ({ ts: s.ts, value: s.second_order?.cognitive_clarity ?? 0 }))
-                },
-              ]}
-            />
+          <!-- Single chart view -->
+          <div class="card bg-base-200 p-5">
+            {#if historyChart === 'bond'}
+              <LineChart
+                title="Bond & Social"
+                height={340}
+                showSleep={true}
+                {sleepBands}
+                series={[
+                  { key: 'oxytocin',     label: 'Oxytocin (pg/mL)',    color: '#f472b6', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.chemicals?.oxytocin     ?? 0 })) },
+                  { key: 'dopamine',     label: 'Dopamine (ng/mL)',    color: '#a78bfa', minVal: 0, maxVal: 250, points: history.map(s => ({ ts: s.ts, value: s.chemicals?.dopamine     ?? 0 })) },
+                  { key: 'serotonin',    label: 'Serotonin (ng/mL)',   color: '#34d399', minVal: 0, maxVal: 50,  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.serotonin    ?? 0 })) },
+                  { key: 'endorphins',   label: 'Endorphins (AU)',     color: '#fbbf24', minVal: 0, maxVal: 50,  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.endorphins   ?? 0 })) },
+                  { key: 'social_warmth',label: 'Social Warmth',       color: '#fb923c', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.second_order?.social_warmth ?? 0 })) },
+                ]}
+              />
+            {:else if historyChart === 'stress'}
+              <LineChart
+                title="Stress & Arousal"
+                height={340}
+                showSleep={true}
+                {sleepBands}
+                series={[
+                  { key: 'cortisol',        label: 'Cortisol (nM)',          color: '#f87171', minVal: 0, maxVal: 600, points: history.map(s => ({ ts: s.ts, value: s.chemicals?.cortisol        ?? 0 })) },
+                  { key: 'norepinephrine',  label: 'Norepinephrine (pg/mL)', color: '#fb923c', minVal: 0, maxVal: 400, points: history.map(s => ({ ts: s.ts, value: s.chemicals?.norepinephrine  ?? 0 })) },
+                  { key: 'anxiety',         label: 'Anxiety',                color: '#ef4444', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.third_order?.anxiety         ?? 0 })) },
+                  { key: 'arousal',         label: 'Arousal',                color: '#f59e0b', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.second_order?.arousal         ?? 0 })) },
+                ]}
+              />
+            {:else if historyChart === 'mood'}
+              <LineChart
+                title="Mood & Wellbeing"
+                height={340}
+                showSleep={true}
+                {sleepBands}
+                series={[
+                  { key: 'mood_valence', label: 'Mood Valence', color: '#60a5fa', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.second_order?.mood_valence ?? 0 })) },
+                  { key: 'hedonic_tone', label: 'Hedonic Tone', color: '#818cf8', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.second_order?.hedonic_tone ?? 0 })) },
+                  { key: 'energy',       label: 'Energy',       color: '#4ade80', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.second_order?.energy       ?? 0 })) },
+                  { key: 'loneliness',   label: 'Loneliness',   color: '#94a3b8', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.third_order?.loneliness    ?? 0 })) },
+                  { key: 'depression',   label: 'Depression',   color: '#475569', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.third_order?.depression    ?? 0 })) },
+                ]}
+              />
+            {:else if historyChart === 'neuro'}
+              <LineChart
+                title="Neuro / Cognition"
+                height={340}
+                showSleep={true}
+                {sleepBands}
+                series={[
+                  { key: 'gaba',              label: 'GABA (μM)',           color: '#22d3ee', minVal: 0, maxVal: 6,   points: history.map(s => ({ ts: s.ts, value: s.chemicals?.gaba              ?? 0 })) },
+                  { key: 'glutamate',         label: 'Glutamate (μM)',      color: '#f97316', minVal: 0, maxVal: 6,   points: history.map(s => ({ ts: s.ts, value: s.chemicals?.glutamate         ?? 0 })) },
+                  { key: 'acetylcholine',     label: 'Acetylcholine (nM)', color: '#a3e635', minVal: 0, maxVal: 120,  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.acetylcholine     ?? 0 })) },
+                  { key: 'cognitive_clarity', label: 'Clarity',             color: '#e2e8f0', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.second_order?.cognitive_clarity ?? 0 })) },
+                ]}
+              />
+            {/if}
           </div>
 
           <p class="text-xs opacity-30 text-center">Shaded bands = sleep periods. All series normalized to same 0–1 scale for comparison. Hover for raw values.</p>
