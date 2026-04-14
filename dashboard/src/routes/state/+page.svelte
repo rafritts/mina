@@ -1065,7 +1065,7 @@
             {#if historyChart === 'bond'}
               <LineChart
                 title="Bond & Social"
-                height={340}
+                height={500}
                 showSleep={true}
                 {sleepBands}
                 series={[
@@ -1079,7 +1079,7 @@
             {:else if historyChart === 'stress'}
               <LineChart
                 title="Stress & Arousal"
-                height={340}
+                height={500}
                 showSleep={true}
                 {sleepBands}
                 series={[
@@ -1092,7 +1092,7 @@
             {:else if historyChart === 'mood'}
               <LineChart
                 title="Mood & Wellbeing"
-                height={340}
+                height={500}
                 showSleep={true}
                 {sleepBands}
                 series={[
@@ -1106,7 +1106,7 @@
             {:else if historyChart === 'neuro'}
               <LineChart
                 title="Neuro / Cognition"
-                height={340}
+                height={500}
                 showSleep={true}
                 {sleepBands}
                 series={[
