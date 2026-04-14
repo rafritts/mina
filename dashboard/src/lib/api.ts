@@ -97,16 +97,6 @@ export interface TurnEntry {
   totals:  TokenCall;
 }
 
-export interface TokenBudget {
-  monthly_budget:      number;
-  days_in_month:       number;
-  daily_budget:        number;
-  session_cost:        number;
-  daily_pct:           number;
-  input_price_per_m:   number;
-  output_price_per_m:  number;
-}
-
 export interface TokenStats {
   session_start:   number | null;
   total_input:     number;
@@ -117,5 +107,4 @@ export interface TokenStats {
   by_label:        Record<string, TokenCall>;
   turn_log:        TurnEntry[];
   current_turn:    Record<string, TokenCall>;
-  budget:          TokenBudget;
 }

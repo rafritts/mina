@@ -53,14 +53,6 @@ API_KEY  = _OLLAMA_KEY   if USE_OLLAMA else _GROK_KEY
 
 OLLAMA_BASE_URL = _OLLAMA_URL  # convenience export
 
-# ---------------------------------------------------------------------------
-# xAI billing budget — used by the dashboard daily-spend gauge.
-# Pricing is for grok-4-1-fast-reasoning (input / output per million tokens).
-# ---------------------------------------------------------------------------
-XAI_MONTHLY_BUDGET     = 50.0   # USD
-XAI_INPUT_PRICE_PER_M  = 0.2    # USD per million input tokens
-XAI_OUTPUT_PRICE_PER_M = 0.5    # USD per million output tokens
-
 # Per-role model overrides — each falls back to MODEL if not set
 ENCODER_MODEL = os.getenv("ENCODER_MODEL", MODEL)
 #DECODER_MODEL = os.getenv("DECODER_MODEL", "grok-4.20-0309-reasoning")

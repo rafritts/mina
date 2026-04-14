@@ -44,12 +44,22 @@
   }
 
   // Billing
+  const MONTHLY_BUDGET = 50;
   let billingRemaining = $state<number | null>(null);
+  let billingUsed      = $state<number | null>(null);
+
+  // Pro-rated allowance: $50 * (days elapsed / days in month)
+  function proRated(): number {
+    const now = new Date();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    return MONTHLY_BUDGET * (now.getDate() / daysInMonth);
+  }
 
   async function fetchBilling() {
     try {
-      const data = await apiFetch<{ remaining?: number; error?: string }>('/api/billing');
+      const data = await apiFetch<{ remaining?: number; used?: number; error?: string }>('/api/billing');
       if (typeof data.remaining === 'number') billingRemaining = data.remaining;
+      if (typeof data.used      === 'number') billingUsed      = data.used;
     } catch { /* silent */ }
   }
 
@@ -119,8 +129,14 @@
       </div>
 
       <div class="navbar-end gap-3">
-        {#if billingRemaining !== null}
-          <span class="text-xs tabular-nums opacity-50">${billingRemaining.toFixed(2)} left</span>
+        {#if billingUsed !== null}
+          {@const allowed = proRated()}
+          {@const over = billingUsed > allowed}
+          <span class="text-xs tabular-nums opacity-50" title="Spent vs pro-rated allowance for today's date">
+            <span class={over ? 'text-warning' : ''}>${billingUsed.toFixed(2)}</span>
+            <span class="opacity-40"> / </span>
+            <span>${allowed.toFixed(2)}</span>
+          </span>
         {/if}
         <button
           class="btn btn-ghost btn-xs"
