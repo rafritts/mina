@@ -548,6 +548,30 @@ REGISTRY: dict[str, ChemicalProfile] = {
         ],
     ),
 
+    "bac": ChemicalProfile(
+        name="bac",
+        display_name="BAC",
+        unit="g/dL",
+        resting_baseline=0.0,
+        approach_rate=0.0,           # driven entirely by alcohol level decay; no homeostatic pull
+        resting_low=0.0,
+        resting_high=0.05,
+        critical_low=0.0,
+        critical_high=0.40,
+        display_min=0.0,
+        display_max=0.35,
+        interactions=[],             # alcohol's chemical effects are handled in substances.py
+        labels=[
+            (0.02,  "SOBER",          "No measurable impairment."),
+            (0.05,  "TRACE",          "Very mild. Slight warmth, minimal loosening."),
+            (0.08,  "TIPSY",          "Impairment beginning. Reaction time affected."),
+            (0.15,  "DRUNK",          "Clear impairment. Coordination and judgment reduced."),
+            (0.25,  "INTOXICATED",    "Significant impairment. Slurred speech, disorientation."),
+            (0.35,  "SEVERELY DRUNK", "Danger zone. Vomiting risk. Blackout possible."),
+            (9.999, "CRITICAL",       "Potentially fatal BAC. Respiratory depression risk."),
+        ],
+    ),
+
     "sleep_pressure": ChemicalProfile(
         name="sleep_pressure",
         display_name="Sleep Pressure",

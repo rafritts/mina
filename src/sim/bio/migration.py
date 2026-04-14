@@ -81,6 +81,8 @@ def migrate_v2_to_v3(old: dict) -> dict:
 
     if "body" not in result:
         result["body"] = body_defaults(sleep_pressure_au=old_sp)
+    elif "bac" not in result["body"]:
+        result["body"]["bac"] = 0.0
 
     if "neuroplasticity" not in result:
         result["neuroplasticity"] = neuroplasticity_defaults()

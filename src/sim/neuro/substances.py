@@ -21,6 +21,7 @@ SUBSTANCE_DEFS fields:
 from __future__ import annotations
 
 from src.sim.bio.state import BiologicalState
+from src.sim.bio.physical import bac_from_level
 from src.sim.chem.units import clamp_chemical
 from src.sim.events import EventBus
 
@@ -218,8 +219,11 @@ def advance_substances(s: BiologicalState, sim_hours: float, now: float,
                     new     = max(0.2, min(2.0, current + rate * sim_hours))
                     s.receptor_sensitivity[nt][subtype] = round(new, 4)
 
-    # --- Sustained effects of active substances ---
+    # --- BAC: derived from current alcohol level via Widmark formula ---
     alcohol_level = s.substances.get("alcohol", {}).get("level", 0.0)
+    s.body["bac"] = round(bac_from_level(alcohol_level), 4)
+
+    # --- Sustained effects of active substances ---
     if alcohol_level > 20:
         s.chemicals["cortisol"] = clamp_chemical(
             "cortisol",

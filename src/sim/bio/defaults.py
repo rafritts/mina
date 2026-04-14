@@ -102,6 +102,7 @@ def body_defaults(sleep_pressure_au: float = 30.0) -> dict[str, float]:
         # SPEC-28: isolation pressure and contact tracking
         "isolation_pressure":      0.0,   # 0-100 AU — accumulates during solitude, decays on contact
         "recent_contact_ts":  _time.time(),  # Unix timestamp — last human message received
+        "bac":                     0.0,   # g/dL — blood alcohol concentration (Widmark)
     }
 
 
