@@ -111,9 +111,58 @@ Each chemical declares its own relationship to the Layer 1 factors. The encoder 
 
 ---
 
-### Layer 3: Delta Application
+### Layer 3: Secretion Queue
 
-Unchanged from current implementation. The final deltas from Layer 2 are applied to `state.chemicals` via `apply_deltas()`.
+Layer 2 produces `final_delta` per chemical. Instead of applying it immediately, the encoder **posts it to `state.secretion_queue`** as a drip entry. The biological simulation's advance loop (running every 15 seconds on a fixed clock) processes the queue on each tick, releasing a portion of each entry according to that chemical's release rate.
+
+This replaces the instant step-function shape of each encoder event with a realistic rise curve — the chemical actually builds up over the timescale it would take a real synapse to saturate the target receptor population.
+
+#### Secretion Entry Structure
+
+```python
+{
+  "chemical":           "dopamine",
+  "remaining":          15.0,      # total left to release (units)
+  "rate_per_sim_hour":  450.0,     # max release rate — controls rise time
+  "posted_at":          1234567890.0
+}
+```
+
+#### advance() Processing
+
+On each advance() tick with elapsed `sim_hours`:
+```python
+for entry in state.secretion_queue:
+    release = min(entry["remaining"], entry["rate_per_sim_hour"] * sim_hours)
+    state.chemicals[entry["chemical"]] += release
+    entry["remaining"] -= release
+
+state.secretion_queue = [e for e in state.secretion_queue if e["remaining"] > 0.05]
+```
+
+Multiple entries for the same chemical stack — a second message arriving before the first has fully released produces a natural accumulation curve rather than a discrete step.
+
+#### EVENT_OVERRIDE Bypass
+
+Deltas tagged `[EVENT_OVERRIDE]` (peak resolution crash, acute danger response, substance administration) bypass the secretion queue and apply instantly to `state.chemicals`. These represent discrete physiological state changes, not synaptic release events.
+
+#### Per-Chemical Release Profiles
+
+Rise time is the approximate time to release 90% of a delta at 15-second tick intervals. These are starting values — calibrate against history charts after deployment.
+
+| Chemical       | Rise time | rate_per_sim_hour | Notes                                         |
+|----------------|-----------|-------------------|-----------------------------------------------|
+| dopamine       | ~2 min    | 450               | Fast phasic spike; most released in 1-2 ticks |
+| norepinephrine | ~1 min    | 900               | Fastest; surprise signal                      |
+| endorphins     | ~5 min    | 180               | Moderate; trigger-dependent                   |
+| oxytocin       | ~10 min   | 90                | Slow sustained build                          |
+| acetylcholine  | ~5 min    | 180               | Moderate cognitive ramp                       |
+| serotonin      | ~20 min   | 45                | Very slow; barely visible per-event           |
+| cortisol       | via HPA   | —                 | Already uses cascade_queue; unaffected        |
+
+#### Relationship to HPA Cascade
+
+The existing `cascade_queue` in `state` handles CRH → ACTH → cortisol with wall-clock delays. That mechanism is **unchanged**. The secretion queue is a parallel structure for synaptic-level neurotransmitter release. They do not interact.
 
 ---
 
@@ -148,6 +197,21 @@ Per-source sensitization records:
 }
 ```
 Persisted in state.json.
+
+### New: `state.secretion_queue`
+Pending neurotransmitter release entries:
+```python
+[
+  {
+    "chemical":          "dopamine",
+    "remaining":         15.0,
+    "rate_per_sim_hour": 450.0,
+    "posted_at":         1234567890.0
+  },
+  ...
+]
+```
+Processed by advance() on every tick. Persisted in state.json so entries survive restarts (a mid-release queue is not lost if the server bounces).
 
 ### Renamed: `state.encoder_momentum` → `state.habituation`
 Kept for backward compatibility during migration but renamed throughout. Structure changes from `{chemical: float}` to unused — habituation is now computed dynamically from `stimulus_window` rather than accumulated separately. The old accumulator approach is retired.
@@ -208,13 +272,15 @@ At wake boundary (when `sleeping` transitions False):
 
 ## Migration
 
-1. Add `stimulus_window: list` and `sensitization: dict` to `BiologicalState`
+1. Add `stimulus_window: list`, `sensitization: dict`, and `secretion_queue: list` to `BiologicalState`
 2. Add schema migration in `bio/migration.py` for v3 → v4
 3. Rename `encoder_momentum` → `habituation` in state, engine, encoder
 4. Replace `_apply_momentum()` in encoder with `_apply_habituation_and_sensitization()`
 5. Update `_decay_encoder_momentum()` in engine — window pruning replaces accumulator decay
 6. Fix endorphin decay in engine
 7. Add Ollama embedding call to encoder pipeline
+8. Change encoder's `apply_deltas()` call to post to `secretion_queue` instead (except `EVENT_OVERRIDE` deltas)
+9. Add secretion queue processing to `advance()` in engine
 
 ---
 

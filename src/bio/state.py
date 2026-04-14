@@ -7,6 +7,7 @@ re-exported) so that pytest monkeypatching of state._STATE_FILE works correctly.
 """
 import json
 import os
+import threading
 
 from ..sim.bio.state import BiologicalState, apply_deltas, log_state
 from ..sim.engine import advance
@@ -37,12 +38,18 @@ def save_state(s: BiologicalState) -> None:
         json.dump(s.to_dict(), f, indent=2)
 
 
+# Prevents concurrent load/advance/save collisions between the background sim
+# loop and conversation turns or freetime cycles.
+_ADVANCE_LOCK = threading.Lock()
+
+
 def load_and_advance() -> BiologicalState:
     """Load state, apply time-based decay, save, return."""
-    s = load_state()
-    s = advance(s)
-    save_state(s)
-    return s
+    with _ADVANCE_LOCK:
+        s = load_state()
+        s = advance(s)
+        save_state(s)
+        return s
 
 
 __all__ = [
