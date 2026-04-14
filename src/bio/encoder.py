@@ -13,8 +13,11 @@ All three return plain dicts of chemical field → float delta.
 Falls back to {} on any error — never crashes a turn.
 """
 import json
+import math
 import os
 import re
+import time
+import urllib.request
 
 from ..infra.client import chat_create, ENCODER_MODEL as MODEL
 from ..infra.config import load_config
@@ -84,56 +87,253 @@ For everything else, set event_override: false and use conservative deltas."""
 
 
 # ---------------------------------------------------------------------------
-# Momentum dampening — receptor habituation / cooldown
+# SPEC-29: Habituation, sensitization, and secretion queue
 # ---------------------------------------------------------------------------
 
-# Maximum accumulated positive delta before a chemical is fully dampened.
-# Chemicals not listed here are never dampened (cortisol stress, glucose, etc.)
-_MOMENTUM_CEILINGS: dict[str, float] = {
-    "dopamine":       25.0,   # pg/mL — novelty signal, tight
-    "oxytocin":       18.0,   # pg/mL — social bonding
-    "serotonin":       3.5,   # ng/mL — very slow, tight
-    "endorphins":     30.0,   # pg/mL — physical activity sustains this more
-    "acetylcholine":  14.0,   # nmol/L — cognitive engagement
-    "norepinephrine": 400.0,  # pg/mL — arousal; resting 100–400, needs sustained elevation to dampen
+_OLLAMA_EMBED_URL   = "http://localhost:11434/api/embeddings"
+_OLLAMA_EMBED_MODEL = "embeddinggemma:latest"
+
+# Habituation windows per chemical (hours). None = no per-trigger habituation.
+_HABITUATION_WINDOWS: dict[str, float | None] = {
+    "dopamine":       1.0,    # 60 min novelty window
+    "norepinephrine": 0.4,    # 25 min surprise window
+    "endorphins":     1.0,    # 60 min trigger window
+    "acetylcholine":  1.5,    # 90 min cognitive window
+    "oxytocin":       168.0,  # 7 days — effectively no within-session habituation
+    "serotonin":      None,   # no per-trigger habituation
+    "cortisol":       None,   # no habituation; reverse sensitization only
+}
+
+# Maximum sensitization multiplier per chemical. None = not sensitized.
+_SENSITIZATION_MAX: dict[str, float | None] = {
+    "dopamine":       2.0,
+    "oxytocin":       2.5,
+    "endorphins":     1.5,
+    "norepinephrine": 1.3,
+    "acetylcholine":  1.4,
+    "serotonin":      None,
+    "cortisol":       None,
+}
+
+# Secretion rates (units/sim_hour) — controls rise time in advance() drip loop.
+# Chemicals not listed here are applied immediately by the caller.
+_SECRETION_RATES: dict[str, float] = {
+    "dopamine":       450.0,  # ~2 min rise time
+    "norepinephrine": 900.0,  # ~1 min rise time
+    "endorphins":     180.0,  # ~5 min rise time
+    "oxytocin":       90.0,   # ~10 min rise time
+    "acetylcholine":  180.0,  # ~5 min rise time
+    "serotonin":      45.0,   # ~20 min rise time
 }
 
 
-def _apply_momentum(deltas: dict, state: BiologicalState) -> dict:
+def _get_embedding(text: str) -> list[float] | None:
+    """Embed text via Ollama. Returns None on any failure — callers fall back to novelty=1.0."""
+    try:
+        payload = json.dumps({"model": _OLLAMA_EMBED_MODEL, "prompt": text}).encode()
+        req = urllib.request.Request(
+            _OLLAMA_EMBED_URL,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return json.loads(resp.read())["embedding"]
+    except Exception:
+        return None
+
+
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    dot   = sum(x * y for x, y in zip(a, b))
+    mag_a = math.sqrt(sum(x * x for x in a))
+    mag_b = math.sqrt(sum(x * x for x in b))
+    if mag_a == 0 or mag_b == 0:
+        return 0.0
+    return dot / (mag_a * mag_b)
+
+
+def _compute_content_novelty(
+    embedding: list[float],
+    stimulus_window: list[dict],
+    window_hours: float,
+) -> float:
     """
-    Scale positive deltas down based on how much has been applied recently.
-    Mutates state.encoder_momentum to accumulate applied amounts.
-    Negative deltas pass through unchanged — pain/stress doesn't habituate like this.
+    Content novelty in [0.0, 1.0]. 0.0 = identical to recent history, 1.0 = completely novel.
+    Uses recency-weighted cosine similarity; only entries within window_hours are considered.
+    """
+    if not stimulus_window:
+        return 1.0
+
+    now = time.time()
+    decay_half_life = window_hours / 2.0
+    max_sim = 0.0
+
+    for entry in stimulus_window:
+        entry_emb = entry.get("embedding")
+        if not entry_emb:
+            continue
+        age_hours = (now - entry.get("ts", now)) / 3600.0
+        if age_hours > window_hours:
+            continue
+        recency_weight = 0.5 ** (age_hours / decay_half_life)
+        sim = _cosine_similarity(embedding, entry_emb) * recency_weight
+        if sim > max_sim:
+            max_sim = sim
+
+    return 1.0 - max_sim
+
+
+def _update_sensitization(sensitization: dict, valence: float) -> dict:
+    """
+    Update the source sensitization record after a contact.
+    valence > 0: positive contact; valence < 0: hostile/cold interaction.
+    Growth rate is intentionally conservative — calibrate against charts after deployment.
+    """
+    now = time.time()
+
+    if not sensitization:
+        return {
+            "contact_count": 1,
+            "accumulated_valence": max(0.0, valence),
+            "sensitization_level": 1.0,
+            "last_contact_ts": now,
+            "first_contact_ts": now,
+        }
+
+    s = dict(sensitization)
+    last_ts = s.get("last_contact_ts", now)
+    days_since = (now - last_ts) / 86400.0
+    current_level = s.get("sensitization_level", 1.0)
+
+    # Time decay: ~3 day half-life on the excess above neutral (1.0)
+    if days_since > 0:
+        decay = 0.5 ** (days_since / 3.0)
+        current_level = 1.0 + (current_level - 1.0) * decay
+
+    if valence > 0:
+        # Positive contact: nudge toward ceiling; growth is small per contact (calibrate later)
+        current_level = min(2.5, current_level + 0.02)
+        s["accumulated_valence"] = round(s.get("accumulated_valence", 0.0) + valence, 2)
+    elif valence < 0:
+        # Hostile/cold: erode sensitization, but slower than it builds
+        current_level = max(1.0, current_level - 0.01)
+
+    s["sensitization_level"] = round(current_level, 4)
+    s["contact_count"] = s.get("contact_count", 0) + 1
+    s["last_contact_ts"] = now
+    return s
+
+
+def _apply_habituation_and_sensitization(
+    deltas: dict,
+    state: BiologicalState,
+    stimulus_text: str,
+) -> dict:
+    """
+    SPEC-29 Layer 1+2: embed stimulus, compute content_novelty + source_sensitization,
+    apply per-chemical rules. Mutates state.stimulus_window and state.sensitization.
     """
     from ..infra.log import log
-    momentum = state.encoder_momentum
-    result = {}
-    dampened_any = False
+
+    # Layer 1a: content novelty via embedding
+    embedding = _get_embedding(stimulus_text)
+
+    # Layer 1b: source sensitization level (single user)
+    sens_level = state.sensitization.get("sensitization_level", 1.0)
+
+    result: dict[str, float] = {}
+    total_positive_valence = 0.0
 
     for chem, delta in deltas.items():
-        ceiling = _MOMENTUM_CEILINGS.get(chem)
-        if delta <= 0 or ceiling is None:
+        if delta == 0:
             result[chem] = delta
             continue
-        current = momentum.get(chem, 0.0)
-        scale = max(0.0, 1.0 - current / ceiling)
-        dampened = round(delta * scale, 2)
-        result[chem] = dampened
-        if dampened > 0:
-            momentum[chem] = round(current + dampened, 3)
-        if scale < 0.8:
-            dampened_any = True
 
-    if dampened_any:
-        pairs = [
-            f"{c}: {deltas[c]:+.1f}→{result[c]:+.1f} (m={momentum.get(c, 0):.1f}/{_MOMENTUM_CEILINGS[c]:.0f})"
-            for c in result
-            if c in _MOMENTUM_CEILINGS and result[c] != deltas[c]
+        if chem == "serotonin":
+            # Serotonin ignores per-trigger novelty/sensitization — slow background modulator
+            result[chem] = delta
+            continue
+
+        if chem == "cortisol":
+            if delta < 0 and sens_level > 1.0:
+                # Valued source amplifies cortisol relief (safety signal)
+                result[chem] = round(delta * min(2.0, sens_level), 3)
+            else:
+                result[chem] = delta
+            continue
+
+        window_hours = _HABITUATION_WINDOWS.get(chem)
+        max_mult     = _SENSITIZATION_MAX.get(chem)
+
+        if delta > 0:
+            # Positive deltas: apply habituation then sensitization
+            if embedding and window_hours:
+                novelty = _compute_content_novelty(embedding, state.stimulus_window, window_hours)
+            else:
+                novelty = 1.0  # embedding unavailable or no window → no dampening
+
+            if chem == "oxytocin":
+                novelty = max(0.7, novelty)  # oxytocin never fully habituates within-session
+
+            sensitization_mult = min(max_mult, sens_level) if max_mult else 1.0
+            final = round(delta * novelty * sensitization_mult, 3)
+            total_positive_valence += final
+        else:
+            # Negative deltas pass through unchanged
+            final = delta
+
+        result[chem] = final
+
+    # Cortisol safety relief from a valued source — added even when no raw cortisol delta
+    if sens_level > 1.2 and "cortisol" not in result:
+        result["cortisol"] = round(-2.0 * (sens_level - 1.0), 3)
+
+    # Layer 1c: update stimulus_window and sensitization record
+    now = time.time()
+    if embedding:
+        state.stimulus_window = [
+            e for e in state.stimulus_window if e.get("ts", 0) > now - 86400
         ]
-        if pairs:
-            log("ENCODER/MOMENTUM", ", ".join(pairs))
+        state.stimulus_window.append({
+            "embedding": embedding,
+            "ts":        now,
+            "summary":   stimulus_text[:60],
+        })
+
+    state.sensitization = _update_sensitization(state.sensitization, total_positive_valence)
+
+    # Log if habituation meaningfully dampened anything
+    dampened = [
+        f"{c}: {deltas[c]:+.1f}→{result[c]:+.1f}"
+        for c in result
+        if c in deltas and deltas[c] > 0 and result[c] < deltas[c] - 0.01
+    ]
+    if dampened:
+        log("ENCODER/HAB", f"sens={sens_level:.2f} " + ", ".join(dampened))
 
     return result
+
+
+def _post_to_secretion_queue(deltas: dict, state: BiologicalState) -> dict:
+    """
+    Post neurotransmitter deltas to state.secretion_queue for drip release.
+    Returns remaining deltas (metabolic chemicals) for immediate application by caller.
+    """
+    now = time.time()
+    immediate: dict[str, float] = {}
+
+    for chem, delta in deltas.items():
+        rate = _SECRETION_RATES.get(chem)
+        if rate is None or delta == 0:
+            immediate[chem] = delta
+        else:
+            state.secretion_queue.append({
+                "chemical":          chem,
+                "remaining":         delta,
+                "rate_per_sim_hour": rate,
+                "posted_at":         now,
+            })
+
+    return immediate
 
 
 # ---------------------------------------------------------------------------
@@ -326,13 +526,11 @@ def _emit_event(
         pass
 
 
-def _is_momentum_dampened(scaled: dict, final: dict) -> bool:
-    """Check if momentum meaningfully reduced any positive delta."""
+def _is_habituation_dampened(pre: dict, post: dict) -> bool:
+    """Check if habituation/sensitization meaningfully changed any positive delta."""
     return any(
-        k in _MOMENTUM_CEILINGS
-        and scaled.get(k, 0) > 0
-        and final.get(k, 0) < scaled.get(k, 0) - 0.01
-        for k in scaled
+        pre.get(k, 0) > 0 and post.get(k, 0) < pre.get(k, 0) - 0.01
+        for k in pre
     )
 
 
@@ -382,11 +580,12 @@ positive deltas for it should be 20–30% of the guidance maximums above.
     saturated = _apply_saturation(raw, state)
     if event_override:
         _emit_event("stimulus", stimulus_text, raw, False, event_override=True)
-        return saturated
+        return saturated  # EVENT_OVERRIDE: bypass queue, apply instantly
     scaled = _apply_personality_scaling(saturated, _load_personality())
-    final = _apply_momentum(scaled, state)
-    _emit_event("stimulus", stimulus_text, raw, _is_momentum_dampened(scaled, final), event_override=False)
-    return final
+    final = _apply_habituation_and_sensitization(scaled, state, stimulus_text)
+    immediate = _post_to_secretion_queue(final, state)
+    _emit_event("stimulus", stimulus_text, raw, _is_habituation_dampened(scaled, final), event_override=False)
+    return immediate
 
 
 def encode_response(state: BiologicalState, response_text: str) -> dict:
@@ -431,9 +630,10 @@ positive deltas for it should be 20–30% of the guidance maximums.
         _emit_event("response", response_text, raw, False, event_override=True)
         return saturated
     scaled = _apply_personality_scaling(saturated, _load_personality())
-    final = _apply_momentum(scaled, state)
-    _emit_event("response", response_text, raw, _is_momentum_dampened(scaled, final), event_override=False)
-    return final
+    final = _apply_habituation_and_sensitization(scaled, state, response_text)
+    immediate = _post_to_secretion_queue(final, state)
+    _emit_event("response", response_text, raw, _is_habituation_dampened(scaled, final), event_override=False)
+    return immediate
 
 
 def evaluate_activity_deltas(state: BiologicalState, activity: str, description: str) -> dict:
@@ -490,6 +690,8 @@ positive deltas for it should be 20–30% of the guidance maximums.
         _emit_event("activity", f"{activity}: {description}", raw, False, event_override=True)
         return saturated
     scaled = _apply_personality_scaling(saturated, _load_personality())
-    final = _apply_momentum(scaled, state)
-    _emit_event("activity", f"{activity}: {description}", raw, _is_momentum_dampened(scaled, final), event_override=False)
-    return final
+    activity_text = f"{activity}: {description}"
+    final = _apply_habituation_and_sensitization(scaled, state, activity_text)
+    immediate = _post_to_secretion_queue(final, state)
+    _emit_event("activity", activity_text, raw, _is_habituation_dampened(scaled, final), event_override=False)
+    return immediate

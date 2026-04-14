@@ -89,7 +89,7 @@ def test_personality_scaling_identity_when_no_personality_loaded():
 
 
 # ---------------------------------------------------------------------------
-# LLM boundary — mock get_client
+# LLM boundary — SPEC-29: neurotransmitters go to secretion queue, not return dict
 # ---------------------------------------------------------------------------
 
 def _mock_llm_response(content: str):
@@ -103,62 +103,91 @@ def _mock_llm_response(content: str):
     return resp
 
 
-@patch("src.bio.encoder.get_client")
+@patch("src.bio.encoder._get_embedding", return_value=None)  # skip Ollama in tests
+@patch("src.bio.encoder.chat_create")
 @patch("src.bio.encoder._load_personality", return_value={})
-def test_encode_stimulus_applies_returned_deltas_to_state(mock_personality, mock_client):
-    mock_client.return_value.chat.completions.create.return_value = _mock_llm_response(
+def test_encode_stimulus_queues_neurotransmitter_deltas(mock_personality, mock_chat, mock_embed):
+    """Neurotransmitter deltas go to state.secretion_queue, not the return dict."""
+    mock_chat.return_value = _mock_llm_response(
         '{"no_external_deltas": false, "reasoning": "test", "event_override": false, "dopamine": 15.0}'
     )
     from src.infra import token_stats
     state = BiologicalState()
     result = encode_stimulus(state, "hello world")
-    assert "dopamine" in result
-    assert result["dopamine"] == pytest.approx(15.0, rel=0.01)
+    # dopamine is a secretion-queue chemical — should NOT be in immediate return
+    assert "dopamine" not in result
+    # should be in the secretion queue instead
+    queued_chems = [e["chemical"] for e in state.secretion_queue]
+    assert "dopamine" in queued_chems
 
 
-@patch("src.bio.encoder.get_client")
+@patch("src.bio.encoder._get_embedding", return_value=None)
+@patch("src.bio.encoder.chat_create")
 @patch("src.bio.encoder._load_personality", return_value={})
-def test_encode_stimulus_skips_apply_on_no_external_deltas(mock_personality, mock_client):
-    mock_client.return_value.chat.completions.create.return_value = _mock_llm_response(
+def test_encode_stimulus_skips_apply_on_no_external_deltas(mock_personality, mock_chat, mock_embed):
+    mock_chat.return_value = _mock_llm_response(
         '{"no_external_deltas": true, "reasoning": "nothing happened"}'
     )
     state = BiologicalState()
     result = encode_stimulus(state, "just sitting here")
     assert result == {}
+    assert state.secretion_queue == []
 
 
-@patch("src.bio.encoder.get_client")
+@patch("src.bio.encoder._get_embedding", return_value=None)
+@patch("src.bio.encoder.chat_create")
 @patch("src.bio.encoder._load_personality", return_value={})
-def test_encode_stimulus_returns_empty_on_llm_error(mock_personality, mock_client):
-    mock_client.return_value.chat.completions.create.side_effect = Exception("API down")
+def test_encode_stimulus_returns_empty_on_llm_error(mock_personality, mock_chat, mock_embed):
+    mock_chat.side_effect = Exception("API down")
     state = BiologicalState()
     result = encode_stimulus(state, "test message")
     assert result == {}  # must not crash
 
 
-@patch("src.bio.encoder.get_client")
+@patch("src.bio.encoder._get_embedding", return_value=None)
+@patch("src.bio.encoder.chat_create")
 @patch("src.bio.encoder._load_personality", return_value={})
-def test_encode_response_applies_returned_deltas(mock_personality, mock_client):
-    mock_client.return_value.chat.completions.create.return_value = _mock_llm_response(
+def test_encode_response_queues_oxytocin(mock_personality, mock_chat, mock_embed):
+    mock_chat.return_value = _mock_llm_response(
         '{"no_external_deltas": false, "reasoning": "spoke warmly", "event_override": false, "oxytocin": 3.0}'
     )
     state = BiologicalState()
     result = encode_response(state, "I really appreciate you being here.")
-    assert "oxytocin" in result
+    queued_chems = [e["chemical"] for e in state.secretion_queue]
+    assert "oxytocin" in queued_chems
 
 
-@patch("src.bio.encoder.get_client")
+@patch("src.bio.encoder._get_embedding", return_value=None)
+@patch("src.bio.encoder.chat_create")
 @patch("src.bio.encoder._load_personality", return_value={})
-def test_evaluate_activity_deltas_passes_activity_and_description_to_llm(mock_personality, mock_client):
+def test_evaluate_activity_deltas_passes_activity_and_description_to_llm(mock_personality, mock_chat, mock_embed):
     call_args_list = []
     def capture(*args, **kwargs):
         call_args_list.append(kwargs.get("messages", args[0] if args else []))
         return _mock_llm_response('{"no_external_deltas": false, "reasoning": "ate", "event_override": false, "glucose": 30.0}')
-    mock_client.return_value.chat.completions.create.side_effect = capture
+    mock_chat.side_effect = capture
     state = BiologicalState()
     result = evaluate_activity_deltas(state, "eat scrambled eggs", "Ate quickly, was hungry.")
     # Verify the call was made and activity content was in the prompt
     assert len(call_args_list) > 0
     prompt_text = str(call_args_list[0])
     assert "scrambled eggs" in prompt_text
+    # glucose is a metabolic chemical — applied immediately, not queued
     assert "glucose" in result
+
+
+@patch("src.bio.encoder._get_embedding", return_value=None)
+@patch("src.bio.encoder.chat_create")
+@patch("src.bio.encoder._load_personality", return_value={})
+def test_event_override_bypasses_queue(mock_personality, mock_chat, mock_embed):
+    """EVENT_OVERRIDE deltas are returned immediately, not queued."""
+    mock_chat.return_value = _mock_llm_response(
+        '{"no_external_deltas": false, "reasoning": "peak resolution", "event_override": true, '
+        '"dopamine": -120.0, "norepinephrine": -80.0}'
+    )
+    state = BiologicalState()
+    result = evaluate_activity_deltas(state, "intense physical exertion", "Peak resolution resolution.")
+    # EVENT_OVERRIDE: returned directly for immediate application
+    assert "dopamine" in result
+    assert result["dopamine"] == pytest.approx(-120.0, rel=0.01)
+    assert state.secretion_queue == []

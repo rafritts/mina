@@ -100,3 +100,35 @@ def migrate_v2_to_v3(old: dict) -> dict:
         result["cycle_day"] = 1
 
     return result
+
+
+def migrate_v3_to_v4(old: dict) -> dict:
+    """
+    SPEC-29: add stimulus_window, sensitization, secretion_queue.
+    Rename encoder_momentum → habituation (retained but unused in v4+).
+    """
+    result = dict(old)
+    result["schema_version"] = 4
+
+    # Rename encoder_momentum → habituation
+    if "encoder_momentum" in result and "habituation" not in result:
+        result["habituation"] = result.pop("encoder_momentum")
+    elif "habituation" not in result:
+        result["habituation"] = {}
+
+    if "stimulus_window" not in result:
+        result["stimulus_window"] = []
+
+    if "sensitization" not in result:
+        result["sensitization"] = {}
+
+    if "secretion_queue" not in result:
+        result["secretion_queue"] = []
+
+    try:
+        from log import log
+        log("MIGRATION", "Migrated state from v3 to v4 (SPEC-29: stimulus window, sensitization, secretion queue).")
+    except ImportError:
+        pass
+
+    return result

@@ -24,12 +24,12 @@ from src.sim.bio.defaults import (
     neuroplasticity_defaults,
     CHEMICAL_DEFAULTS,
 )
-from src.sim.bio.migration import _migrate_v1_to_v2, migrate_v2_to_v3
+from src.sim.bio.migration import _migrate_v1_to_v2, migrate_v2_to_v3, migrate_v3_to_v4
 
 
 @dataclass
 class BiologicalState:
-    schema_version: int = 3
+    schema_version: int = 4
     last_updated: float = field(default_factory=time.time)
 
     # ── TIER 1: First-order chemicals (real physiological units) ───────────────
@@ -75,7 +75,23 @@ class BiologicalState:
     sleeping: bool = False
     sleep_start: Optional[float] = None
     sleep_expected_wake: Optional[float] = None
-    encoder_momentum: dict = field(default_factory=dict)
+
+    # ── SPEC-29: stimulus processing / habituation / sensitization ────────────
+    # stimulus_window: rolling recent stimuli for content novelty comparison.
+    # Each entry: {"embedding": [...], "ts": float, "summary": str}
+    stimulus_window: list = field(default_factory=list)
+
+    # sensitization: single-source record (Mina is single-user).
+    # {"contact_count": int, "accumulated_valence": float,
+    #  "sensitization_level": float, "last_contact_ts": float, "first_contact_ts": float}
+    sensitization: dict = field(default_factory=dict)
+
+    # secretion_queue: pending neurotransmitter drip entries processed by advance().
+    # Each entry: {"chemical": str, "remaining": float, "rate_per_sim_hour": float, "posted_at": float}
+    secretion_queue: list = field(default_factory=list)
+
+    # habituation: renamed from encoder_momentum (SPEC-29); retained for migration compat but no longer used.
+    habituation: dict = field(default_factory=dict)
 
     # ---------------------------------------------------------------------------
     # Convenience read-only accessors — allow old call sites to work
@@ -158,6 +174,8 @@ class BiologicalState:
             d = _migrate_v1_to_v2(d)
         if d.get("schema_version", 2) < 3:
             d = migrate_v2_to_v3(d)
+        if d.get("schema_version", 3) < 4:
+            d = migrate_v3_to_v4(d)
         known = set(cls.__dataclass_fields__)
         filtered = {k: v for k, v in d.items() if k in known}
         return cls(**filtered)

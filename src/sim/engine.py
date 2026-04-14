@@ -141,16 +141,28 @@ def _advance_isolation_pressure(s: BiologicalState, sim_hours: float, now: float
     return s
 
 
-def _decay_encoder_momentum(s: BiologicalState, now: float) -> BiologicalState:
-    """Half-life ~1800 s (30 min). Decays on wall-clock time, not sim time."""
-    real_elapsed = now - s.last_updated
-    if real_elapsed > 0 and s.encoder_momentum:
-        decay = 0.5 ** (real_elapsed / 1800.0)
-        s.encoder_momentum = {
-            k: v * decay
-            for k, v in s.encoder_momentum.items()
-            if v * decay > 0.05
-        }
+def _process_secretion_queue(s: BiologicalState, sim_hours: float) -> BiologicalState:
+    """
+    SPEC-29 Layer 3: release pending neurotransmitter drip entries.
+    Each entry releases up to rate_per_sim_hour * sim_hours per tick.
+    Handles both positive and negative remaining (e.g. cortisol suppression).
+    """
+    if not s.secretion_queue:
+        return s
+
+    for entry in s.secretion_queue:
+        remaining = entry["remaining"]
+        released  = entry["rate_per_sim_hour"] * sim_hours
+        if remaining >= 0:
+            release = min(remaining, released)
+        else:
+            release = max(remaining, -released)
+        chem    = entry["chemical"]
+        current = s.chemicals.get(chem, 0.0)
+        s.chemicals[chem] = clamp_chemical(chem, current + release)
+        entry["remaining"] -= release
+
+    s.secretion_queue = [e for e in s.secretion_queue if abs(e["remaining"]) > 0.05]
     return s
 
 
@@ -229,11 +241,14 @@ def advance(state: BiologicalState,
             s.chemicals[name] = clamp_chemical(name, target)
 
         elif name == "endorphins":
-            # Asymmetric: fast decay when above baseline, slow recovery when below
+            # SPEC-29: exponential decay toward baseline, half-life ~25 minutes.
+            # Replaces linear 18 units/hr which produced staircase accumulation.
             baseline = 12.0
             if current > baseline:
-                new_val = current - 18.0 * sim_hours
-                s.chemicals[name] = clamp_chemical(name, max(baseline, new_val))
+                half_life_hours = 25.0 / 60.0
+                decay_factor    = 0.5 ** (sim_hours / half_life_hours)
+                excess          = current - baseline
+                s.chemicals[name] = clamp_chemical(name, baseline + excess * decay_factor)
             else:
                 gap = baseline - current
                 s.chemicals[name] = clamp_chemical(
@@ -322,8 +337,8 @@ def advance(state: BiologicalState,
 
     s = advance_substances(s, sim_hours, now, event_bus)
 
-    # --- Encoder momentum decay ---
-    s = _decay_encoder_momentum(s, now)
+    # --- SPEC-29: secretion queue drip release ---
+    s = _process_secretion_queue(s, sim_hours)
 
     # --- Tolerance decay (legacy scalar — receptor_sensitivity is the new model) ---
     for substance in list(s.tolerance.keys()):
@@ -361,6 +376,17 @@ def advance(state: BiologicalState,
                 "endorphins",
                 s.chemicals.get("endorphins", 12.0) + random.uniform(3, 12),
             )
+            # SPEC-29: sleep re-sensitization — habituation window decays during sleep.
+            # Age each stimulus_window entry by doubling its apparent age (2× time shift).
+            # Sensitization records are NOT decayed — attachment persists across sleep.
+            if s.stimulus_window:
+                fresh = []
+                for entry in s.stimulus_window:
+                    e = dict(entry)
+                    # Double apparent age: ts = 2*ts - now (subtracts current elapsed twice)
+                    e["ts"] = 2.0 * e["ts"] - now
+                    fresh.append(e)
+                s.stimulus_window = fresh
 
     # --- Auto-sleep onset (SPEC-24: two-process propensity model) ---
     # Replaces the old melatonin >= 195 threshold with a physiologically grounded
