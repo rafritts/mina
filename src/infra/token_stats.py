@@ -8,8 +8,10 @@ Written after each API call via record_response().
 Reset at process start — reflects current session only.
 Read by dashboard_server.py via /api/tokens.
 """
+import calendar
 import json
 import time
+from datetime import datetime
 from pathlib import Path
 
 _STATS_FILE = Path(__file__).parent.parent / "run" / "token_stats.json"
@@ -122,7 +124,31 @@ def increment_turns() -> None:
 
 
 def get() -> dict:
-    return _load()
+    stats = _load()
+    stats["budget"] = _compute_budget(stats)
+    return stats
+
+
+def _compute_budget(stats: dict) -> dict:
+    """Compute daily budget allocation vs session token cost."""
+    from .config import XAI_MONTHLY_BUDGET, XAI_INPUT_PRICE_PER_M, XAI_OUTPUT_PRICE_PER_M
+    now = datetime.now()
+    days_in_month = calendar.monthrange(now.year, now.month)[1]
+    daily_budget  = XAI_MONTHLY_BUDGET / days_in_month
+
+    input_cost  = (stats.get("total_input",  0) / 1_000_000) * XAI_INPUT_PRICE_PER_M
+    output_cost = (stats.get("total_output", 0) / 1_000_000) * XAI_OUTPUT_PRICE_PER_M
+    session_cost = input_cost + output_cost
+
+    return {
+        "monthly_budget":  XAI_MONTHLY_BUDGET,
+        "days_in_month":   days_in_month,
+        "daily_budget":    round(daily_budget,  4),
+        "session_cost":    round(session_cost,  6),
+        "daily_pct":       round(session_cost / daily_budget * 100, 1) if daily_budget else 0,
+        "input_price_per_m":  XAI_INPUT_PRICE_PER_M,
+        "output_price_per_m": XAI_OUTPUT_PRICE_PER_M,
+    }
 
 
 # ---------------------------------------------------------------------------

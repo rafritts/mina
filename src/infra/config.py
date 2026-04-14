@@ -34,14 +34,15 @@ _GROK_MODEL   = "grok-4-1-fast-reasoning"
 _GROK_URL     = "https://api.x.ai/v1"
 _GROK_KEY     = os.getenv("XAI_API_KEY", os.getenv("OPENAI_API_KEY", "sk-placeholder"))
 
-_OLLAMA_MODEL = "gemma4:e4b-it-bf16"
+#_OLLAMA_MODEL = "gemma4:e4b-it-bf16"
+_OLLAMA_MODEL = "gemma4:31b"
 _OLLAMA_URL   = "http://localhost:11434/v1"
 _OLLAMA_KEY   = "ollama"
 
 # Extra options passed to Ollama on every request (ignored when USE_OLLAMA=False).
 # num_ctx: context window size. kv_cache_type: f16 / q8_0 / q4_0. num_gpu: GPU layers.
 OLLAMA_OPTIONS: dict = {
-    "num_ctx": 131072,
+    "num_ctx": 24000,
     "num_gpu": 999,
     "kv_cache_type": "f16",
 }
@@ -51,6 +52,14 @@ BASE_URL = _OLLAMA_URL   if USE_OLLAMA else os.getenv("BASE_URL", _GROK_URL)
 API_KEY  = _OLLAMA_KEY   if USE_OLLAMA else _GROK_KEY
 
 OLLAMA_BASE_URL = _OLLAMA_URL  # convenience export
+
+# ---------------------------------------------------------------------------
+# xAI billing budget — used by the dashboard daily-spend gauge.
+# Pricing is for grok-4-1-fast-reasoning (input / output per million tokens).
+# ---------------------------------------------------------------------------
+XAI_MONTHLY_BUDGET     = 50.0   # USD
+XAI_INPUT_PRICE_PER_M  = 0.2    # USD per million input tokens
+XAI_OUTPUT_PRICE_PER_M = 0.5    # USD per million output tokens
 
 # Per-role model overrides — each falls back to MODEL if not set
 ENCODER_MODEL = os.getenv("ENCODER_MODEL", MODEL)

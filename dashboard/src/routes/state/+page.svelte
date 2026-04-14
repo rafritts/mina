@@ -543,7 +543,9 @@
 
       <!-- Session footer -->
       {#if tokens}
-        <div class="mt-4 pt-3 border-t border-base-300">
+        <div class="mt-4 pt-3 border-t border-base-300 flex flex-col gap-3">
+
+          <!-- Token counts row -->
           <div class="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs opacity-40">
             <span class="font-semibold uppercase tracking-wider">Session</span>
             <span>Started <span class="font-mono">{sessionAge(tokens.session_start)}</span></span>
@@ -553,7 +555,34 @@
             {#if tokens.total_reasoning > 0}
               <span>Reasoning <span class="font-mono">{fmtNum(tokens.total_reasoning)}</span></span>
             {/if}
+            {#if tokens.total_cached > 0}
+              <span>Cached <span class="font-mono">{fmtNum(tokens.total_cached)}</span></span>
+            {/if}
           </div>
+
+          <!-- Daily budget gauge -->
+          {#if tokens.budget}
+            {@const b = tokens.budget}
+            {@const pct = Math.min(b.daily_pct, 100)}
+            {@const barColor = pct >= 100 ? 'bg-error' : pct >= 75 ? 'bg-warning' : 'bg-success'}
+            <div class="flex flex-col gap-1">
+              <div class="flex justify-between items-baseline text-xs opacity-50">
+                <span class="font-semibold uppercase tracking-wider">Daily Budget</span>
+                <span class="font-mono">
+                  ${b.session_cost.toFixed(4)} / ${b.daily_budget.toFixed(4)}
+                  <span class="opacity-60 ml-1">({b.daily_pct.toFixed(1)}%)</span>
+                </span>
+              </div>
+              <div class="w-full h-1.5 bg-base-300 rounded-full overflow-hidden">
+                <div class="{barColor} h-full rounded-full transition-all duration-500" style="width: {pct}%"></div>
+              </div>
+              <div class="flex justify-between text-xs opacity-30">
+                <span>${b.monthly_budget}/mo ÷ {b.days_in_month} days</span>
+                <span>${b.input_price_per_m}/${b.output_price_per_m} per Mtok in/out</span>
+              </div>
+            </div>
+          {/if}
+
         </div>
       {/if}
 

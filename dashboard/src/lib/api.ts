@@ -83,11 +83,39 @@ export interface StateData {
   cycle_day:            number;                   // 0–27
 }
 
+export interface TokenCall {
+  input:     number;
+  output:    number;
+  reasoning: number;
+  cached:    number;
+}
+
+export interface TurnEntry {
+  turn:    number;
+  ts:      number;
+  calls:   Record<string, TokenCall>;
+  totals:  TokenCall;
+}
+
+export interface TokenBudget {
+  monthly_budget:      number;
+  days_in_month:       number;
+  daily_budget:        number;
+  session_cost:        number;
+  daily_pct:           number;
+  input_price_per_m:   number;
+  output_price_per_m:  number;
+}
+
 export interface TokenStats {
-  session_start: number | null;
-  total_input:   number;
-  total_output:  number;
+  session_start:   number | null;
+  total_input:     number;
+  total_output:    number;
   total_reasoning: number;
-  turns:         number;
-  by_label:      Record<string, { input: number; output: number; reasoning: number }>;
+  total_cached:    number;
+  turns:           number;
+  by_label:        Record<string, TokenCall>;
+  turn_log:        TurnEntry[];
+  current_turn:    Record<string, TokenCall>;
+  budget:          TokenBudget;
 }
