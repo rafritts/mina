@@ -29,7 +29,7 @@ _DOTENV = find_dotenv(usecwd=True)
 load_dotenv(_DOTENV)
 _PROJECT_ROOT = os.path.dirname(_DOTENV)
 
-from ..runtime.cortex import run_turn, compact_history_if_needed, load_history, save_history, touch_last_active, HISTORY_MAX, HISTORY_FORCE_AT
+from ..runtime.cortex import run_turn, load_history, save_history, touch_last_active, HISTORY_MAX
 from ..runtime.heartbeat import bio_tick_loop
 from ..runtime.freetime import run_freetime as _run_freetime
 from ..infra.log import log
@@ -198,24 +198,6 @@ async def _update_presence(state) -> None:
         )
 
 
-IDLE_COMPACT_AFTER = 60  # seconds of no message before compacting
-
-
-async def _idle_compact_loop() -> None:
-    """Compact history once after IDLE_COMPACT_AFTER seconds of no new messages."""
-    from ..infra.config import LAST_ACTIVE_FILE
-    _last_compacted_at = 0.0
-    while True:
-        await asyncio.sleep(10)
-        try:
-            last_active = os.path.getmtime(LAST_ACTIVE_FILE)
-        except FileNotFoundError:
-            continue
-        if time.time() - last_active >= IDLE_COMPACT_AFTER and last_active > _last_compacted_at:
-            log("COMPACT", "Idle threshold reached — compacting history.")
-            await compact_history_if_needed()
-            _last_compacted_at = last_active
-
 
 async def _gateway_freetime_loop() -> None:
     """Periodically run Mina's autonomous freetime session."""
@@ -354,6 +336,21 @@ async def _outbox_watcher() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Followup watcher — fires deferred responses Mina scheduled via schedule_followup
+# ---------------------------------------------------------------------------
+
+async def _followup_watcher() -> None:
+    """Check followup queue every 60 seconds and fire any expired entries."""
+    from ..runtime.followup import process_due_followups
+    while True:
+        await asyncio.sleep(60)
+        try:
+            await process_due_followups()
+        except Exception as e:
+            log("FOLLOWUP/ERR", f"Watcher error: {e}")
+
+
+# ---------------------------------------------------------------------------
 # Message delivery
 # ---------------------------------------------------------------------------
 
@@ -422,12 +419,6 @@ async def _run_turn(channel: discord.abc.Messageable, messages: list[discord.Mes
         return
 
     await _deliver(channel, reply, image_paths)
-
-    # Force compact if history has grown past 40 exchanges — runs after delivery
-    # so the user is reading the reply while the LLM call happens.
-    if len(load_history()) > HISTORY_FORCE_AT:
-        log("COMPACT", "Force threshold reached — compacting history.")
-        await compact_history_if_needed()
 
     # Update presence after turn
     await _update_presence(load_state())
@@ -560,9 +551,9 @@ async def on_ready():
     asyncio.create_task(bio_tick_loop())
     asyncio.create_task(_gateway_freetime_loop())
     asyncio.create_task(_outbox_watcher())
+    asyncio.create_task(_followup_watcher())
     asyncio.create_task(_presence_loop())
-    asyncio.create_task(_idle_compact_loop())
-    log("GATEWAY", "Bio tick, freetime, outbox watcher, presence loop, and idle compact started.")
+    log("GATEWAY", "Bio tick, freetime, outbox watcher, followup watcher, and presence loop started.")
 
     # Write ready file (supervisor/CLI uses this to detect startup)
     os.makedirs(_RUN_DIR, exist_ok=True)
