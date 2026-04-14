@@ -389,6 +389,8 @@ async def run_turn(
     state = load_state() if paused else load_and_advance()
     if paused:
         log("STATE", "Biological updates paused — time not advanced.")
+    log("USER", f"{username}: {user_input}" + (" [image]" if image_b64 else ""))
+
     # [1] encode_stimulus — biological response to incoming message
     stimulus = f"{username}: {user_input}" + (" [sent an image]" if image_b64 else "")
     stimulus_deltas = await asyncio.to_thread(encode_stimulus, state, stimulus)
@@ -493,6 +495,9 @@ async def run_turn(
         if entry.get("role") == "assistant" and entry.get("content"):
             reply = entry["content"]
             break
+
+    if reply:
+        log("MINA", reply)
 
     # [5] encode_response — biological effect of what Mina just expressed
     if reply:
