@@ -28,7 +28,7 @@ FOLLOWUP_QUEUE_FILE  = os.path.join(RUN_DIR, "followup_queue.json")
 # ---------------------------------------------------------------------------
 # Provider selection — flip USE_OLLAMA to run locally via Ollama.
 # ---------------------------------------------------------------------------
-USE_OLLAMA = True
+USE_OLLAMA = False
 
 _GROK_MODEL   = "grok-4-1-fast-reasoning"
 _GROK_URL     = "https://api.x.ai/v1"
