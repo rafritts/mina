@@ -199,17 +199,85 @@ async def _update_presence(state) -> None:
 
 
 
+def _dynamic_freetime_interval(base_seconds: int) -> int:
+    """
+    Compute next freetime interval based on current biological state.
+
+    Factors (all multiplicative on base_seconds):
+      sleeping        → 4×   (long sleep cycles; don't spam freetime)
+      energy          → 0.6–2.0× (high energy = more active = fire sooner)
+      sleep pressure  → 1.0–2.0× (adenosine building = winding down)
+      melatonin       → 0.7–2.5× (circadian proxy: day vs. night)
+
+    Result is clamped to [base/4, base*6].
+    """
+    try:
+        state = load_state()
+
+        if state.sleeping:
+            return min(base_seconds * 4, base_seconds * 6)
+
+        d = derived(state)
+        energy       = d["second_order"].get("energy", 50.0)         # 0–100
+        sleep_p      = state.sleep_pressure                           # 0–100 AU
+        melatonin    = state.chemicals.get("melatonin", 5.0)         # pg/mL
+
+        # Energy: high energy → shorter interval (she's active and doing things)
+        if energy >= 70:
+            energy_factor = 0.6
+        elif energy >= 50:
+            energy_factor = 0.85
+        elif energy >= 30:
+            energy_factor = 1.3
+        else:
+            energy_factor = 2.0
+
+        # Sleep pressure: tired → longer interval (winding down, less activity)
+        if sleep_p >= 75:
+            sleep_factor = 2.0
+        elif sleep_p >= 55:
+            sleep_factor = 1.4
+        else:
+            sleep_factor = 1.0
+
+        # Melatonin as circadian proxy:
+        #   < 15 pg/mL  → full daytime, active window
+        #   15–80       → evening / winding down
+        #   > 80        → night window, high melatonin, should be sleeping
+        if melatonin < 15:
+            melatonin_factor = 0.7
+        elif melatonin < 80:
+            melatonin_factor = 1.2
+        else:
+            melatonin_factor = 2.5
+
+        scale    = energy_factor * sleep_factor * melatonin_factor
+        interval = int(base_seconds * scale)
+        lo       = max(300, base_seconds // 4)
+        hi       = base_seconds * 6
+        return max(lo, min(hi, interval))
+
+    except Exception:
+        return base_seconds
+
+
 async def _gateway_freetime_loop() -> None:
-    """Periodically run Mina's autonomous freetime session."""
+    """Periodically run Mina's autonomous freetime session.
+
+    The interval between sessions is dynamic — shorter when she's alert and
+    active (midday, high energy), longer when she's tired or it's late night.
+    """
     from ..infra.config import PAUSED_FLAG, load_config
     while True:
-        cfg = load_config()
-        interval = int(cfg.get("heartbeat_interval_seconds", 1800))
+        cfg      = load_config()
+        base     = int(cfg.get("heartbeat_interval_seconds", 1800))
+        interval = _dynamic_freetime_interval(base)
+        log("FREETIME", f"Next session in {interval}s (base={base}s).")
         await asyncio.sleep(interval)
         if os.path.exists(PAUSED_FLAG):
             log("FREETIME", "Paused — skipping.")
             continue
-        log("FREETIME", f"Firing (interval={interval}s)...")
+        log("FREETIME", f"Firing...")
         try:
             await _run_freetime()
         except Exception as e:
