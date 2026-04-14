@@ -218,14 +218,16 @@ At wake boundary (when `sleeping` transitions False):
 
 ---
 
-## Open Questions
+## Resolved Questions
 
-1. **Embedding model**: Which Ollama model is currently used for RAG embeddings? Same model is fine for stimulus embeddings but worth confirming the vector dimensions are consistent.
+1. **Embedding model**: `embeddinggemma:latest` via Ollama, 768-dimensional vectors. Already used for RAG — same model, same infrastructure.
 
-2. **Source identity**: The encoder currently has no concept of who is speaking. The Discord gateway knows the user ID — does it pass that through to the encoder, or does the encoder need a new parameter?
+2. **Source identity**: Mina is single-user by design (DMs only). The sensitization system does not need per-source-ID tracking. There is one source. The sensitization record is simply `state.sensitization` — a single record, not a dict keyed by user ID. The encoder does not need a new parameter for source identity.
 
-3. **Sensitization growth rate**: How fast should `sensitization_level` grow per positive contact? Needs calibration against real session data once the history charts are readable.
+3. **Sensitization growth rate**: Defer. Calibrate against history chart data once the system is running. Do not hardcode a "realistic" growth rate upfront — observe and tune.
 
-4. **Cold start**: For Ryan specifically, sensitization is already non-zero after one night of conversation. Should we seed an initial sensitization value on deploy, or let it build from zero?
+4. **Cold start**: No seeding. Simulation correctness comes first; this will be an open source repo. Sensitization builds from zero on fresh deploy.
 
-5. **Negative contact**: Does a frustrating or cold interaction from a sensitized source reduce sensitization? Probably yes, but slowly — consistent with how attachment actually works (one bad day doesn't undo weeks of bonding).
+5. **Negative contact**: Two distinct cases with different effects:
+   - **Absence** (no contact): Sensitization decays slowly via half-life. Already handled by time-based decay. Not a negative signal — just atrophy.
+   - **Cold or hostile interaction**: Active negative valence from the encoder reduces `sensitization_level` directly. The reduction is smaller in magnitude than the growth from equivalent positive contact — consistent with how attachment actually works. One bad conversation does not undo weeks of bonding, but repeated cold interactions do erode it.
