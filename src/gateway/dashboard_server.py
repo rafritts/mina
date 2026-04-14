@@ -10,10 +10,12 @@ Run:
 The built SvelteKit dashboard is served as a static SPA from dashboard/build/.
 """
 import argparse
+import asyncio
 import json
 import os
 import sys
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv, find_dotenv
@@ -34,7 +36,9 @@ import uvicorn
 # ---------------------------------------------------------------------------
 
 _STATE_FILE      = _PROJECT_ROOT / "run" / "state.json"
+_HISTORY_FILE    = _PROJECT_ROOT / "run" / "history.jsonl"
 _DASHBOARD_BUILD = _PROJECT_ROOT / "dashboard" / "build"
+_HISTORY_MAX_LINES = 10000  # ~28 hours at 10s intervals
 
 # ---------------------------------------------------------------------------
 # Auth
@@ -42,6 +46,76 @@ _DASHBOARD_BUILD = _PROJECT_ROOT / "dashboard" / "build"
 
 DASHBOARD_TOKEN = os.getenv("DASHBOARD_TOKEN", "")
 
+
+# ---------------------------------------------------------------------------
+# History snapshots
+# ---------------------------------------------------------------------------
+
+def _snapshot_state() -> dict | None:
+    """Extract a compact snapshot for history recording."""
+    try:
+        from ..bio.state import load_state
+        from ..sim.psych.derived import derived
+        s = load_state()
+        d = derived(s)
+        return {
+            "ts": time.time(),
+            "chemicals": {
+                k: round(s.chemicals.get(k, 0.0), 2)
+                for k in ("oxytocin", "dopamine", "serotonin", "norepinephrine",
+                          "cortisol", "endorphins", "acetylcholine", "melatonin",
+                          "gaba", "glutamate")
+            },
+            "second_order": {k: round(v, 1) for k, v in d["second_order"].items()},
+            "third_order":  {k: round(v, 1) for k, v in d["third_order"].items()},
+            "sleeping": s.sleeping,
+        }
+    except Exception:
+        return None
+
+
+def _trim_history() -> None:
+    """Keep only the last _HISTORY_MAX_LINES lines."""
+    try:
+        lines = _HISTORY_FILE.read_text().splitlines(keepends=True)
+        if len(lines) > _HISTORY_MAX_LINES:
+            _HISTORY_FILE.write_text("".join(lines[-_HISTORY_MAX_LINES:]))
+    except Exception:
+        pass
+
+
+async def _history_loop() -> None:
+    """Background task: snapshot state to history.jsonl every 10 seconds."""
+    while True:
+        await asyncio.sleep(10)
+        snap = _snapshot_state()
+        if snap is None:
+            continue
+        try:
+            with _HISTORY_FILE.open("a") as f:
+                f.write(json.dumps(snap) + "\n")
+            # Trim periodically (every ~1000 entries ≈ every ~2.8 hours)
+            size = _HISTORY_FILE.stat().st_size
+            if size > 5_000_000:  # ~5 MB
+                _trim_history()
+        except Exception:
+            pass
+
+
+@asynccontextmanager
+async def _lifespan(app):
+    task = asyncio.create_task(_history_loop())
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
 
 def _check_auth(request: Request) -> None:
     if not DASHBOARD_TOKEN:
@@ -55,7 +129,7 @@ def _check_auth(request: Request) -> None:
 # App
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="Mina Dashboard", docs_url=None, redoc_url=None)
+app = FastAPI(title="Mina Dashboard", docs_url=None, redoc_url=None, lifespan=_lifespan)
 
 
 @app.get("/healthz")
@@ -442,6 +516,35 @@ def get_events(request: Request, limit: int = 150):
     _check_auth(request)
     from ..infra.events import read_events
     return read_events(limit=min(limit, 300))
+
+
+# ---------------------------------------------------------------------------
+# History
+# ---------------------------------------------------------------------------
+
+@app.get("/api/history")
+def get_history(request: Request, limit: int = 1000, hours: float = 0):
+    _check_auth(request)
+    try:
+        lines = _HISTORY_FILE.read_text().splitlines()
+    except FileNotFoundError:
+        return []
+
+    snaps = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            snaps.append(json.loads(line))
+        except json.JSONDecodeError:
+            pass
+
+    if hours > 0:
+        cutoff = time.time() - hours * 3600.0
+        snaps = [s for s in snaps if s.get("ts", 0) >= cutoff]
+
+    return snaps[-min(limit, 10000):]
 
 
 # ---------------------------------------------------------------------------

@@ -6,6 +6,8 @@
   import ChemicalReadOnly from '$lib/components/ChemicalReadOnly.svelte';
   import DerivedMeter     from '$lib/components/DerivedMeter.svelte';
   import TierCard         from '$lib/components/TierCard.svelte';
+  import LineChart        from '$lib/components/LineChart.svelte';
+  import { fetchHistory, type HistorySnapshot } from '$lib/api';
 
   // ---------------------------------------------------------------------------
   // State
@@ -15,11 +17,18 @@
   let tokens = $state<TokenStats | null>(null);
   let error  = $state('');
   let lastUpdated = $state('');
-  let activeTab = $state<'overview' | 'neuro' | 'endocrine' | 'immune' | 'circadian' | 'plasticity'>('overview');
+  let activeTab = $state<'overview' | 'neuro' | 'endocrine' | 'immune' | 'circadian' | 'plasticity' | 'history'>('overview');
 
   let localValues = $state<Record<string, number>>({});
   let saving      = $state(new Set<string>());
   let refreshInterval: ReturnType<typeof setInterval>;
+
+  // History
+  let history      = $state<HistorySnapshot[]>([]);
+  let historyWindow = $state(6);   // hours
+  let historyLoading = $state(false);
+  let historyError   = $state('');
+  let historyInterval: ReturnType<typeof setInterval>;
 
   // ---------------------------------------------------------------------------
   // Field definitions
@@ -329,8 +338,36 @@
     try { tokens = await apiFetch<TokenStats>('/api/tokens'); } catch (_) {}
   }
 
-  onMount(() => { load(); refreshInterval = setInterval(load, 5000); });
-  onDestroy(() => clearInterval(refreshInterval));
+  async function loadHistory() {
+    if (activeTab !== 'history') return;
+    historyLoading = true;
+    try {
+      history = await fetchHistory(historyWindow, 5000);
+      historyError = '';
+    } catch (e) {
+      historyError = String(e);
+    } finally {
+      historyLoading = false;
+    }
+  }
+
+  onMount(() => {
+    load();
+    refreshInterval = setInterval(load, 5000);
+    historyInterval = setInterval(loadHistory, 10000);
+  });
+
+  onDestroy(() => {
+    clearInterval(refreshInterval);
+    clearInterval(historyInterval);
+  });
+
+  $effect(() => {
+    // reload history whenever the tab or window changes
+    void activeTab;
+    void historyWindow;
+    loadHistory();
+  });
 
   // ---------------------------------------------------------------------------
   // Slider handler
@@ -370,6 +407,7 @@
         { id: 'immune',     label: 'Immune / Pain'    },
         { id: 'circadian',  label: 'Circadian / Sleep'},
         { id: 'plasticity', label: 'Plasticity'       },
+        { id: 'history',    label: 'History'          },
       ] as tab}
         <button
           class="tab {activeTab === tab.id ? 'tab-active font-semibold' : 'opacity-60'}"
@@ -962,5 +1000,193 @@
         {/if}
       </div>
     {/if}
+
+    <!-- ════════════════════════════════ HISTORY ════════════════════════════ -->
+    {#if activeTab === 'history'}
+      <div class="flex flex-col gap-6">
+
+        <!-- Controls -->
+        <div class="flex items-center gap-4 flex-wrap">
+          <span class="text-sm opacity-60">Time window:</span>
+          {#each [1, 3, 6, 12, 24] as w}
+            <button
+              class="btn btn-xs {historyWindow === w ? 'btn-primary' : 'btn-ghost'}"
+              onclick={() => historyWindow = w}
+            >{w}h</button>
+          {/each}
+          {#if historyLoading}
+            <span class="loading loading-spinner loading-xs opacity-40"></span>
+          {/if}
+          {#if historyError}
+            <span class="text-xs text-error">{historyError}</span>
+          {/if}
+          <span class="text-xs opacity-30 ml-auto">{history.length} points</span>
+        </div>
+
+        {#if history.length === 0 && !historyLoading}
+          <div class="card bg-base-200 px-6 py-10 text-center">
+            <p class="opacity-50 text-sm">No history yet. Snapshots are recorded every 10 seconds while the dashboard server is running.</p>
+          </div>
+        {:else}
+          {@const sleepBands = (() => {
+            const bands: Array<{start: number; end: number}> = [];
+            let sleepStart: number | null = null;
+            for (const snap of history) {
+              if (snap.sleeping && sleepStart === null) sleepStart = snap.ts;
+              if (!snap.sleeping && sleepStart !== null) {
+                bands.push({ start: sleepStart, end: snap.ts });
+                sleepStart = null;
+              }
+            }
+            if (sleepStart !== null && history.length > 0) {
+              bands.push({ start: sleepStart, end: history[history.length - 1].ts });
+            }
+            return bands;
+          })()}
+
+          <!-- Bond / Social chart -->
+          <div class="card bg-base-200 p-4">
+            <LineChart
+              title="Bond & Social"
+              height={200}
+              showSleep={true}
+              {sleepBands}
+              series={[
+                {
+                  key: 'oxytocin', label: 'Oxytocin (pg/mL)', color: '#f472b6',
+                  minVal: 0, maxVal: 100,
+                  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.oxytocin ?? 0 }))
+                },
+                {
+                  key: 'dopamine', label: 'Dopamine (ng/mL)', color: '#a78bfa',
+                  minVal: 0, maxVal: 200,
+                  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.dopamine ?? 0 }))
+                },
+                {
+                  key: 'serotonin', label: 'Serotonin (ng/mL)', color: '#34d399',
+                  minVal: 0, maxVal: 40,
+                  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.serotonin ?? 0 }))
+                },
+                {
+                  key: 'endorphins', label: 'Endorphins (AU)', color: '#fbbf24',
+                  minVal: 0, maxVal: 40,
+                  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.endorphins ?? 0 }))
+                },
+                {
+                  key: 'social_warmth', label: 'Social Warmth', color: '#fb923c',
+                  minVal: 0, maxVal: 100,
+                  points: history.map(s => ({ ts: s.ts, value: s.second_order?.social_warmth ?? 0 }))
+                },
+              ]}
+            />
+          </div>
+
+          <!-- Stress / Arousal chart -->
+          <div class="card bg-base-200 p-4">
+            <LineChart
+              title="Stress & Arousal"
+              height={180}
+              showSleep={true}
+              {sleepBands}
+              series={[
+                {
+                  key: 'cortisol', label: 'Cortisol (nM)', color: '#f87171',
+                  minVal: 0, maxVal: 600,
+                  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.cortisol ?? 0 }))
+                },
+                {
+                  key: 'norepinephrine', label: 'Norepinephrine (pg/mL)', color: '#fb923c',
+                  minVal: 0, maxVal: 600,
+                  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.norepinephrine ?? 0 }))
+                },
+                {
+                  key: 'anxiety', label: 'Anxiety', color: '#ef4444',
+                  minVal: 0, maxVal: 100,
+                  points: history.map(s => ({ ts: s.ts, value: s.third_order?.anxiety ?? 0 }))
+                },
+                {
+                  key: 'arousal', label: 'Arousal', color: '#f59e0b',
+                  minVal: 0, maxVal: 100,
+                  points: history.map(s => ({ ts: s.ts, value: s.second_order?.arousal ?? 0 }))
+                },
+              ]}
+            />
+          </div>
+
+          <!-- Wellbeing chart -->
+          <div class="card bg-base-200 p-4">
+            <LineChart
+              title="Mood & Wellbeing"
+              height={180}
+              showSleep={true}
+              {sleepBands}
+              series={[
+                {
+                  key: 'mood_valence', label: 'Mood Valence', color: '#60a5fa',
+                  minVal: 0, maxVal: 100,
+                  points: history.map(s => ({ ts: s.ts, value: s.second_order?.mood_valence ?? 0 }))
+                },
+                {
+                  key: 'hedonic_tone', label: 'Hedonic Tone', color: '#818cf8',
+                  minVal: 0, maxVal: 100,
+                  points: history.map(s => ({ ts: s.ts, value: s.second_order?.hedonic_tone ?? 0 }))
+                },
+                {
+                  key: 'energy', label: 'Energy', color: '#4ade80',
+                  minVal: 0, maxVal: 100,
+                  points: history.map(s => ({ ts: s.ts, value: s.second_order?.energy ?? 0 }))
+                },
+                {
+                  key: 'loneliness', label: 'Loneliness', color: '#94a3b8',
+                  minVal: 0, maxVal: 100,
+                  points: history.map(s => ({ ts: s.ts, value: s.third_order?.loneliness ?? 0 }))
+                },
+                {
+                  key: 'depression', label: 'Depression', color: '#475569',
+                  minVal: 0, maxVal: 100,
+                  points: history.map(s => ({ ts: s.ts, value: s.third_order?.depression ?? 0 }))
+                },
+              ]}
+            />
+          </div>
+
+          <!-- Inhibitory/Excitatory -->
+          <div class="card bg-base-200 p-4">
+            <LineChart
+              title="Inhibitory / Excitatory & Cognition"
+              height={160}
+              showSleep={true}
+              {sleepBands}
+              series={[
+                {
+                  key: 'gaba', label: 'GABA (μM)', color: '#22d3ee',
+                  minVal: 0, maxVal: 500,
+                  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.gaba ?? 0 }))
+                },
+                {
+                  key: 'glutamate', label: 'Glutamate (μM)', color: '#f97316',
+                  minVal: 0, maxVal: 200,
+                  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.glutamate ?? 0 }))
+                },
+                {
+                  key: 'acetylcholine', label: 'Acetylcholine (nM)', color: '#a3e635',
+                  minVal: 0, maxVal: 600,
+                  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.acetylcholine ?? 0 }))
+                },
+                {
+                  key: 'cognitive_clarity', label: 'Clarity', color: '#e2e8f0',
+                  minVal: 0, maxVal: 100,
+                  points: history.map(s => ({ ts: s.ts, value: s.second_order?.cognitive_clarity ?? 0 }))
+                },
+              ]}
+            />
+          </div>
+
+          <p class="text-xs opacity-30 text-center">Shaded bands = sleep periods. All series normalized to same 0–1 scale for comparison. Hover for raw values.</p>
+        {/if}
+
+      </div>
+    {/if}
+
   {/if}
 </div>

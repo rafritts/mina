@@ -83,6 +83,23 @@ export interface StateData {
   cycle_day:            number;                   // 0–27
 }
 
+// ---------------------------------------------------------------------------
+// History snapshot types
+// ---------------------------------------------------------------------------
+
+export interface HistorySnapshot {
+  ts:           number;
+  chemicals:    Record<string, number>;
+  second_order: Record<string, number>;
+  third_order:  Record<string, number>;
+  sleeping:     boolean;
+}
+
+export async function fetchHistory(hours: number = 6, limit: number = 2000): Promise<HistorySnapshot[]> {
+  const params = new URLSearchParams({ limit: String(limit), hours: String(hours) });
+  return apiFetch<HistorySnapshot[]>(`/api/history?${params}`);
+}
+
 export interface TokenCall {
   input:     number;
   output:    number;
