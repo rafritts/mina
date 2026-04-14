@@ -628,13 +628,14 @@ def adjudicate_emotion(
         )
         token_stats.record_response("adjudicator", response)
         raw = (response.choices[0].message.content or "").strip()
+        finish = response.choices[0].finish_reason
 
         if len(raw) >= 20:
             disposition = raw
             log("ADJUDICATOR", disposition)
             break
         else:
-            log("ADJUDICATOR/ERR", f"attempt {attempt}: output too short: {repr(raw)}")
+            log("ADJUDICATOR/ERR", f"attempt {attempt}: output too short: {repr(raw)} (finish_reason={finish})")
             if attempt < 3:
                 # Only extend the conversation if there's something to show the model —
                 # sending an empty assistant turn confuses some models into repeating it.
