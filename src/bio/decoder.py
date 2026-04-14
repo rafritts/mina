@@ -692,7 +692,7 @@ relevant history. Be concise and specific. If nothing is clearly relevant, outpu
 
 Hard rules:
 - Output plain prose only. No JSON, no headers, no bullet points.
-- Maximum 3 sentences. Often 1 is enough.
+- Maximum 6 sentences. Often 2–3 is enough.
 - Only include things that would actually matter to Mina in this specific moment.
 - If nothing is relevant, return an empty string — literally nothing.
 """
@@ -748,7 +748,7 @@ def build_memory_context(
             model=CONTEXT_MODEL,
             messages=messages,
             temperature=0.3,
-            max_tokens=300,
+            max_tokens=600,
         )
         token_stats.record_response("context", response)
         llm_context = (response.choices[0].message.content or "").strip()
