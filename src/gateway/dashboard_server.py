@@ -197,11 +197,13 @@ def _build_state_response(s) -> dict:
     current_hour = lt.tm_hour + lt.tm_min / 60.0 + lt.tm_sec / 3600.0
     circadian_phase = round(current_hour / 24.0, 4)
     body_out = {
-        "core_temp":      round(b.get("core_temp",   37.0), 2),
-        "adenosine":      round(b.get("adenosine",   38.0), 2),
-        "anandamide":     round(b.get("anandamide",   1.5), 3),
-        "two_ag":         round(b.get("two_ag",       8.0), 2),
-        "circadian_phase": circadian_phase,
+        "core_temp":          round(b.get("core_temp",          37.0), 2),
+        "adenosine":          round(b.get("adenosine",          38.0), 2),
+        "anandamide":         round(b.get("anandamide",          1.5), 3),
+        "two_ag":             round(b.get("two_ag",              8.0), 2),
+        "isolation_pressure": round(b.get("isolation_pressure",  0.0), 1),
+        "recent_contact_ts":  round(b.get("recent_contact_ts",   0.0), 0),
+        "circadian_phase":    circadian_phase,
     }
 
     # Receptor sensitivity (flattened)

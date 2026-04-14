@@ -238,8 +238,10 @@
   }
 
   function plainWithPeople(warmth: number, loneliness: number): PlainState {
-    if (loneliness > 80) return { text: 'lonely, wanting connection', level: 'alert'  };
-    if (loneliness > 68) return { text: 'missing people',             level: 'notice' };
+    // Thresholds match SPEC-28 loneliness ranges: QUIET<20, MILD<38, LONELY<58, ACHING<76, ISOLATED 76+
+    if (loneliness > 76) return { text: 'lonely, wanting connection', level: 'alert'  };
+    if (loneliness > 58) return { text: 'missing people',             level: 'notice' };
+    if (loneliness > 38) return { text: 'a little disconnected',      level: 'notice' };
     if (warmth > 65)     return { text: 'warm and open',              level: 'ok'     };
     if (warmth < 30)     return { text: 'closed off',                 level: 'notice' };
     return                      { text: 'neutral',                    level: 'ok'     };
@@ -278,8 +280,9 @@
     else if (dep > 68) out.push({ label: 'feeling down',      severity: 'moderate' });
     else if (dep > 52) out.push({ label: 'a bit flat',        severity: 'mild'     });
 
-    if      (lon > 80) out.push({ label: 'lonely',            severity: 'high'     });
-    else if (lon > 68) out.push({ label: 'missing people',    severity: 'mild'     });
+    if      (lon > 76) out.push({ label: 'lonely',              severity: 'high'     });
+    else if (lon > 58) out.push({ label: 'missing people',      severity: 'moderate' });
+    else if (lon > 38) out.push({ label: 'a little lonely',     severity: 'mild'     });
 
     if (out.length === 0 && hed < 25)
       out.push({ label: 'going through the motions',          severity: 'moderate' });
