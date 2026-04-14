@@ -155,7 +155,7 @@ _BIOLOGICAL_TOOLS = [
                 "properties": {
                     "prompt": {
                         "type": "string",
-                        "description": "Image description (Danbooru-style tags). MINA.md appearance tags are prepended automatically for self-images.",
+                        "description": "Image description as Danbooru-style tags (e.g. 'sitting on bench, outdoor, sunset'). Do NOT include your own appearance or biological tags — those are prepended automatically from your identity file. Only describe the scene, pose, clothing variation, or additional context.",
                     },
                     "dimensions": {
                         "type": "string",
@@ -167,7 +167,7 @@ _BIOLOGICAL_TOOLS = [
                     },
                     "negative_prompt": {
                         "type": "string",
-                        "description": "What to avoid in the image.",
+                        "description": "Additional things to avoid in the image. Your default negatives (gem, gemstone, necklace) are applied automatically — only add extras if needed.",
                     },
                     "workflow": {
                         "type": "string",
@@ -452,14 +452,22 @@ async def handle_generate_image(args: dict) -> str:
 
     mina_identity = read_identity("MINA.md")
     appearance_tags = ""
+    identity_negative = ""
     if mina_identity:
         for line in mina_identity.splitlines():
             stripped = line.strip()
             if stripped.lower().startswith("prompt:"):
                 appearance_tags = stripped[len("prompt:"):].strip()
-                break
+            elif stripped.lower().startswith("negative_prompt:"):
+                identity_negative = stripped[len("negative_prompt:"):].strip()
     if appearance_tags and appearance_tags not in prompt:
         prompt = f"{appearance_tags}, {prompt}"
+    # Merge identity negative with any caller-supplied negative
+    if identity_negative:
+        if negative_prompt:
+            negative_prompt = f"{identity_negative}, {negative_prompt}"
+        else:
+            negative_prompt = identity_negative
 
     from ..infra.log import log
     log("COMFY", f"workflow={workflow} dimensions={dimensions} seed={seed}")
