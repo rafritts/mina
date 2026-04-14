@@ -526,7 +526,7 @@ ENERGY_T3_WEIGHT                      = 0.15
 ENERGY_ADENOSINE_WEIGHT               = 0.20
 ENERGY_HUNGER_WEIGHT                  = 0.05
 ENERGY_INFLAMMATION_WEIGHT            = 0.15
-ENERGY_OFFSET                         = 20.0
+ENERGY_OFFSET                         = 30.0
 
 # Cognitive clarity
 CLARITY_ACH_WEIGHT                    = 0.35
@@ -545,7 +545,7 @@ HEDONIC_SEROTONIN_WEIGHT              = 0.20
 HEDONIC_ANANDAMIDE_WEIGHT             = 0.15
 HEDONIC_INFLAMMATION_WEIGHT           = 0.10
 HEDONIC_ALLOSTATIC_WEIGHT             = 0.10
-HEDONIC_OFFSET                        = 5.0
+HEDONIC_OFFSET                        = 12.0
 
 # Social warmth
 WARMTH_OXYTOCIN_WEIGHT                = 0.45
@@ -562,7 +562,7 @@ AROUSAL_EI_BALANCE_SCALE              = 5.0
 AROUSAL_GABA_WEIGHT                   = 0.20
 AROUSAL_ADENOSINE_WEIGHT              = 0.15
 AROUSAL_MELATONIN_DRAG_FACTOR         = 0.8
-AROUSAL_OFFSET                        = 15.0
+AROUSAL_OFFSET                        = 25.0
 
 # Mood valence
 VALENCE_SEROTONIN_WEIGHT              = 0.35
@@ -571,7 +571,7 @@ VALENCE_T3_WEIGHT                     = 0.10
 VALENCE_BDNF_WEIGHT                   = 0.10
 VALENCE_CORTISOL_WEIGHT               = 0.20
 VALENCE_ALLOSTATIC_WEIGHT             = 0.10
-VALENCE_OFFSET                        = 10.0
+VALENCE_OFFSET                        = 18.0
 
 # Melatonin drag (shared across energy, clarity, arousal)
 MELATONIN_DRAG_THRESHOLD              = 40.0   # normalized 0-100 — drag starts above this

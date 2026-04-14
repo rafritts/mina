@@ -156,18 +156,24 @@ def _ach_baseline_fn(hour: float, ctx: dict) -> float:
 
 def _melatonin_baseline_fn(hour: float, ctx: dict) -> float:
     """
-    Gaussian secretion window centered at MELATONIN_PEAK_HOUR (~2:30am).
+    Gaussian secretion window centered on a chronotype-adjusted peak hour.
 
     Physiological shape:
-      - Dim-light onset ~9-10pm, peak at ~2-3am, clears to daytime baseline by ~8am.
-      - σ=2h gives a narrow window: 215 pg/mL at peak → 33 by 6:30am → 7 by 8:30am.
+      - Dim-light onset ~3-4h before peak, clears ~4-5h after.
+      - σ=2h gives a narrow window: 215 pg/mL at peak → daytime floor by wake time.
       - Daytime floor of 5 pg/mL (pineal gland is not completely silent).
 
-    The old cosine model (half-period=12h) was still at 165 pg/mL at 8am — physiologically
-    wrong and the cause of the persistent "getting sleepy" display after waking.
+    Peak hour is derived from sleep_window_start in config.json:
+      peak = sleep_window_start - 2h (melatonin peaks ~2h into sleep onset).
+    Default is 2.5am (sleep_window_start=4.5), matching standard physiology.
+    Late chronotypes (sleep_window_start=4) have later peaks and later onset.
     """
-    # Signed distance from peak, wrapped to [-12, +12] so hour 23 and hour 1 are close.
-    delta = ((hour - MELATONIN_PEAK_HOUR + 12.0) % 24.0) - 12.0
+    cfg = _load_config()
+    sleep_start = float(cfg.get("sleep_window_start", 4.5))
+    # Peak ~2h before sleep onset midpoint; clamp to physiologically plausible range
+    peak_hour = (sleep_start - 2.0) % 24.0
+
+    delta = ((hour - peak_hour + 12.0) % 24.0) - 12.0
     gaussian = math.exp(-0.5 * (delta / MELATONIN_GAUSSIAN_SIGMA) ** 2)
     return MELATONIN_DAYTIME_FLOOR + MELATONIN_PEAK_AMPLITUDE * gaussian
 
