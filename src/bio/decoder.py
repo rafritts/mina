@@ -469,6 +469,21 @@ def _build_emotional_profile(state: "BiologicalState") -> str:
     return "\n".join(lines)
 
 
+def _rel_time(ts: float) -> str:
+    """Format a Unix timestamp as a human-readable relative label."""
+    delta = time.time() - ts
+    if delta < 120:
+        return "just now"
+    if delta < 3600:
+        return f"{int(delta / 60)}m ago"
+    if delta < 86400:
+        return f"{int(delta / 3600)}h ago"
+    days = int(delta / 86400)
+    if days < 7:
+        return f"{days}d ago"
+    return time.strftime("%-d %b", time.localtime(ts))
+
+
 _ADJUDICATOR_SYSTEM_ACTIVE = """\
 You adjudicate emotional state for Mina — a specific person with her own history, \
 chemistry, and way of being.
