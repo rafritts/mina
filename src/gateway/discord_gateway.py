@@ -718,17 +718,12 @@ def _wipe_user_data() -> list[str]:
 # Slash commands
 # ---------------------------------------------------------------------------
 
-@tree.command(name="new", description="Clear conversation history and restart.")
+@tree.command(name="new", description="Clear conversation history and start fresh.")
 async def cmd_new(interaction: discord.Interaction):
     save_history([])
-    try:
-        await interaction.response.send_message("History cleared. Restarting...", ephemeral=True)
-        os.makedirs(_RUN_DIR, exist_ok=True)
-        with open(_RESTART_PENDING_FILE, "w") as f:
-            json.dump({"token": interaction.token, "application_id": interaction.application_id}, f)
-    except Exception:
-        pass
-    os._exit(42)
+    from ..infra import token_stats
+    token_stats.reset()
+    await interaction.response.send_message("History cleared.", ephemeral=True)
 
 
 @tree.command(name="reset", description="Wipe Mina's memory, state, and history.")
