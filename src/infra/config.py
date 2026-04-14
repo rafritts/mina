@@ -25,14 +25,24 @@ INJECT_FILE      = os.path.join(RUN_DIR, "subconscious_inject.md")
 OUTBOX_FILE          = os.path.join(RUN_DIR, "outbox.jsonl")
 OVERDOSE_TIMER_FILE  = os.path.join(RUN_DIR, "overdose_timer.json")
 FOLLOWUP_QUEUE_FILE  = os.path.join(RUN_DIR, "followup_queue.json")
-# LLM configuration — read once at import time
-MODEL    = os.getenv("MODEL",    "grok-4-1-fast-reasoning")
-BASE_URL = os.getenv("BASE_URL", "https://api.x.ai/v1")
-API_KEY  = os.getenv("XAI_API_KEY", os.getenv("OPENAI_API_KEY", "sk-placeholder"))
+# ---------------------------------------------------------------------------
+# Provider selection — flip USE_OLLAMA to run locally via Ollama.
+# ---------------------------------------------------------------------------
+USE_OLLAMA = False
 
-# Ollama — local inference (OpenAI-compatible). To use:
-#   BASE_URL=http://localhost:11434/v1  MODEL=gemma4:31b  API_KEY=ollama
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+_GROK_MODEL   = "grok-4-1-fast-reasoning"
+_GROK_URL     = "https://api.x.ai/v1"
+_GROK_KEY     = os.getenv("XAI_API_KEY", os.getenv("OPENAI_API_KEY", "sk-placeholder"))
+
+_OLLAMA_MODEL = "gemma4:31b"
+_OLLAMA_URL   = "http://localhost:11434/v1"
+_OLLAMA_KEY   = "ollama"
+
+MODEL    = _OLLAMA_MODEL if USE_OLLAMA else os.getenv("MODEL",    _GROK_MODEL)
+BASE_URL = _OLLAMA_URL   if USE_OLLAMA else os.getenv("BASE_URL", _GROK_URL)
+API_KEY  = _OLLAMA_KEY   if USE_OLLAMA else _GROK_KEY
+
+OLLAMA_BASE_URL = _OLLAMA_URL  # convenience export
 
 # Per-role model overrides — each falls back to MODEL if not set
 ENCODER_MODEL = os.getenv("ENCODER_MODEL", MODEL)
