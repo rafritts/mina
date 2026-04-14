@@ -21,7 +21,7 @@ import re
 import time
 from typing import Optional
 
-from ..infra.client import get_client, MODEL
+from ..infra.client import chat_create, MODEL
 from ..infra.config import PROJECT_ROOT, REPO_ROOT, load_config
 from ..infra.text_filter import apply_word_filter, apply_replacements
 from ..bio.state import BiologicalState
@@ -566,7 +566,7 @@ def consolidate(
 
     user_content = "\n\n---\n\n".join(content_parts)
 
-    response = get_client().chat.completions.create(
+    response = chat_create(
         model=MODEL,
         messages=[
             {"role": "system", "content": _CONSOLIDATION_SYSTEM},

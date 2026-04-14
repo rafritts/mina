@@ -50,7 +50,7 @@ async def fire_followup(entry: dict) -> None:
     from ..bio.decoder import adjudicate_emotion
     from ..memory.hippocampus import build_kag_context, build_rag_context
     from ..infra import token_stats
-    from ..infra.client import get_client, MODEL
+    from ..infra.client import chat_create, MODEL
     from ..bio.encoder import encode_response
     from ..bio.state import apply_deltas
     from ..bio.decoder import build_memory_context
@@ -104,7 +104,7 @@ async def fire_followup(entry: dict) -> None:
     ]
 
     response = await asyncio.to_thread(
-        get_client().chat.completions.create,
+        chat_create,
         model=MODEL,
         messages=messages,
         temperature=0.85,

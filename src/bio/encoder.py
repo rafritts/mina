@@ -16,7 +16,7 @@ import json
 import os
 import re
 
-from ..infra.client import get_client, ENCODER_MODEL as MODEL
+from ..infra.client import chat_create, ENCODER_MODEL as MODEL
 from ..infra.config import load_config
 from .state import BiologicalState
 
@@ -249,7 +249,7 @@ def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, 
     last_raw: list[str] = [""]  # captures raw LLM output as side effect for retry message
 
     def _attempt(msgs: list[dict]) -> tuple[dict, bool]:
-        response = get_client().chat.completions.create(
+        response = chat_create(
             model=MODEL,
             messages=msgs,
             temperature=0.3,

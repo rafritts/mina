@@ -19,7 +19,7 @@ import time
 from openai import OpenAI
 
 from ..infra.config import DECODER_WINDOW_FILE, OUTBOX_FILE, PAUSED_FLAG, PROJECT_ROOT, load_config
-from ..infra.client import get_client, MODEL
+from ..infra.client import chat_create, MODEL
 from .cortex import apply_ts_label
 from ..infra.log import log as _log_raw
 from ..bio.decoder import biological_report, adjudicate_emotion, build_memory_context, needs_summary
@@ -267,7 +267,7 @@ async def _run_mina_free_time(
 
     while tool_calls_made < _MAX_FREETIME_TOOLS:
         response = await asyncio.to_thread(
-            get_client().chat.completions.create,
+            chat_create,
             model=MODEL,
             messages=base_messages + session,
             tools=HEARTBEAT_TOOLS,
@@ -351,7 +351,7 @@ async def _run_mina_free_time(
         # Hit the cap — get a final wrap-up response without offering more tools
         _log(f"Tool cap ({_MAX_FREETIME_TOOLS}) reached — requesting wrap-up.")
         wrap_response = await asyncio.to_thread(
-            get_client().chat.completions.create,
+            chat_create,
             model=MODEL,
             messages=base_messages + session,
             temperature=0.9,

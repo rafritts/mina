@@ -48,7 +48,7 @@ def llm_derive_replacements(history: list[dict]) -> list[dict]:
     Returns a minimal list of {"find": str, "replace": str} pairs.
     These are then applied to history, KAG, and RAG by the caller.
     """
-    from .client import get_client, MODEL
+    from .client import chat_create, MODEL
 
     # Flatten history to plain text for analysis, skipping non-text content
     lines = []
@@ -74,7 +74,7 @@ def llm_derive_replacements(history: list[dict]) -> list[dict]:
         'Return JSON: {"replacements": [{"find": "...", "replace": "..."}]}'
     )
 
-    response = get_client().chat.completions.create(
+    response = chat_create(
         model=MODEL,
         messages=[
             {"role": "system", "content": system},

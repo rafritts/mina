@@ -19,7 +19,7 @@ import os
 import re
 import time
 
-from ..infra.client import get_client, DECODER_MODEL, CONTEXT_MODEL
+from ..infra.client import chat_create, DECODER_MODEL, CONTEXT_MODEL
 from ..infra.config import load_config, INJECT_FILE, RUN_DIR
 from .state import BiologicalState, derived, _CHEMICAL_DEFAULTS
 from .chemicals import REGISTRY, get_label
@@ -620,7 +620,7 @@ def adjudicate_emotion(
 
     disposition: str | None = None
     for attempt in range(1, 4):
-        response = get_client().chat.completions.create(
+        response = chat_create(
             model=DECODER_MODEL,
             messages=messages,
             temperature=0.6,
@@ -744,7 +744,7 @@ def build_memory_context(
             },
         ]
 
-        response = get_client().chat.completions.create(
+        response = chat_create(
             model=CONTEXT_MODEL,
             messages=messages,
             temperature=0.3,
@@ -1028,7 +1028,7 @@ def build_system_prompt(
     human_condition: str | None = None
     max_attempts = 3
     for attempt in range(1, max_attempts + 1):
-        response = get_client().chat.completions.create(
+        response = chat_create(
             model=DECODER_MODEL,
             messages=messages,
             temperature=0.7,

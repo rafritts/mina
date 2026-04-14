@@ -13,7 +13,7 @@ import os
 import re
 import time
 
-from ..infra.client import get_client, MODEL
+from ..infra.client import chat_create, MODEL
 from ..infra.config import (
     HISTORY_FILE, DECODER_WINDOW_FILE, LAST_ACTIVE_FILE, ADMIN_FILE, PAUSED_FLAG, load_config
 )
@@ -275,7 +275,7 @@ async def _mina_turn(
     for round_num in range(max_tool_rounds):
         is_first = round_num == 0
         response = await asyncio.to_thread(
-            get_client().chat.completions.create,
+            chat_create,
             model=MODEL,
             messages=messages + new_entries if not is_first else messages,
             tools=TOOLS,
