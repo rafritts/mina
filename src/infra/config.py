@@ -28,15 +28,23 @@ FOLLOWUP_QUEUE_FILE  = os.path.join(RUN_DIR, "followup_queue.json")
 # ---------------------------------------------------------------------------
 # Provider selection — flip USE_OLLAMA to run locally via Ollama.
 # ---------------------------------------------------------------------------
-USE_OLLAMA = False
+USE_OLLAMA = True
 
 _GROK_MODEL   = "grok-4-1-fast-reasoning"
 _GROK_URL     = "https://api.x.ai/v1"
 _GROK_KEY     = os.getenv("XAI_API_KEY", os.getenv("OPENAI_API_KEY", "sk-placeholder"))
 
-_OLLAMA_MODEL = "gemma4:31b"
+_OLLAMA_MODEL = "gemma4:e4b-it-bf16"
 _OLLAMA_URL   = "http://localhost:11434/v1"
 _OLLAMA_KEY   = "ollama"
+
+# Extra options passed to Ollama on every request (ignored when USE_OLLAMA=False).
+# num_ctx: context window size. kv_cache_type: f16 / q8_0 / q4_0. num_gpu: GPU layers.
+OLLAMA_OPTIONS: dict = {
+    "num_ctx": 32768,
+    "num_gpu": 99,
+    "kv_cache_type": "f16",
+}
 
 MODEL    = _OLLAMA_MODEL if USE_OLLAMA else os.getenv("MODEL",    _GROK_MODEL)
 BASE_URL = _OLLAMA_URL   if USE_OLLAMA else os.getenv("BASE_URL", _GROK_URL)
