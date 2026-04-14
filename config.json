@@ -26,5 +26,5 @@
 
   "customization_files": ["identity/CUSTOMIZATION.md"],
 
-  "rag_ttl_days": 180
+  "rag_ttl_days": 14
 }
