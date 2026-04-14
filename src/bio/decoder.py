@@ -636,7 +636,6 @@ def adjudicate_emotion(
         else:
             log("ADJUDICATOR/ERR", f"attempt {attempt}: output too short: {repr(raw)}")
             if attempt < 3:
-                time.sleep(1)
                 # Only extend the conversation if there's something to show the model —
                 # sending an empty assistant turn confuses some models into repeating it.
                 if raw:
@@ -1047,7 +1046,6 @@ def build_system_prompt(
         except ValueError as exc:
             log("DECODER/ERR", f"attempt {attempt}/{max_attempts}: {exc}")
             if attempt < max_attempts:
-                time.sleep(1)
                 if raw:
                     messages = messages + [
                         {"role": "assistant", "content": raw},
