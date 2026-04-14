@@ -235,6 +235,10 @@ _pending: dict[int, list[discord.Message]] = {}
 _debounce_tasks: dict[int, asyncio.Task] = {}
 _inflight: dict[int, asyncio.Task] = {}
 _inflight_messages: dict[int, list[discord.Message]] = {}  # messages currently being processed
+_pending_wake: dict[int, list[discord.Message]] = {}       # messages held pending wake confirmation
+
+# Matches unambiguous "no, don't wake her" replies
+_WAKE_NO_RE = re.compile(r"^\s*(no+|nope|nah|nevermind|never\s*mind|cancel|don'?t)\s*[.!]?\s*$", re.I)
 
 
 # ---------------------------------------------------------------------------
@@ -436,6 +440,33 @@ async def _debounce_fire(channel: discord.abc.Messageable, channel_id: int) -> N
 
     if not messages:
         return
+
+    # --- Sleep intercept ---
+    _state = load_state()
+    if channel_id in _pending_wake:
+        # This message is the user's response to the wake-up prompt.
+        held = _pending_wake.pop(channel_id)
+        combined = " ".join(m.content for m in messages).strip()
+        if _WAKE_NO_RE.match(combined):
+            return  # user declined — silently drop held messages
+        # Wake Mina and run the held messages (ignore the "yes" confirmation text itself)
+        _state.sleeping = False
+        _state.sleep_start = None
+        _state.sleep_expected_wake = None
+        _state = apply_deltas(_state, {"cortisol": 20, "norepinephrine": 12, "acetylcholine": -15})
+        save_state(_state)
+        await _update_presence(_state)
+        messages = held
+    elif _state.sleeping:
+        _pending_wake[channel_id] = messages
+        if _state.sleep_expected_wake:
+            wake_str = time.strftime("%-I:%M %p", time.localtime(_state.sleep_expected_wake))
+            notice = f"*[Mina is sleeping — she'll wake up around {wake_str}. Do you want to wake her up?]*"
+        else:
+            notice = "*[Mina is sleeping. Do you want to wake her up?]*"
+        await channel.send(notice)
+        return
+    # --- end sleep intercept ---
 
     # Cancel any inflight turn and rescue its messages
     existing = _inflight.get(channel_id)

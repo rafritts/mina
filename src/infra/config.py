@@ -32,7 +32,8 @@ API_KEY  = os.getenv("XAI_API_KEY", os.getenv("OPENAI_API_KEY", "sk-placeholder"
 
 # Per-role model overrides — each falls back to MODEL if not set
 ENCODER_MODEL = os.getenv("ENCODER_MODEL", MODEL)
-DECODER_MODEL = os.getenv("DECODER_MODEL", "grok-4.20-0309-reasoning")
+#DECODER_MODEL = os.getenv("DECODER_MODEL", "grok-4.20-0309-reasoning")
+DECODER_MODEL = os.getenv("DECODER_MODEL", MODEL)
 CONTEXT_MODEL = os.getenv("CONTEXT_MODEL", MODEL)
 
 

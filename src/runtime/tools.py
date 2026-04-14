@@ -13,7 +13,7 @@ import os
 import time
 from typing import Any
 
-from ..infra.config import OUTBOX_FILE, load_config
+from ..infra.config import OUTBOX_FILE, FOLLOWUP_QUEUE_FILE, load_config
 from ..bio.state import BiologicalState, save_state
 
 _BASE_URL_SEARCH = os.getenv("BASE_URL", "https://api.x.ai/v1")
@@ -44,6 +44,25 @@ def _is_sleep_window(cfg: dict) -> bool:
     if start > end:
         return hour >= start or hour < end
     return start <= hour < end
+
+
+def _is_nap_blackout(cfg: dict) -> bool:
+    """Return True if we're within nap_blackout_hours of the sleep window start.
+
+    Prevents naps that would blunt sleep pressure right before bedtime.
+    Default blackout: 4 hours. Set nap_blackout_hours=0 to disable.
+    """
+    blackout_hours = float(cfg.get("nap_blackout_hours", 4))
+    if blackout_hours <= 0:
+        return False
+    start = int(cfg.get("sleep_window_start", 22))
+    now = time.localtime()
+    # Convert both to minutes-since-midnight for easy arithmetic
+    now_min   = now.tm_hour * 60 + now.tm_min
+    start_min = start * 60
+    # Minutes until sleep window (wrapping midnight)
+    delta_min = (start_min - now_min) % (24 * 60)
+    return delta_min <= blackout_hours * 60
 
 
 # ---------------------------------------------------------------------------
@@ -78,7 +97,8 @@ _BIOLOGICAL_TOOLS = [
             "name": "nap",
             "description": (
                 "Take a short nap to knock down sleep pressure. "
-                "Lasts one heartbeat cycle. Available any time if naps are enabled."
+                "Lasts one heartbeat cycle. Blocked within a few hours of your sleep window "
+                "— napping too close to bedtime will make it harder to fall asleep."
             ),
             "parameters": {
                 "type": "object",
@@ -165,6 +185,36 @@ _BIOLOGICAL_TOOLS = [
     },
 ]
 
+_FOLLOWUP_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "schedule_followup",
+            "description": (
+                "Schedule a deferred response. You will be reinvoked at the specified time "
+                "with only the context you provide — no conversation history. Use this when "
+                "you need time to think, want to sit with something before answering, or want "
+                "to come back to a topic at a specific future time. "
+                "Delay can be anything: '30 seconds', '10 minutes', '2 hours', '3 days', '1 week'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "context": {
+                        "type": "string",
+                        "description": "The question, topic, or thing you want to come back to. This is all you will have when you are reinvoked — be specific enough that future-you knows what to answer.",
+                    },
+                    "delay": {
+                        "type": "string",
+                        "description": "How long to wait before responding. Free-form: '30 seconds', '10 minutes', '2 hours', '3 days', '1 week', '2 months', etc.",
+                    },
+                },
+                "required": ["context", "delay"],
+            },
+        },
+    },
+]
+
 _SEARCH_TOOLS = [
     {
         "type": "function",
@@ -203,7 +253,7 @@ _SEARCH_TOOLS = [
 ]
 
 # message_user is only available during freetime (she's already in a conversation for regular turns)
-HEARTBEAT_TOOLS = _BIOLOGICAL_TOOLS + _SEARCH_TOOLS
+HEARTBEAT_TOOLS = _BIOLOGICAL_TOOLS + _SEARCH_TOOLS + _FOLLOWUP_TOOLS
 _CONVERSATION_EXCLUDED = {"message_user"}
 TOOLS = [t for t in HEARTBEAT_TOOLS if t["function"]["name"] not in _CONVERSATION_EXCLUDED]
 
@@ -241,6 +291,13 @@ def handle_nap(args: dict, state: BiologicalState) -> tuple[str, BiologicalState
     cfg = load_config()
     if not cfg.get("naps_enabled", True):
         return "Napping isn't available right now.", state
+    if _is_nap_blackout(cfg):
+        blackout = cfg.get("nap_blackout_hours", 4)
+        return (
+            f"Napping is blocked in the {blackout:.0f} hours before your sleep window — "
+            "save that sleep pressure for bedtime.",
+            state,
+        )
 
     heartbeat_s = float(cfg.get("heartbeat_interval_seconds", 1800))
     compression = float(cfg.get("time_compression_factor", 1.0))
@@ -251,6 +308,75 @@ def handle_nap(args: dict, state: BiologicalState) -> tuple[str, BiologicalState
 
     sim_minutes = round(heartbeat_s * compression / 60.0)
     return f"You close your eyes for a short nap (~{sim_minutes} simulated minutes).", state
+
+
+def _parse_delay_seconds(delay: str) -> float:
+    """
+    Parse a free-form delay string into seconds.
+    Supports: '30s', '10m', '2h', '3d', '1w', '2mo', and natural variants
+    like '30 seconds', '2 hours', '3 days', '1 week', '2 months'.
+    Falls back to 3600 (1 hour) if unparseable.
+    """
+    import re
+    s = delay.strip().lower()
+    # Map unit aliases to seconds
+    _units = [
+        (r"mo(?:nth)?s?",  30 * 86400),
+        (r"w(?:eek)?s?",    7 * 86400),
+        (r"d(?:ay)?s?",         86400),
+        (r"h(?:our)?s?",         3600),
+        (r"m(?:in(?:ute)?)?s?",    60),
+        (r"s(?:ec(?:ond)?)?s?",     1),
+    ]
+    for pattern, factor in _units:
+        m = re.match(rf"(\d+(?:\.\d+)?)\s*{pattern}$", s)
+        if m:
+            return float(m.group(1)) * factor
+    # bare number — assume seconds
+    try:
+        return float(s)
+    except ValueError:
+        return 3600.0
+
+
+def handle_schedule_followup(args: dict, state: BiologicalState) -> tuple[str, BiologicalState]:
+    context = args.get("context", "").strip()
+    delay_str = args.get("delay", "1 hour").strip()
+    if not context:
+        return "[schedule_followup: no context provided]", state
+
+    delay_seconds = _parse_delay_seconds(delay_str)
+    fires_at = time.time() + delay_seconds
+
+    entry = {
+        "context": context,
+        "scheduled_at": time.time(),
+        "fires_at": fires_at,
+        "delay_str": delay_str,
+    }
+
+    # Load existing queue, append, save — durable across restarts
+    os.makedirs(os.path.dirname(FOLLOWUP_QUEUE_FILE), exist_ok=True)
+    try:
+        with open(FOLLOWUP_QUEUE_FILE) as f:
+            queue = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        queue = []
+    queue.append(entry)
+    with open(FOLLOWUP_QUEUE_FILE, "w") as f:
+        json.dump(queue, f, indent=2)
+
+    # Human-readable confirmation
+    if delay_seconds < 60:
+        readable = f"{int(delay_seconds)} seconds"
+    elif delay_seconds < 3600:
+        readable = f"{int(delay_seconds / 60)} minutes"
+    elif delay_seconds < 86400:
+        readable = f"{delay_seconds / 3600:.1f} hours"
+    else:
+        readable = f"{delay_seconds / 86400:.1f} days"
+
+    return f"Followup scheduled in {readable}.", state
 
 
 def handle_message_user(args: dict, state: BiologicalState) -> tuple[str, BiologicalState]:
@@ -378,6 +504,9 @@ def call_tool(name: str, args: dict, state: BiologicalState) -> tuple[str, Biolo
         return msg, state, pending
     elif name == "message_user":
         msg, state = handle_message_user(args, state)
+        return msg, state, {}
+    elif name == "schedule_followup":
+        msg, state = handle_schedule_followup(args, state)
         return msg, state, {}
     elif name == "web_search":
         return handle_web_search(args), state, {}
