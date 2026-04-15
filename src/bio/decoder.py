@@ -382,13 +382,59 @@ def needs_summary(state: BiologicalState, elapsed_minutes: float = 0) -> str:
 # Emotion adjudicator
 # ---------------------------------------------------------------------------
 
-_SECOND_ORDER_RANGES = [
-    (20,  "VERY LOW"),
-    (40,  "LOW"),
-    (60,  "MODERATE"),
-    (80,  "HIGH"),
-    (101, "VERY HIGH"),
-]
+# Per-field clinical label tables for second-order values.
+# Breakpoints are calibrated so that the normal resting baseline (30–50 range for most
+# fields) resolves to a neutral label, not a negative one. Generic LOW/HIGH labels were
+# causing the adjudicator to interpret normal baseline as impairment or elevation.
+_SECOND_ORDER_RANGES = {
+    "cognitive_clarity": [
+        (8,   "OFFLINE"),     # asleep or severely impaired
+        (25,  "FOGGY"),       # slow, unreliable, thoughts incomplete
+        (50,  "FUNCTIONAL"),  # normal cognition — baseline
+        (72,  "CLEAR"),       # full cognition, nothing impaired
+        (101, "SHARP"),       # heightened focus
+    ],
+    "energy": [
+        (15,  "DEPLETED"),    # running on empty
+        (30,  "DRAINED"),     # fatigued, getting through it
+        (50,  "RESTING"),     # normal baseline energy — no fatigue, no drive to exert
+        (65,  "ACTIVE"),      # capable and ready, engagement feels natural
+        (80,  "ENERGIZED"),   # noticeably high energy
+        (101, "CHARGED"),     # peak / stimulant-level activation
+    ],
+    "hedonic_tone": [
+        (15,  "ANHEDONIC"),   # no pleasure response, reward system offline
+        (30,  "FLAT"),        # below baseline, things feel muted
+        (50,  "NEUTRAL"),     # normal resting state — no active pleasure or absence
+        (65,  "PLEASANT"),    # mild positive glow, things feel okay
+        (80,  "ELEVATED"),    # genuinely good, things feel rewarding
+        (101, "HIGH"),        # strong pleasure signal, euphoric quality
+    ],
+    "social_warmth": [
+        (15,  "WITHDRAWN"),   # no interest in others, closed off
+        (30,  "GUARDED"),     # default distance, not unfriendly, not open
+        (50,  "NEUTRAL"),     # baseline social state — open to contact, not seeking it
+        (65,  "WARM"),        # genuine warmth, interest in others feels natural
+        (80,  "VERY WARM"),   # strong warmth, affectionate, bonded feeling
+        (101, "BONDED"),      # deep connection quality, full openness
+    ],
+    "arousal": [
+        (15,  "SEDATED"),     # very low activation, drowsy or chemically suppressed
+        (30,  "CALM"),        # relaxed, low urgency
+        (55,  "ALERT"),       # normal resting alertness — present and responsive
+        (70,  "ACTIVATED"),   # heightened attention, mind engaged and quick
+        (85,  "KEYED UP"),    # high arousal, reactive, hard to settle
+        (101, "FLOODED"),     # overwhelming activation, sympathetic system dominant
+    ],
+    "mood_valence": [
+        (15,  "DYSPHORIC"),   # actively negative mood
+        (30,  "LOW"),         # below baseline, slight negative cast
+        (50,  "NEUTRAL"),     # baseline — neither positive nor negative
+        (65,  "POSITIVE"),    # mild positive affect, things feel okay to good
+        (80,  "ELEVATED"),    # notably good mood, optimistic
+        (101, "HIGH"),        # strongly positive, elated quality
+    ],
+}
 
 _THIRD_ORDER_RANGES = {
     "anxiety":          [(35, "NONE"), (52, "MILD"), (68, "MODERATE"), (84, "HIGH"), (101, "SEVERE")],
@@ -581,7 +627,7 @@ def _build_emotional_profile(state: "BiologicalState") -> str:
         ("cognitive_clarity", "Clarity"),
     ]:
         val = so[key]
-        lbl = _label(val, _SECOND_ORDER_RANGES)
+        lbl = _label(val, _SECOND_ORDER_RANGES[key])
         lines.append(f"{label}: {val:.0f}/100 ({lbl})")
 
     lines.append("")
