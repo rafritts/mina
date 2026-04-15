@@ -80,9 +80,11 @@ def _norepi_baseline_fn(hour: float, ctx: dict) -> float:
 
 def _serotonin_baseline_fn(hour: float, ctx: dict) -> float:
     """
-    Serotonin baseline modulated by T3 (thyroid), estradiol, and BDNF.
+    Serotonin baseline modulated by T3 (thyroid), estradiol, BDNF, and chronic social contact.
     SPEC-22: neuroendocrine hormones feed into ctx and shift the serotonin set-point.
     SPEC-24: BDNF modulates serotonin system capacity (low BDNF = depression-like blunting).
+    SPEC-30: isolation_pressure encodes chronic social conditions. Serotonin no longer receives
+             per-message encoder deltas — the social effect is entirely captured here instead.
     """
     base = 22.0
     # T3 potentiates serotonin synthesis (low T3 = depression-like blunting)
@@ -98,6 +100,11 @@ def _serotonin_baseline_fn(hour: float, ctx: dict) -> float:
     # Most antidepressants work partly by increasing BDNF over 2-4 weeks
     bdnf_factor = min(1.5, ctx.get("bdnf", 9000.0) / 9000.0)
     base *= max(0.5, bdnf_factor)  # BDNF 3000 → serotonin baseline ~11 ng/mL
+    # SPEC-30: chronic social contact supports serotonin; sustained isolation degrades it.
+    # isolation_pressure 0 (regular contact) → +10% baseline; 100 (prolonged isolation) → -10%.
+    isolation = ctx.get("isolation_pressure", 0.0)
+    social_factor = 1.0 + (50.0 - isolation) / 100.0 * 0.20
+    base *= max(0.80, min(1.20, social_factor))
     return max(5.0, base)
 
 
@@ -280,8 +287,8 @@ REGISTRY: dict[str, ChemicalProfile] = {
         critical_high=100.0,
         display_min=2.0,
         display_max=60.0,
-        soft_ceiling=40.0,
-        hard_ceiling=55.0,
+        soft_ceiling=30.0,   # SPEC-30: lowered from 40; "VERY STABLE" starts at 38
+        hard_ceiling=40.0,   # SPEC-30: lowered from 55; activity-driven serotonin shouldn't exceed VERY STABLE
         interactions=[
             Interaction("cortisol", "above", 32.0, -4.0,
                         "Good serotonin dampens HPA axis reactivity"),

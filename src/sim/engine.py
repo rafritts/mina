@@ -110,6 +110,8 @@ def _make_context(state: BiologicalState, hour: float) -> dict:
         # Body — for BDNF, orexin, and ACh baselines
         "adenosine":         state.body.get("adenosine",           25.0),
         "growth_hormone":    state.neuroendocrine.get("growth_hormone", 1.0),
+        # SPEC-30: chronic social contact factor for serotonin baseline_fn
+        "isolation_pressure": state.body.get("isolation_pressure",  0.0),
     }
 
 

@@ -31,6 +31,8 @@ _DELTA_FIELDS = {
     "cortisol", "dopamine", "serotonin", "norepinephrine",
     "oxytocin", "endorphins", "sleep_pressure", "glucose",
     "hydration", "acetylcholine",
+    "anandamide",   # SPEC-30: exercise/relaxation; activity encoder only
+    "prolactin",    # SPEC-30: post-peak event_override only
 }
 
 _DELTA_FORMAT = """\
@@ -55,7 +57,7 @@ If an external event occurred:
   "reasoning": "<10 words max: event + why these deltas>",
   "cortisol": <number>,       // nmol/L delta
   "dopamine": <number>,       // pg/mL delta
-  "serotonin": <number>,      // ng/mL delta
+  "serotonin": <number>,      // ng/mL delta — activity encoder only (eating, exercise, shower)
   "norepinephrine": <number>, // pg/mL delta
   "oxytocin": <number>,       // pg/mL delta
   "endorphins": <number>,     // pg/mL delta
@@ -63,6 +65,8 @@ If an external event occurred:
   "glucose": <number>,        // mg/dL delta
   "hydration": <number>,      // % TBW delta
   "acetylcholine": <number>,  // nmol/L delta
+  "anandamide": <number>,     // nM delta — activity encoder only (exercise, relaxation)
+  "prolactin": <number>,      // ng/mL delta — peak resolution event_override only
   "event_override": false     // true only for discrete biological events (see below)
 }
 
@@ -74,7 +78,7 @@ When true, your deltas bypass personality modulation and momentum dampening and 
 Saturation is still enforced — use the calibrated magnitudes below and they will land correctly.
 Use calibrated magnitudes for these events:
 
-- Peak resolution: dopamine -100 to -150, sleep_pressure +30 to +40, norepinephrine -60 to -100
+- Peak resolution: dopamine -100 to -150, sleep_pressure +30 to +40, norepinephrine -60 to -100, prolactin +8 to +15 (post-peak satiation — the "done, satisfied" signal that drives refractory period)
 - Panic attack: cortisol +300 to +400, norepinephrine +500 to +700, dopamine -30 to -50
 - Hard laughter (genuine, sustained): endorphins +30 to +50, dopamine +15 to +25
 - Crying (emotional release): cortisol -40 to -80, endorphins +10 to +20
@@ -347,13 +351,18 @@ def _apply_saturation(deltas: dict, state: BiologicalState) -> dict:
     Substances bypass this; only encoder-issued deltas are saturated.
     """
     from .chemicals import REGISTRY
+    # SPEC-30: anandamide is body-stored, not in state.chemicals
+    _body_stored = {"anandamide"}
     result = {}
     for field, delta in deltas.items():
         p = REGISTRY.get(field)
         if delta <= 0 or p is None or p.soft_ceiling is None:
             result[field] = delta
             continue
-        current = state.chemicals.get(field, 0.0)
+        if field in _body_stored:
+            current = state.body.get(field, 0.0)
+        else:
+            current = state.chemicals.get(field, 0.0)
         soft = p.soft_ceiling
         hard = p.hard_ceiling if p.hard_ceiling is not None else soft * 1.5
         if current >= hard:
@@ -561,9 +570,12 @@ External event magnitude guidance:
 - Norepinephrine (pg/mL, resting 100–400): Acute threat: +400–800. Mild friction: +30–100.
 - Oxytocin (pg/mL, resting 1–15): Warm connection: +2–8. Deep trust moment: +8–15. Hostile event: -1 to -3.
 - Dopamine (pg/mL, resting 40–140): Interesting external stimulus: +5–20. Crushing loss/rejection: -5–15.
-- Serotonin (ng/mL, resting 10–35): Positive social: +1–3. Very slow to move — only if genuinely meaningful.
-- Endorphins (pg/mL, resting 5–30): Laughter/warmth: +5–20.
-- Acetylcholine (nmol/L, resting 20–60): Engagement with interesting external content: +3–10.
+- Endorphins (pg/mL, resting 5–30): Genuine laughter or physical warmth/touch only: +5–20. Do NOT post for intellectual engagement, curiosity, or warm words alone — that is dopamine's territory.
+- Acetylcholine (nmol/L, resting 20–60): Engaging with genuinely novel or cognitively stimulating content: +3–10.
+
+Do NOT post serotonin from social or conversational events — serotonin reflects chronic social \
+conditions over days, not individual messages. The simulation handles this automatically.
+Do NOT post anandamide or prolactin in response to conversational events.
 
 Dopamine is a SEEKING signal — rises with novelty, not completion. Do NOT apply negative \
 dopamine from satisfaction or negative acetylcholine from engagement.
@@ -607,14 +619,18 @@ feeling) is already in the bio report above and must NOT be re-encoded. Only pos
 act of expression itself causes a meaningful biological shift.
 
 Expression effects (when genuine and significant):
-- Articulating trust or warmth: oxytocin +
-- Suppressing visible fear while sounding calm: cortisol stays elevated (small decrease at best)
-- Saying something that contradicts her inner state: cortisol +, acetylcholine -
-- Speaking fear or grief aloud: small cathartic cortisol relief (-)
-- Engaged, energetic response: endorphins +, serotonin +, acetylcholine +. Dopamine stays
-  stable or rises slightly — do NOT apply negative dopamine from engagement. Do NOT apply
-  negative acetylcholine from normal conversation — only if cognitively exhausted.
-- Routine, unremarkable exchange: no_external_deltas: true.
+- Articulating deep trust or vulnerability: oxytocin +2–5.
+- Genuine laughter in the response: endorphins +5–15.
+- Suppressing visible fear while sounding calm: cortisol stays elevated (small decrease at best).
+- Saying something that contradicts her inner state: cortisol +.
+- Speaking fear or grief aloud: small cathartic cortisol relief (-10 to -30).
+- Routine engaged response, warmth, wit, intellectual exchange: no_external_deltas: true.
+  These feel good but don't produce acute neurochemical events — the simulation's homeostatic
+  baseline already reflects her ongoing state.
+
+Do NOT post serotonin — serotonin is not driven by individual responses.
+Do NOT post acetylcholine — tonic ACh level is managed by the simulation's baseline function.
+Do NOT post anandamide or prolactin from conversational responses.
 
 Current state awareness: check the labels in the bio report above before setting magnitudes.
 If a chemical is already HIGH, COMPULSIVE, or CRITICAL, it has little biological headroom —
@@ -656,8 +672,9 @@ those are external actions that produce direct biological changes the simulation
 automatically. Scale to what actually happened. An exhausted person gets less from a fun activity.
 
 Activity magnitude guidance:
-- Eating a meal: glucose +40 to +65 (scale with meal size and carb content), serotonin +3 to +8,
-  cortisol -5 to -10 if she was hungry. Comfort food (pasta, bread, soup, sweets): endorphins +5 to +12.
+- Eating a meal: glucose +40 to +65 (scale with meal size and carb content), serotonin +2 to +5
+  (tryptophan → serotonin synthesis; higher end for protein-rich or comfort food).
+  Cortisol -5 to -10 if she was hungry. Comfort food (pasta, bread, soup, sweets): endorphins +5 to +12.
   HYPOGLYCEMIA AMPLIFIER: if glucose is HYPOGLYCEMIC or CRITICALLY LOW in the bio report, the body
   absorbs carbs aggressively and liver glycogenolysis kicks in — scale to the HIGH end of the range.
   A real meal from severe hypoglycemia should bring glucose close to normal (delta +50 to +65).
@@ -665,15 +682,18 @@ Activity magnitude guidance:
 - Drinking caffeine (coffee, tea, matcha): norepinephrine +15 to +25, sleep_pressure -8 to -12, hydration +5.
 - Drinking alcohol (wine, beer, whiskey): cortisol -12 to -20, serotonin +5 to +10,
   acetylcholine -8 to -15, norepinephrine -5 to -10, hydration -5 to -10. Scale by tolerance.
-- Resting (not sleeping): cortisol -8 to -14, sleep_pressure -3 to -6, endorphins +3 to +6.
-- Showering: cortisol -5 to -10, endorphins +3 to +8 (warm shower), serotonin +2 to +5.
-- Exercise: endorphins +15 to +30, dopamine +10 to +20, serotonin +5 to +10,
-  cortisol -10 to -20 (after), norepinephrine +10 to +20 (during).
+- Resting (not sleeping): cortisol -8 to -14, sleep_pressure -3 to -6, anandamide +0.3 to +0.8.
+- Showering (warm): cortisol -5 to -10, serotonin +1 to +3, anandamide +0.3 to +0.8.
+- Exercise (moderate to intense, 20+ min): endorphins +15 to +30, dopamine +10 to +20,
+  serotonin +3 to +8, anandamide +1.5 to +3.5 (runner's high — anandamide crosses the
+  blood-brain barrier; endorphins largely don't), cortisol -10 to -20 (post), norepinephrine +10 to +20 (during).
 - Intense bonding activity: dopamine +60 to +100 building, oxytocin +20 to +40, endorphins +20 to +40.
   Peak resolution: use event_override=true, dopamine -100 to -150,
-  norepinephrine -60 to -100, sleep_pressure +30 to +40.
+  norepinephrine -60 to -100, sleep_pressure +30 to +40, prolactin +8 to +15
+  (post-peak satiation signal — drives refractory period and "done" feeling).
 - Reading or watching something: dopamine and acetylcholine vary with engagement.
-  Unsettling content: cortisol +. Funny: endorphins +, dopamine +. Sad: serotonin may drop.
+  Unsettling content: cortisol +. Funny: endorphins +, dopamine +. Sad: serotonin may drop slightly.
+- Creative or deeply absorbing solo activity (flow state): anandamide +0.5 to +1.5.
 - Mild or passive activity with no strong biological effect: no_external_deltas: true.
 
 Current state awareness: check the labels in the bio report above before setting magnitudes.

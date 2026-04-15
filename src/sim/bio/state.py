@@ -192,12 +192,17 @@ def apply_deltas(s: BiologicalState, deltas: dict) -> BiologicalState:
     Valid delta keys:
       - Any key in REGISTRY (chemicals dict), except sleep_pressure (see below)
       - "sleep_pressure": redirected to body["adenosine"] (Δadenonsine = Δsp × 0.6)
+      - "anandamide": redirected to body["anandamide"] (SPEC-30: body-stored endocannabinoid)
+      - "prolactin": redirected to neuroendocrine["prolactin"] (SPEC-30: post-peak satiation)
       - "tolerance" dict: substance tolerance scalars
     """
     from src.sim.chem.registry import REGISTRY
     from src.sim.chem.units import clamp_chemical
 
-    _chemical_fields = set(REGISTRY.keys()) - {"sleep_pressure"}
+    _chemical_fields = set(REGISTRY.keys()) - {"sleep_pressure", "anandamide"}
+
+    # Neuroendocrine keys the encoder is allowed to write (narrow whitelist)
+    _neuroendocrine_fields = {"prolactin"}
 
     for key, val in deltas.items():
         if key == "sleep_pressure":
@@ -205,6 +210,14 @@ def apply_deltas(s: BiologicalState, deltas: dict) -> BiologicalState:
             # Translate: Δadenonsine = Δsleep_pressure × 0.6
             current_a = s.body.get("adenosine", 38.0)
             s.body["adenosine"] = max(15.0, min(100.0, current_a + float(val) * 0.6))
+        elif key == "anandamide":
+            # SPEC-30: anandamide is body-stored; clamp to physiological bounds (0–15 nM)
+            current = s.body.get("anandamide", 1.5)
+            s.body["anandamide"] = max(0.0, min(15.0, current + float(val)))
+        elif key in _neuroendocrine_fields:
+            # SPEC-30: narrow neuroendocrine write path for prolactin (post-peak)
+            current = s.neuroendocrine.get(key, 0.0)
+            s.neuroendocrine[key] = max(0.0, current + float(val))
         elif key in _chemical_fields:
             current = s.chemicals.get(key, CHEMICAL_DEFAULTS.get(key, 0.0))
             s.chemicals[key] = clamp_chemical(key, current + float(val))
