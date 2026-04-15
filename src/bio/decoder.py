@@ -1033,7 +1033,7 @@ Hard rules:
 - Only include things that would actually matter to Mina in this specific moment.
 - If nothing is relevant, return an empty string — literally nothing.
 - NEVER write in first person. You are not Mina. Output is about Mina, not from her. \
-  Wrong: "Alex is right here with me." Right: "Alex prefers black coffee and works nights."
+  Wrong: "{admin_name} is right here with me." Right: "{admin_name} prefers black coffee and works nights."
 - NEVER narrate recent events. The last few messages are already in the conversation — \
   do not recap what just happened. Only surface background knowledge: who someone is, \
   standing facts, long-term memories. If it happened in this conversation, skip it.
@@ -1083,8 +1083,9 @@ def build_memory_context(
         if rag_context:
             parts.append(rag_context)
 
+        admin_name = load_config().get("admin_name", "the user")
         messages = [
-            {"role": "system", "content": _CONTEXT_SYSTEM},
+            {"role": "system", "content": _CONTEXT_SYSTEM.format(admin_name=admin_name)},
             {
                 "role": "user",
                 "content": f"[CURRENT CONTEXT]\n{query}\n\n---\n\n" + "\n\n---\n\n".join(parts),
