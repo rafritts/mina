@@ -604,10 +604,14 @@ def _format_chem_val(val: float, unit: str) -> str:
     return f"{val:.0f} {unit}"
 
 
-def _build_emotional_profile(state: "BiologicalState") -> str:
+def _build_emotional_profile(
+    state: "BiologicalState",
+    prior_snapshots: "list[dict] | None" = None,
+) -> str:
     """
     Format derived emotional values for the adjudicator, plus any chemistry
-    that is outside its normal operating range.
+    that is outside its normal operating range, plus a trajectory section if
+    notable chemical changes have occurred since the prior snapshot.
 
     Chemistry is only included when flagged — the adjudicator already has
     the full mood profile and only needs chemistry when something is elevated
@@ -721,6 +725,11 @@ def _build_emotional_profile(state: "BiologicalState") -> str:
         for f in flags:
             lines.append(f)
 
+    # Trajectory: notable changes since prior snapshot
+    if prior_snapshots:
+        traj = _build_trajectory_lines(state, prior_snapshots)
+        lines.extend(traj)
+
     return "\n".join(lines)
 
 
@@ -790,6 +799,17 @@ overridden normal emotional experience — describe that instead.
 
 ---
 
+## CHEMISTRY TRAJECTORY
+
+If a [CHEMISTRY TRAJECTORY] section is present, one or more chemicals crossed a \
+threshold or moved significantly since the last snapshot. This tells you about \
+direction and recency — a spike that just happened is different from a sustained level. \
+A crash from elevated to normal means the high is over; she may be in an afterglow or \
+comedown, even though the current value looks unremarkable. Use this to describe the \
+felt arc, not just the current snapshot.
+
+---
+
 ## RECENT EXCHANGE
 
 If provided: this tells you what was happening before. It is **not** a description of \
@@ -842,6 +862,14 @@ to add physical specificity.
 
 ---
 
+## CHEMISTRY TRAJECTORY
+
+If a [CHEMISTRY TRAJECTORY] section is present, chemicals have moved recently. \
+A crash from elevated to normal means the high is over — describe the afterglow or \
+comedown, not just the current snapshot. A spike means something just hit.
+
+---
+
 ## OUTPUT
 
 2–3 sentences. Concrete and specific. No preamble. No clinical language. No hedging. \
@@ -868,7 +896,11 @@ def adjudicate_emotion(
     from ..infra.log import log
     from ..infra import token_stats
 
-    profile = _build_emotional_profile(state)
+    # Load prior snapshots before saving current so we can compute deltas
+    prior_snapshots = _load_bio_snapshots(3)
+    _save_bio_snapshot(state)
+
+    profile = _build_emotional_profile(state, prior_snapshots=prior_snapshots)
     system = _ADJUDICATOR_SYSTEM_FREETIME if mode == "freetime" else _ADJUDICATOR_SYSTEM_ACTIVE
 
     if mode == "freetime":
@@ -1243,6 +1275,138 @@ def _format_history_block(entries: list[dict]) -> str:
         if snippet:
             lines.append(f"[{age}] {snippet}")
     return "[STATE TRAJECTORY — recent conditions, oldest to most recent]\n" + "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Bio snapshot history — rolling chemical values for adjudicator trajectory
+# ---------------------------------------------------------------------------
+
+_BIO_SNAPSHOT_FILE = os.path.join(RUN_DIR, "bio_snapshots.jsonl")
+_BIO_SNAPSHOT_MAX  = 10  # keep last 10 snapshots; adjudicator reads last 3
+
+
+def _snapshot_chems(state: "BiologicalState") -> dict[str, float]:
+    """Extract tracked chemical values from state into a flat dict."""
+    vals: dict[str, float] = {}
+    for k in _CHEM_FLAG_THRESHOLDS:
+        if k == "anandamide":
+            vals[k] = state.body.get("anandamide", 1.5)
+        else:
+            vals[k] = state.chemicals.get(k, _CHEMICAL_DEFAULTS.get(k, 0.0))
+    return vals
+
+
+def _save_bio_snapshot(state: "BiologicalState") -> None:
+    """Append a chemical snapshot and rotate to _BIO_SNAPSHOT_MAX."""
+    entry = {"ts": time.time(), "chems": _snapshot_chems(state)}
+    os.makedirs(os.path.dirname(_BIO_SNAPSHOT_FILE), exist_ok=True)
+    with open(_BIO_SNAPSHOT_FILE, "a") as f:
+        f.write(json.dumps(entry) + "\n")
+    try:
+        lines = open(_BIO_SNAPSHOT_FILE).read().splitlines()
+        if len(lines) > _BIO_SNAPSHOT_MAX:
+            with open(_BIO_SNAPSHOT_FILE, "w") as f:
+                f.write("\n".join(lines[-_BIO_SNAPSHOT_MAX:]) + "\n")
+    except Exception:
+        pass
+
+
+def _load_bio_snapshots(n: int = 3) -> list[dict]:
+    """Return the last n bio snapshots, oldest first."""
+    try:
+        lines = open(_BIO_SNAPSHOT_FILE).read().splitlines()
+        entries = []
+        for line in lines[-n:]:
+            line = line.strip()
+            if line:
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+        return entries
+    except FileNotFoundError:
+        return []
+
+
+def _build_trajectory_lines(
+    state: "BiologicalState",
+    prior_snapshots: list[dict],
+) -> list[str]:
+    """
+    Compare current chemical values against the oldest available prior snapshot.
+    Returns trajectory lines if notable changes exist (threshold crossings or
+    >20% change in a currently-flagged chemical), otherwise empty list.
+    """
+    if not prior_snapshots:
+        return []
+
+    prior = prior_snapshots[0]  # oldest of the window
+    prior_chems = prior.get("chems", {})
+    elapsed_s = time.time() - prior.get("ts", time.time())
+    elapsed_min = elapsed_s / 60.0
+    time_str = f"{elapsed_min:.0f}m ago" if elapsed_min >= 1 else "just now"
+
+    _CHEM_UNITS_LOCAL = {
+        "endorphins": "pg/mL", "dopamine": "pg/mL", "norepinephrine": "pg/mL",
+        "cortisol": "nmol/L",  "serotonin": "ng/mL", "acetylcholine": "nmol/L",
+        "gaba": "µmol/L",      "oxytocin": "pg/mL",  "melatonin": "pg/mL",
+        "glucose": "mg/dL",    "anandamide": "nM",
+    }
+
+    cur_chems = _snapshot_chems(state)
+    notes = []
+
+    for chem_key, (low_thresh, high_thresh) in _CHEM_FLAG_THRESHOLDS.items():
+        cur  = cur_chems.get(chem_key, 0.0)
+        prev = prior_chems.get(chem_key)
+        if prev is None:
+            continue
+
+        unit     = _CHEM_UNITS_LOCAL.get(chem_key, "")
+        cur_str  = _format_chem_val(cur,  unit)
+        prev_str = _format_chem_val(prev, unit)
+        name     = chem_key.replace("_", " ").title()
+
+        was_high = high_thresh is not None and prev > high_thresh
+        is_high  = high_thresh is not None and cur  > high_thresh
+        was_low  = low_thresh  is not None and prev < low_thresh
+        is_low   = low_thresh  is not None and cur  < low_thresh
+
+        if was_high and not is_high:
+            notes.append(
+                f"{name}: dropped from {prev_str} → {cur_str} "
+                f"(came down from elevated — the high is over)"
+            )
+        elif is_high and not was_high:
+            notes.append(
+                f"{name}: spiked from {prev_str} → {cur_str} "
+                f"(just entered elevated range)"
+            )
+        elif was_low and not is_low:
+            notes.append(
+                f"{name}: recovered from {prev_str} → {cur_str} "
+                f"(came up from depleted)"
+            )
+        elif is_low and not was_low:
+            notes.append(
+                f"{name}: dropped from {prev_str} → {cur_str} "
+                f"(just fell into depleted range)"
+            )
+        elif (is_high or is_low) and prev != 0:
+            # Still in flagged territory — flag only if meaningfully moving
+            pct = abs(cur - prev) / abs(prev)
+            if pct > 0.20:
+                direction = "rising" if cur > prev else "falling"
+                notes.append(f"{name}: {prev_str} → {cur_str} ({direction})")
+
+    if not notes:
+        return []
+
+    return [
+        "",
+        f"[CHEMISTRY TRAJECTORY — vs {time_str}]",
+        *notes,
+    ]
 
 
 # ---------------------------------------------------------------------------
