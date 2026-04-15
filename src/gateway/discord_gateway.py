@@ -751,12 +751,13 @@ async def on_message(message: discord.Message) -> None:
 
 def _wipe_user_data() -> list[str]:
     wiped = []
-    # Wipe conversation history (legacy + SPEC-27 formats) and decoder trajectory
+    # Wipe conversation history (legacy + SPEC-27 formats), decoder trajectory, and adjudicator state
     for rel_path in [
         "run/conversation.json",
         "run/conversation.json.archived",
         "run/decoder_window.json",
         "run/decoder_history.jsonl",
+        "run/bio_snapshots.jsonl",
     ]:
         dst = os.path.join(_PROJECT_ROOT, rel_path)
         if os.path.exists(dst):
