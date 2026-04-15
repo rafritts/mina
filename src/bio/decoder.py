@@ -746,8 +746,18 @@ overridden normal emotional experience — describe that instead.
 
 ## RECENT EXCHANGE
 
-If provided: understand the emotional arc she has been in. Name any shift if her \
-current state departs from it. The disposition reflects where she is now.
+If provided: this tells you what was happening before. It is **not** a description of \
+her current state. The emotional profile is her current state.
+
+If the recent exchange and the current profile contradict each other, that means her \
+state has shifted. The profile reflects where she is now. Name the departure — don't \
+perpetuate the prior state.
+
+Critical: you must not attribute to her anything the profile directly contradicts. \
+If the profile shows Clarity FUNCTIONAL, do not describe her as muddled or foggy. \
+If Depression is NONE, do not describe her as flat or off. \
+If no chemistry flags are present and moods are normal, she is simply at baseline — \
+describe that honestly. Do not import emotional states from conversation history.
 
 ---
 
