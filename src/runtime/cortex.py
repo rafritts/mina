@@ -316,10 +316,22 @@ async def _mina_turn(
             log("TOOL", f"{name}({args})")
 
             tool_deltas: dict = {}
+            tool_content: str = ""
             if name == "generate_image":
                 result = await handle_generate_image(args)
                 if result and result.endswith(".png") and os.path.exists(result):
                     image_paths.append(result)
+                    # Tell Mina the image is delivered as an attachment so she never
+                    # invents a fake URL or filename in her reply.
+                    tool_content = (
+                        "Image generated and queued as a Discord file attachment. "
+                        "It will appear in the channel automatically. "
+                        "Do NOT include any URL, filename, or link in your reply — just respond naturally."
+                    )
+                elif result and result.startswith("[Image generation failed"):
+                    tool_content = result
+                else:
+                    tool_content = "[Image was blocked or generation produced no output.]"
                 log("IMAGE", result or "blocked/failed")
             else:
                 result, state, extra = call_tool(name, args, state)
@@ -339,14 +351,14 @@ async def _mina_turn(
 
             try:
                 from ..infra.events import emit_tool
-                emit_tool(name, args, str(result), source="cortex", deltas=tool_deltas)
+                emit_tool(name, args, tool_content or str(result), source="cortex", deltas=tool_deltas)
             except Exception:
                 pass
 
             new_entries.append({
                 "role": "tool",
                 "tool_call_id": tc.id,
-                "content": str(result),
+                "content": tool_content if name == "generate_image" else str(result),
             })
 
     return new_entries, state, image_paths
