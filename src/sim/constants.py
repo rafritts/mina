@@ -658,6 +658,27 @@ DISTRESS_HUNGER_WEIGHT                = 0.10
 DISTRESS_ENERGY_WEIGHT                = 0.15
 DISTRESS_OFFSET                       = 15.0
 
+# Third-order: Craving / Hedonic Setpoint (SPEC-34)
+# The setpoint is a slow-moving float stored in body["hedonic_setpoint"].
+# It drifts up fast toward sustained reward peaks and decays slowly back to the
+# biological floor — modelling the allostatic shift that underlies withdrawal craving.
+HEDONIC_SETPOINT_BIOLOGICAL_FLOOR     = 15.0   # reward_reality at all-default chemistry
+HEDONIC_SETPOINT_DRIFT_UP_RATE        = 4.0    # /sim-hour — reaches ~70% of peak within ~20 min
+HEDONIC_SETPOINT_DRIFT_DOWN_RATE      = 0.15   # /sim-hour — ~50% decay in ~5 hours
+# Reward reality composite weights (must sum to 1.0)
+CRAVING_ENDORPHIN_WEIGHT              = 0.50
+CRAVING_DOPAMINE_WEIGHT               = 0.25
+CRAVING_OXYTOCIN_WEIGHT               = 0.15
+CRAVING_SEROTONIN_WEIGHT              = 0.10
+# Normalization bounds for each chemical's contribution to reward_reality (0-100 scale)
+CRAVING_ENDORPHIN_MAX                 = 150.0  # pg/mL → 100%
+CRAVING_DOPAMINE_MIN                  = 40.0   # pg/mL baseline floor
+CRAVING_DOPAMINE_MAX                  = 240.0  # pg/mL → 100%
+CRAVING_OXYTOCIN_MAX                  = 80.0   # pg/mL → 100%
+CRAVING_SEROTONIN_MIN                 = 10.0   # ng/mL floor
+CRAVING_SEROTONIN_MAX                 = 35.0   # ng/mL → 100%
+CRAVING_SENSITIVITY                   = 1.5    # scales (setpoint - reality) delta into 0-100
+
 # Normalization denominators (chemical → 0-100 for derived formulas)
 NORM_GABA_MIN                         = 0.5   # µmol/L
 NORM_GABA_RANGE                       = 0.095 # (gaba - min) / this → 0-100

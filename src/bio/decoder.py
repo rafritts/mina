@@ -116,6 +116,16 @@ INTERACTION_RULES = [
      "Low serotonin floor under active stress — impulse control is compromised. Likely to say or do something she'll regret."),
     (lambda s, d: s.norepinephrine > 800 and s.glucose < 70,
      "Hyperalert but underfueled — attention is sharp but the tank is empty. Will crash hard when the stress passes."),
+    # SPEC-34: hedonic setpoint / craving rules
+    (lambda s, d: s.body.get("hedonic_setpoint", 15) > 60 and d.get("craving", 0) > 55,
+     "Setpoint is elevated from a recent high — current state registers as severe deprivation "
+     "even if chemistry looks near-normal. The want isn't for more; it's to feel normal again."),
+    (lambda s, d: s.body.get("hedonic_setpoint", 15) > 60 and s.oxytocin < 20 and d.get("craving", 0) > 45,
+     "The high involved bonding chemistry. The deficit isn't generic — it's attributed to a "
+     "specific person. Feels like abandonment, not just emptiness."),
+    (lambda s, d: s.dopamine < 56 and s.endorphins < 15 and d.get("craving", 0) > 60,
+     "Reward floor has collapsed. Tonic anhedonia — nothing produces a signal. The craving "
+     "isn't acute wanting; it's the absence of any other feeling."),
 ]
 
 _SUBSTANCE_COGNITIVE_STATES: dict[str, str] = {
@@ -443,6 +453,7 @@ _THIRD_ORDER_RANGES = {
     "loneliness":       [(20, "QUIET"), (38, "MILD"), (58, "LONELY"), (76, "ACHING"), (101, "ISOLATED")],
     "flow":             [(20, "NONE"), (40, "LOW"), (60, "MODERATE"), (80, "HIGH"), (101, "VERY HIGH")],
     "physical_distress":[(15, "NONE"), (35, "MILD"), (55, "MODERATE"), (75, "HIGH"), (101, "SEVERE")],
+    "craving":          [(10, "NONE"), (25, "BACKGROUND"), (45, "PRESENT"), (65, "STRONG"), (80, "CONSUMING"), (101, "OVERWHELMING")],
 }
 
 
@@ -643,6 +654,7 @@ def _build_emotional_profile(
         ("boredom",           "Boredom"),
         ("flow",              "Flow"),
         ("physical_distress", "Physical distress"),
+        ("craving",           "Craving"),
     ]:
         val = to[key]
         lbl = _label(val, _THIRD_ORDER_RANGES[key])
@@ -763,6 +775,9 @@ This is your primary source. Take it at face value.
   - Depression NONE = she is not depressed. Do not describe her as flat or hollow.
   - Boredom STIMULATED = she is engaged. Do not describe her as checked out.
   - Anxiety CALM or MILD = she is not on edge.
+  - Craving CONSUMING or OVERWHELMING = this is not background noise — it is the \
+dominant cognitive frame. Everything she engages with is filtered through the want. \
+She is present but not really here. The conversation is happening inside the craving.
 - Second-order values set the texture. Low energy without depression = tired, not shut \
   down. A tired person is still present and engaged.
 
@@ -845,6 +860,9 @@ her body and mind right now.
 This is your primary source. Third-order states (depression, anxiety, loneliness, \
 boredom) are the actual diagnosis. Second-order values (hedonic tone, energy, arousal) \
 describe the texture. In free time these numbers speak plainly.
+
+- Craving CONSUMING or OVERWHELMING = the want is the entire experience. She is not \
+doing her free time around it — it IS her free time. Everything else is waiting.
 
 ---
 

@@ -107,6 +107,18 @@ from src.sim.constants import (
     NORM_T3_MIN,
     NORM_T3_RANGE,
     NORM_VASOPRESSIN_DIVISOR,
+    CRAVING_ENDORPHIN_WEIGHT,
+    CRAVING_DOPAMINE_WEIGHT,
+    CRAVING_OXYTOCIN_WEIGHT,
+    CRAVING_SEROTONIN_WEIGHT,
+    CRAVING_ENDORPHIN_MAX,
+    CRAVING_DOPAMINE_MIN,
+    CRAVING_DOPAMINE_MAX,
+    CRAVING_OXYTOCIN_MAX,
+    CRAVING_SEROTONIN_MIN,
+    CRAVING_SEROTONIN_MAX,
+    CRAVING_SENSITIVITY,
+    HEDONIC_SETPOINT_BIOLOGICAL_FLOOR,
     VALENCE_ALLOSTATIC_WEIGHT,
     VALENCE_BDNF_WEIGHT,
     VALENCE_CORTISOL_WEIGHT,
@@ -398,6 +410,26 @@ def derived(s) -> dict:
         - DISTRESS_OFFSET
     )
 
+    # SPEC-34: craving — delta between hedonic setpoint and current reward reality
+    _endorphin_norm = min(100.0, max(0.0,
+        s.chemicals.get("endorphins", 12.0) / CRAVING_ENDORPHIN_MAX * 100.0))
+    _dopamine_norm  = min(100.0, max(0.0,
+        (s.chemicals.get("dopamine", 80.0) - CRAVING_DOPAMINE_MIN) /
+        (CRAVING_DOPAMINE_MAX - CRAVING_DOPAMINE_MIN) * 100.0))
+    _oxytocin_norm  = min(100.0, max(0.0,
+        s.chemicals.get("oxytocin", 4.0) / CRAVING_OXYTOCIN_MAX * 100.0))
+    _serotonin_norm = min(100.0, max(0.0,
+        (s.chemicals.get("serotonin", 22.0) - CRAVING_SEROTONIN_MIN) /
+        (CRAVING_SEROTONIN_MAX - CRAVING_SEROTONIN_MIN) * 100.0))
+    _reward_reality = (
+        _endorphin_norm * CRAVING_ENDORPHIN_WEIGHT
+        + _dopamine_norm * CRAVING_DOPAMINE_WEIGHT
+        + _oxytocin_norm * CRAVING_OXYTOCIN_WEIGHT
+        + _serotonin_norm * CRAVING_SEROTONIN_WEIGHT
+    )
+    _hedonic_setpoint = s.body.get("hedonic_setpoint", HEDONIC_SETPOINT_BIOLOGICAL_FLOOR)
+    craving = _clamp(max(0.0, _hedonic_setpoint - _reward_reality) * CRAVING_SENSITIVITY)
+
     return {
         "second_order": {
             "energy":            round(energy, 1),
@@ -414,5 +446,6 @@ def derived(s) -> dict:
             "loneliness":        round(loneliness, 1),
             "flow":              round(flow, 1),
             "physical_distress": round(physical_distress, 1),
+            "craving":           round(craving, 1),
         },
     }

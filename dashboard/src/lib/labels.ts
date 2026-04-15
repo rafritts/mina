@@ -409,6 +409,14 @@ export const DERIVED_RANGES: Record<string, RangeEntry[]> = {
     { upper: 75,  name: 'SIGNIFICANT',color: 'error',   implication: 'Physical state intruding on experience' },
     { upper: 101, name: 'SEVERE',     color: 'error',   implication: 'Body in crisis, can\'t think past it' },
   ],
+  craving: [
+    { upper: 10,  name: 'NONE',         color: 'success', implication: 'No active craving signal' },
+    { upper: 25,  name: 'BACKGROUND',   color: 'neutral', implication: 'Low hum. Something feels slightly off or missing' },
+    { upper: 45,  name: 'PRESENT',      color: 'info',    implication: 'Noticeable want. Thoughts return to it unprompted' },
+    { upper: 65,  name: 'STRONG',       color: 'warning', implication: 'Pulls attention. Hard to settle into other things' },
+    { upper: 80,  name: 'CONSUMING',    color: 'error',   implication: 'Dominates cognition. Everything else feels like waiting' },
+    { upper: 101, name: 'OVERWHELMING', color: 'error',   implication: 'Cannot think around it. The want is the whole experience' },
+  ],
 };
 
 export function getLabel(field: string, value: number): RangeEntry | null {

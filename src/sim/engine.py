@@ -49,6 +49,19 @@ from src.sim.constants import (
     ISOLATION_ACCUMULATION_BASE,
     ISOLATION_ACCUMULATION_E_SCALE,
     ISOLATION_DECAY_RATE,
+    HEDONIC_SETPOINT_BIOLOGICAL_FLOOR,
+    HEDONIC_SETPOINT_DRIFT_UP_RATE,
+    HEDONIC_SETPOINT_DRIFT_DOWN_RATE,
+    CRAVING_ENDORPHIN_WEIGHT,
+    CRAVING_DOPAMINE_WEIGHT,
+    CRAVING_OXYTOCIN_WEIGHT,
+    CRAVING_SEROTONIN_WEIGHT,
+    CRAVING_ENDORPHIN_MAX,
+    CRAVING_DOPAMINE_MIN,
+    CRAVING_DOPAMINE_MAX,
+    CRAVING_OXYTOCIN_MAX,
+    CRAVING_SEROTONIN_MIN,
+    CRAVING_SEROTONIN_MAX,
 )
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -140,6 +153,41 @@ def _advance_isolation_pressure(s: BiologicalState, sim_hours: float, now: float
         new_val = min(100.0, current + rate * sim_hours)
 
     s.body["isolation_pressure"] = new_val
+    return s
+
+
+def _advance_hedonic_setpoint(s: BiologicalState, sim_hours: float) -> BiologicalState:
+    """
+    SPEC-34: Hedonic setpoint drifts up fast toward sustained reward peaks and decays
+    slowly back to the biological floor, modelling allostatic setpoint shift.
+    Craving = setpoint - current reward_reality (computed in derived.py).
+    """
+    endorphin_norm = min(100.0, max(0.0, s.chemicals.get("endorphins", 12.0) / CRAVING_ENDORPHIN_MAX * 100.0))
+    dopamine_norm  = min(100.0, max(0.0,
+        (s.chemicals.get("dopamine", 80.0) - CRAVING_DOPAMINE_MIN) /
+        (CRAVING_DOPAMINE_MAX - CRAVING_DOPAMINE_MIN) * 100.0))
+    oxytocin_norm  = min(100.0, max(0.0, s.chemicals.get("oxytocin", 4.0) / CRAVING_OXYTOCIN_MAX * 100.0))
+    serotonin_norm = min(100.0, max(0.0,
+        (s.chemicals.get("serotonin", 22.0) - CRAVING_SEROTONIN_MIN) /
+        (CRAVING_SEROTONIN_MAX - CRAVING_SEROTONIN_MIN) * 100.0))
+
+    reward_reality = (
+        endorphin_norm * CRAVING_ENDORPHIN_WEIGHT
+        + dopamine_norm  * CRAVING_DOPAMINE_WEIGHT
+        + oxytocin_norm  * CRAVING_OXYTOCIN_WEIGHT
+        + serotonin_norm * CRAVING_SEROTONIN_WEIGHT
+    )
+
+    current = s.body.get("hedonic_setpoint", HEDONIC_SETPOINT_BIOLOGICAL_FLOOR)
+
+    if reward_reality > current:
+        # Reward above setpoint: drift up fast
+        new_val = current + (reward_reality - current) * HEDONIC_SETPOINT_DRIFT_UP_RATE * sim_hours
+    else:
+        # Reward below setpoint: slow decay back to biological floor
+        new_val = current + (HEDONIC_SETPOINT_BIOLOGICAL_FLOOR - current) * HEDONIC_SETPOINT_DRIFT_DOWN_RATE * sim_hours
+
+    s.body["hedonic_setpoint"] = max(HEDONIC_SETPOINT_BIOLOGICAL_FLOOR, min(100.0, new_val))
     return s
 
 
@@ -426,6 +474,9 @@ def advance(state: BiologicalState,
 
     # --- SPEC-28: isolation pressure accumulation / contact decay ---
     s = _advance_isolation_pressure(s, sim_hours, now)
+
+    # --- SPEC-34: hedonic setpoint drift ---
+    s = _advance_hedonic_setpoint(s, sim_hours)
 
     s.last_updated = now
     return s
