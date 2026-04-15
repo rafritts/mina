@@ -704,19 +704,12 @@ this specific stimulus lands.
 
 This is your primary source. Take it at face value.
 
-**Scale calibration**: these scores are anchored to true physiological resting state. \
-Normal baseline for most second-order values sits around 30–50/100. A score of 35 is \
-not low — it is unremarkable. Only scores below ~20 or above ~75 represent genuinely \
-notable departures. Do not describe a value of 30–50 as impaired, foggy, or elevated.
-
 - Third-order states are the actual emotional diagnosis.
   - Depression NONE = she is not depressed. Do not describe her as flat or hollow.
   - Boredom STIMULATED = she is engaged. Do not describe her as checked out.
   - Anxiety CALM or MILD = she is not on edge.
 - Second-order values set the texture. Low energy without depression = tired, not shut \
   down. A tired person is still present and engaged.
-- Clarity in the 30–50 range = fully functional cognition. Do not describe this as \
-  foggy, hazy, muddled, or slow.
 
 ---
 
