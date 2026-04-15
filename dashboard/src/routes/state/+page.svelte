@@ -1073,7 +1073,7 @@
                   { key: 'dopamine',     label: 'Dopamine (ng/mL)',    color: '#a78bfa', minVal: 0, maxVal: 250, points: history.map(s => ({ ts: s.ts, value: s.chemicals?.dopamine     ?? 0 })) },
                   { key: 'serotonin',    label: 'Serotonin (ng/mL)',   color: '#34d399', minVal: 0, maxVal: 50,  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.serotonin    ?? 0 })) },
                   { key: 'endorphins',   label: 'Endorphins (AU)',     color: '#fbbf24', minVal: 0, maxVal: 50,  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.endorphins   ?? 0 })) },
-                  { key: 'social_warmth',label: 'Social Warmth',       color: '#fb923c', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.second_order?.social_warmth ?? 0 })) },
+                  { key: 'social_warmth',label: 'Social Warmth',       color: '#38bdf8', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.second_order?.social_warmth ?? 0 })) },
                 ]}
               />
             {:else if historyChart === 'stress'}
@@ -1083,9 +1083,9 @@
                 showSleep={true}
                 {sleepBands}
                 series={[
-                  { key: 'cortisol',        label: 'Cortisol (nM)',          color: '#f87171', minVal: 0, maxVal: 600, points: history.map(s => ({ ts: s.ts, value: s.chemicals?.cortisol        ?? 0 })) },
-                  { key: 'norepinephrine',  label: 'Norepinephrine (pg/mL)', color: '#fb923c', minVal: 0, maxVal: 400, points: history.map(s => ({ ts: s.ts, value: s.chemicals?.norepinephrine  ?? 0 })) },
-                  { key: 'anxiety',         label: 'Anxiety',                color: '#ef4444', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.third_order?.anxiety         ?? 0 })) },
+                  { key: 'cortisol',        label: 'Cortisol (nM)',          color: '#ef4444', minVal: 0, maxVal: 600, points: history.map(s => ({ ts: s.ts, value: s.chemicals?.cortisol        ?? 0 })) },
+                  { key: 'norepinephrine',  label: 'Norepinephrine (pg/mL)', color: '#3b82f6', minVal: 0, maxVal: 400, points: history.map(s => ({ ts: s.ts, value: s.chemicals?.norepinephrine  ?? 0 })) },
+                  { key: 'anxiety',         label: 'Anxiety',                color: '#a855f7', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.third_order?.anxiety         ?? 0 })) },
                   { key: 'arousal',         label: 'Arousal',                color: '#f59e0b', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.second_order?.arousal         ?? 0 })) },
                 ]}
               />
@@ -1097,10 +1097,10 @@
                 {sleepBands}
                 series={[
                   { key: 'mood_valence', label: 'Mood Valence', color: '#60a5fa', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.second_order?.mood_valence ?? 0 })) },
-                  { key: 'hedonic_tone', label: 'Hedonic Tone', color: '#818cf8', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.second_order?.hedonic_tone ?? 0 })) },
+                  { key: 'hedonic_tone', label: 'Hedonic Tone', color: '#f472b6', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.second_order?.hedonic_tone ?? 0 })) },
                   { key: 'energy',       label: 'Energy',       color: '#4ade80', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.second_order?.energy       ?? 0 })) },
-                  { key: 'loneliness',   label: 'Loneliness',   color: '#94a3b8', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.third_order?.loneliness    ?? 0 })) },
-                  { key: 'depression',   label: 'Depression',   color: '#475569', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.third_order?.depression    ?? 0 })) },
+                  { key: 'loneliness',   label: 'Loneliness',   color: '#fb923c', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.third_order?.loneliness    ?? 0 })) },
+                  { key: 'depression',   label: 'Depression',   color: '#94a3b8', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.third_order?.depression    ?? 0 })) },
                 ]}
               />
             {:else if historyChart === 'neuro'}
@@ -1113,7 +1113,7 @@
                   { key: 'gaba',              label: 'GABA (μM)',           color: '#22d3ee', minVal: 0, maxVal: 6,   points: history.map(s => ({ ts: s.ts, value: s.chemicals?.gaba              ?? 0 })) },
                   { key: 'glutamate',         label: 'Glutamate (μM)',      color: '#f97316', minVal: 0, maxVal: 6,   points: history.map(s => ({ ts: s.ts, value: s.chemicals?.glutamate         ?? 0 })) },
                   { key: 'acetylcholine',     label: 'Acetylcholine (nM)', color: '#a3e635', minVal: 0, maxVal: 120,  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.acetylcholine     ?? 0 })) },
-                  { key: 'cognitive_clarity', label: 'Clarity',             color: '#e2e8f0', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.second_order?.cognitive_clarity ?? 0 })) },
+                  { key: 'cognitive_clarity', label: 'Clarity',             color: '#818cf8', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.second_order?.cognitive_clarity ?? 0 })) },
                 ]}
               />
             {/if}
