@@ -758,6 +758,7 @@ def _wipe_user_data() -> list[str]:
         "run/decoder_window.json",
         "run/decoder_history.jsonl",
         "run/bio_snapshots.jsonl",
+        "run/last_search.json",
     ]:
         dst = os.path.join(_PROJECT_ROOT, rel_path)
         if os.path.exists(dst):

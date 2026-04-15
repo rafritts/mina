@@ -35,7 +35,9 @@ from ..bio.state import (
 )
 from .tools import HEARTBEAT_TOOLS, call_tool, handle_generate_image
 
-_LAST_ACTIVE_FILE = os.path.join(PROJECT_ROOT, ".last_user_active")
+_LAST_ACTIVE_FILE  = os.path.join(PROJECT_ROOT, ".last_user_active")
+_LAST_SEARCH_FILE  = os.path.join(PROJECT_ROOT, "run", "last_search.json")
+_SEARCH_INTERVAL_S = 4 * 3600  # 4 hours
 
 
 def _load_decoder_window() -> list[dict]:
@@ -63,6 +65,70 @@ def _user_recently_active(window_seconds: int = 60) -> bool:
 
 def _log(msg: str) -> None:
     _log_raw("FREETIME", msg)
+
+
+# ---------------------------------------------------------------------------
+# Forced ambient search — runs every 4 hours, injected as fake tool turns
+# ---------------------------------------------------------------------------
+
+_AMBIENT_SEARCHES = [
+    ("web_search", "top news and current events today"),
+    ("x_search",   "top memes trending today"),
+]
+
+
+def _search_due() -> bool:
+    try:
+        with open(_LAST_SEARCH_FILE) as f:
+            last = float(json.load(f).get("ts", 0))
+        return (time.time() - last) >= _SEARCH_INTERVAL_S
+    except (FileNotFoundError, json.JSONDecodeError, KeyError):
+        return True
+
+
+def _mark_search_done() -> None:
+    os.makedirs(os.path.dirname(_LAST_SEARCH_FILE), exist_ok=True)
+    with open(_LAST_SEARCH_FILE, "w") as f:
+        json.dump({"ts": time.time()}, f)
+
+
+async def _build_ambient_search_entries() -> list[dict]:
+    """
+    Run all ambient searches in parallel and return a list of fake assistant
+    tool-call + tool-result message dicts, as if Mina had called them herself.
+    """
+    from .tools import handle_web_search, handle_x_search
+
+    handlers = {"web_search": handle_web_search, "x_search": handle_x_search}
+
+    async def _run_one(tool_name: str, query: str) -> tuple[str, str, str]:
+        result = await asyncio.to_thread(handlers[tool_name], {"query": query})
+        return tool_name, query, result
+
+    results = await asyncio.gather(*[_run_one(n, q) for n, q in _AMBIENT_SEARCHES])
+
+    entries: list[dict] = []
+    for tool_name, query, result in results:
+        call_id = f"ambient_{tool_name}_{int(time.time())}"
+        # Fake assistant turn that "called" the tool
+        entries.append({
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{
+                "id": call_id,
+                "type": "function",
+                "function": {"name": tool_name, "arguments": json.dumps({"query": query})},
+            }],
+        })
+        # Fake tool result
+        entries.append({
+            "role": "tool",
+            "tool_call_id": call_id,
+            "content": result,
+        })
+        _log(f"Ambient {tool_name}({query!r}): {len(result)} chars")
+
+    return entries
 
 
 # ---------------------------------------------------------------------------
@@ -250,10 +316,16 @@ async def _run_mina_free_time(
     state: BiologicalState,
     system_prompt: str,
     history: list[dict],
+    pre_session: list[dict] | None = None,
 ) -> tuple[list[dict], list[dict]]:
     """
     Give Mina a tool-calling loop during free time. She may call up to
     _MAX_FREETIME_TOOLS tools in sequence before a final wrap-up response.
+
+    pre_session: fake tool-call/result entries to seed the session with before
+    the loop starts (used for ambient searches). These appear in new_entries and
+    are visible to Mina, but do NOT count against _MAX_FREETIME_TOOLS.
+
     Returns (new_history_entries, pending_do_activities).
     """
     full_system = system_prompt + _build_freetime_suffix(state)
@@ -271,8 +343,9 @@ async def _run_mina_free_time(
 
     new_entries = [{"role": "system", "content": "[FREETIME]"}]
     pending_dos: list[dict] = []
-    # Accumulates assistant/tool turns within this freetime session
-    session: list[dict] = []
+    # Seed session with any ambient search results so Mina sees them from turn 1
+    session: list[dict] = list(pre_session) if pre_session else []
+    new_entries.extend(session)
     tool_calls_made = 0
 
     while tool_calls_made < _MAX_FREETIME_TOOLS:
@@ -498,9 +571,16 @@ async def run_freetime(force: bool = False) -> None:
     if memory_context:
         system_prompt = memory_context + "\n\n---\n\n" + system_prompt
 
-    # [4] Mina's free time turn — she sees only the immediate window, not the full decoder window
+    # [4] Ambient search — inject results as fake tool turns if overdue
+    pre_session: list[dict] = []
+    if _search_due():
+        _log("Ambient search due — running web + X searches.")
+        pre_session = await _build_ambient_search_entries()
+        _mark_search_done()
+
+    # [5] Mina's free time turn — she sees only the immediate window, not the full decoder window
     new_entries, pending_dos = await _run_mina_free_time(
-        state, system_prompt, decoder_window[-mina_immediate:]
+        state, system_prompt, decoder_window[-mina_immediate:], pre_session=pre_session
     )
 
     decoder_window.extend(new_entries)
