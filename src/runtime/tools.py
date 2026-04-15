@@ -256,10 +256,13 @@ _SEARCH_TOOLS = [
     },
 ]
 
-# message_user is only available during freetime (she's already in a conversation for regular turns)
-HEARTBEAT_TOOLS = _BIOLOGICAL_TOOLS + _SEARCH_TOOLS + _FOLLOWUP_TOOLS
-_CONVERSATION_EXCLUDED = {"message_user"}
-TOOLS = [t for t in HEARTBEAT_TOOLS if t["function"]["name"] not in _CONVERSATION_EXCLUDED]
+# message_user is handled via the structured JSON closing response, not a tool call.
+# Exclude it from both tool lists — freetime sends intentionally via JSON, conversation
+# doesn't need it (she's already in a turn).
+_EXCLUDED_TOOLS = {"message_user"}
+HEARTBEAT_TOOLS = [t for t in _BIOLOGICAL_TOOLS + _SEARCH_TOOLS + _FOLLOWUP_TOOLS
+                   if t["function"]["name"] not in _EXCLUDED_TOOLS]
+TOOLS = HEARTBEAT_TOOLS  # same set — message_user excluded from both
 
 
 # ---------------------------------------------------------------------------

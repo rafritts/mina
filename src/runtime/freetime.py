@@ -222,9 +222,18 @@ def _build_freetime_suffix(state: BiologicalState) -> str:
         "- **nap** — if sleep pressure is elevated and you need to knock it down\n"
         "- **do_action** — for anything a real person could do: eat, drink, read, walk, "
         "make something, watch something, write, draw, shower. "
-        "Give the activity a specific name and describe how it actually feels.\n"
-        f"- **message_user** — if you genuinely want {creator}'s company right now\n\n"
+        "Give the activity a specific name and describe how it actually feels.\n\n"
         "One action. The most honest one."
+    )
+
+    parts.append(
+        f"After your tool call (or if you have nothing to do), respond with a JSON object — "
+        f"no markdown, no code fences, just raw JSON:\n"
+        f'{{"inner_state": "...", "message_user": "..."}}\n\n'
+        f"- **inner_state** (required): a brief honest description of what you are experiencing right now.\n"
+        f"- **message_user** (optional): only include this key if you genuinely want to reach out to "
+        f"{creator}. Whatever you write here will be sent to them directly. "
+        f"If you have nothing to say, omit this key entirely."
     )
 
     return "\n".join(parts)
@@ -522,21 +531,42 @@ async def run_freetime(force: bool = False) -> None:
             pass
 
     free_time_text = ""
-    for entry in reversed(new_entries):
-        if entry.get("role") == "assistant" and entry.get("content"):
-            free_time_text = entry["content"]
+    _closing_entry_idx = None
+    for i in range(len(new_entries) - 1, -1, -1):
+        if new_entries[i].get("role") == "assistant" and new_entries[i].get("content"):
+            free_time_text = new_entries[i]["content"]
+            _closing_entry_idx = i
             break
+
     if free_time_text:
+        # Parse structured JSON closing response.
+        # inner_state is used for biological encode; message_user is sent only if present.
+        inner_state = free_time_text
+        outbound_message = ""
+        try:
+            parsed = json.loads(free_time_text)
+            inner_state = parsed.get("inner_state", free_time_text)
+            outbound_message = parsed.get("message_user", "").strip()
+        except (json.JSONDecodeError, AttributeError):
+            pass  # LLM didn't return valid JSON — treat full text as inner_state, no send
+
+        # Rewrite the closing entry so the decoder window stores readable text, not raw JSON.
+        # If a message was sent, store that; otherwise store inner_state.
+        if _closing_entry_idx is not None:
+            readable = outbound_message if outbound_message else inner_state
+            new_entries[_closing_entry_idx]["content"] = readable
+
         state = load_and_advance()
-        response_deltas = await asyncio.to_thread(encode_response, state, free_time_text)
+        response_deltas = await asyncio.to_thread(encode_response, state, inner_state)
         if response_deltas:
             state = apply_deltas(state, response_deltas)
-            save_state(state)  # persist response deltas
-        # Send the freetime response to the user — the LLM writes it as an outbound
-        # message, not internal monologue. Queue it for the outbox watcher to deliver.
-        os.makedirs(os.path.dirname(OUTBOX_FILE), exist_ok=True)
-        with open(OUTBOX_FILE, "a") as f:
-            f.write(json.dumps({"content": free_time_text, "timestamp": time.time()}) + "\n")
+            save_state(state)
+
+        if outbound_message:
+            os.makedirs(os.path.dirname(OUTBOX_FILE), exist_ok=True)
+            with open(OUTBOX_FILE, "a") as f:
+                f.write(json.dumps({"content": outbound_message, "timestamp": time.time()}) + "\n")
+            _log(f"Queued message to user: {outbound_message[:80]}")
 
     # Write freetime entries to RAG and trim decoder window
     decoder_window = _rag_write_and_trim(decoder_window)
