@@ -532,6 +532,11 @@ async def run_freetime(force: bool = False) -> None:
         if response_deltas:
             state = apply_deltas(state, response_deltas)
             save_state(state)  # persist response deltas
+        # Send the freetime response to the user — the LLM writes it as an outbound
+        # message, not internal monologue. Queue it for the outbox watcher to deliver.
+        os.makedirs(os.path.dirname(OUTBOX_FILE), exist_ok=True)
+        with open(OUTBOX_FILE, "a") as f:
+            f.write(json.dumps({"content": free_time_text, "timestamp": time.time()}) + "\n")
 
     # Write freetime entries to RAG and trim decoder window
     decoder_window = _rag_write_and_trim(decoder_window)
