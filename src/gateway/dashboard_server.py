@@ -102,33 +102,15 @@ async def _history_loop() -> None:
             pass
 
 
-async def _advance_loop() -> None:
-    """Background task: advance the biological simulation every 15 seconds.
-
-    The sim should tick on a clock, not on conversation activity. This ensures
-    decay, circadian rhythms, and homeostasis run continuously regardless of
-    whether anyone is talking to Mina.
-    """
-    from ..bio.state import load_and_advance
-    while True:
-        await asyncio.sleep(15)
-        try:
-            await asyncio.to_thread(load_and_advance)
-        except Exception:
-            pass
-
-
 @asynccontextmanager
 async def _lifespan(app):
     history_task = asyncio.create_task(_history_loop())
-    advance_task = asyncio.create_task(_advance_loop())
     yield
-    for task in (history_task, advance_task):
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+    history_task.cancel()
+    try:
+        await history_task
+    except asyncio.CancelledError:
+        pass
 
 
 # ---------------------------------------------------------------------------

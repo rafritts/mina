@@ -32,10 +32,18 @@ def load_state() -> BiologicalState:
 
 
 def save_state(s: BiologicalState) -> None:
-    """Persist BiologicalState to _STATE_FILE."""
+    """Persist BiologicalState to _STATE_FILE using an atomic write.
+
+    Writing directly to the target file risks partial reads if another thread
+    calls load_state() mid-write (json.JSONDecodeError → BiologicalState()
+    defaults, silently resetting 9+ hours of state). Writing to a temp file
+    and os.replace() is atomic on POSIX — readers always see a complete file.
+    """
     os.makedirs(os.path.dirname(_STATE_FILE), exist_ok=True)
-    with open(_STATE_FILE, "w") as f:
+    tmp = _STATE_FILE + ".tmp"
+    with open(tmp, "w") as f:
         json.dump(s.to_dict(), f, indent=2)
+    os.replace(tmp, _STATE_FILE)
 
 
 # Prevents concurrent load/advance/save collisions between the background sim
