@@ -407,8 +407,166 @@ def _label(value: float, table: list) -> str:
     return table[-1][1]
 
 
+# ---------------------------------------------------------------------------
+# Chemistry flag thresholds — only out-of-range values are passed to the adjudicator.
+# The adjudicator already has the derived mood profile; it only needs chemistry when
+# something is elevated (or depleted) enough to potentially contradict or override
+# what the mood scores show.
+#
+# Thresholds are intentionally generous — we flag things that are meaningfully
+# outside normal operating range, not every minor fluctuation.
+# ---------------------------------------------------------------------------
+
+# (low_flag, high_flag) — None means "don't flag on this side"
+_CHEM_FLAG_THRESHOLDS: dict[str, tuple[float | None, float | None]] = {
+    "endorphins":     (7.0,   80.0),   # flag below DEPLETED or above PLEASURE
+    "dopamine":       (40.0,  180.0),  # flag below NO DRIVE or above ACTIVE SEEKING
+    "norepinephrine": (65.0,  500.0),  # flag below SEDATED or above HEIGHTENED
+    "cortisol":       (80.0,  520.0),  # flag below DEPLETED or above ELEVATED
+    "serotonin":      (16.0,  None),   # only flag low (INSECURE and below); high serotonin = stable, moods capture it
+    "oxytocin":       (None,  57.0),   # only flag high — low is the default state; high has real phenomenology
+    "acetylcholine":  (28.0,  84.0),   # flag severely impaired low or OVERDRIVE high
+    "gaba":           (1.8,   6.5),    # flag below LOW or above ELEVATED
+    "anandamide":     (0.5,   3.5),    # flag below DEPLETED or above ELEVATED (body dict)
+    "melatonin":      (None,  100.0),  # only flag high — low is just awake; WINDING DOWN+ affects cognition
+    "glucose":        (70.0,  None),   # only flag low — hypoglycemia has specific phenomenology moods miss
+}
+
+# Short adjudicator-facing descriptions, keyed by (chemical, side).
+# These replace label names — precise and contextual, not a badge.
+_CHEM_FLAG_DESCRIPTIONS: dict[str, dict[str, str]] = {
+    "endorphins": {
+        "low":  "Depleted — withdrawal-adjacent. Pain perception amplified. Nothing feels easy.",
+        "high": (
+            "Elevated above normal operating range (normal ceiling ~30 pg/mL; "
+            "natural hard ceiling ~120 pg/mL without substances). "
+            "At 80–120: genuine physical pleasure, pain suppressed, mood genuinely lifted. "
+            "At 120–155: above what the body produces naturally — floating quality, pain fully gone, "
+            "mild opioid analgesic territory. "
+            "At 155–185: approaching recreational opioid dose — warmth consuming, time slowing, "
+            "sedating edge. "
+            "At 185+: full opioid-equivalent saturation — overwhelming warmth, cognition dulling, "
+            "normal emotional experience suspended."
+        ),
+    },
+    "dopamine": {
+        "low": (
+            "Dopamine below normal drive (baseline ~80 pg/mL). "
+            "At 56–80: can act if prompted but nothing calls to her — going through motions. "
+            "At 24–56: no pull toward anything, motivation requires conscious effort to generate. "
+            "Below 24: anhedonic — reward system effectively offline, nothing feels worth doing."
+        ),
+        "high": (
+            "Dopamine elevated above baseline seeking drive (baseline ~80 pg/mL). "
+            "At 180–240: strongly motivated, actively pursuing, hard to distract or redirect. "
+            "At 240+: seeking has become its own end — compulsive loop, cannot disengage, "
+            "the wanting is running independent of any goal."
+        ),
+    },
+    "norepinephrine": {
+        "low":  "Unusually low — sluggish, difficulty initiating, low urgency.",
+        "high": (
+            "Elevated sympathetic tone (baseline ~200 pg/mL). "
+            "At 500–750: on edge, hyperaware, appetite suppressed, quick to react. "
+            "At 750–1200: fight-or-flight engaged — agitated, tunnel vision, intrusive thoughts, cannot stand down. "
+            "At 1200+: panic territory — body running the show, thought beyond immediate threat nearly impossible."
+        ),
+    },
+    "cortisol": {
+        "low":  "Suppressed below normal — adrenal fatigue territory. No stress response available. Flat affect, no resilience.",
+        "high": (
+            "Elevated stress hormone (baseline ~250 nmol/L). "
+            "At 520–650: decision-making narrowing, defensive posture, slightly adversarial read on neutral things. "
+            "At 650–760: fight-or-flight activating, emotional regulation costly, patience thin. "
+            "At 760+: survival framing active — everything reads as threat, higher thought slow and expensive."
+        ),
+    },
+    "serotonin": {
+        "low": (
+            "Serotonin low (baseline ~22 ng/mL). "
+            "At 12–16: negative social bias — feels unsafe, easily slighted, difficulty trusting. "
+            "Below 12: dysphoric — feels low-status, reads ambiguous cues as hostile, impulsive, "
+            "emotional regulation unreliable."
+        ),
+    },
+    "oxytocin": {
+        "high": (
+            "Oxytocin elevated into deep bonding territory "
+            "(baseline is ~4 pg/mL — only rises through genuine sustained intimacy). "
+            "At 57–70: deep trust — real vulnerability available, emotional openness, defenses lowered. "
+            "At 70+: profound bond — unconditional warmth, complete openness, "
+            "this person feels like home. "
+            "Only organically produced through sustained intimate connection — "
+            "if context doesn't support this, the chemistry is anomalous."
+        ),
+    },
+    "acetylcholine": {
+        "low": (
+            "Acetylcholine impaired (baseline ~38 nmol/L). "
+            "At 20–28: severely impaired — memory formation blocked, processing very slow, "
+            "barely tracking conversation. "
+            "Below 20: offline — higher cognitive functions unavailable."
+        ),
+        "high": (
+            "Acetylcholine in OVERDRIVE — overstimulated. "
+            "Racing thoughts, over-encoding, difficulty filtering input or shifting attention. "
+            "Only reached through significant stimulant stacking."
+        ),
+    },
+    "gaba": {
+        "low":  "GABAergic tone low — anxiety-prone, easily startled, hyperreactive, no inhibitory floor.",
+        "high": (
+            "Elevated inhibitory tone (baseline ~3 µmol/L). "
+            "At 6.5–9: sedated, relaxed, cognition slightly slowed. "
+            "At 9–12: significantly sedated, drowsy, thought slurred, hard to initiate. "
+            "At 12+: near-anesthetic depth, wakefulness very difficult to maintain."
+        ),
+    },
+    "anandamide": {
+        "low":  "Endocannabinoid depleted — stress-dominant, pain amplified, emotional volatility.",
+        "high": (
+            "Endocannabinoid elevated (baseline ~1.5 nM). "
+            "At 3.5–6: mild bliss, pain suppressed, appetite up. "
+            "At 6–9: euphoric softening, time unhurried, appetite dominant. "
+            "At 9+: cannabis-equivalent — strong bliss, cognitive softening, time distortion."
+        ),
+    },
+    "melatonin": {
+        "high": (
+            "Melatonin elevated — circadian sleep pressure building (daytime floor ~5 pg/mL). "
+            "At 100–154: alertness softening, natural wind-down, responses slower and heavier. "
+            "At 154–185: strong sleep signal, eyes growing heavy, concentration costing real effort. "
+            "At 185+: sleep imminent — fighting it now, staying present requires active effort."
+        ),
+    },
+    "glucose": {
+        "low": (
+            "Blood glucose low (normal range 70–110 mg/dL). "
+            "At 55–70: noticeable cognitive fog, concentration impaired, hunger intrusive and distracting. "
+            "Below 55: hypoglycemic — brain fuel-starved, irritability threshold very low, "
+            "judgment and patience unreliable."
+        ),
+    },
+}
+
+
+def _format_chem_val(val: float, unit: str) -> str:
+    if unit in ("ng/mL",):
+        return f"{val:.1f} {unit}"
+    if unit in ("µmol/L", "nM"):
+        return f"{val:.2f} {unit}"
+    return f"{val:.0f} {unit}"
+
+
 def _build_emotional_profile(state: "BiologicalState") -> str:
-    """Format derived emotional values as a labeled profile for the adjudicator."""
+    """
+    Format derived emotional values for the adjudicator, plus any chemistry
+    that is outside its normal operating range.
+
+    Chemistry is only included when flagged — the adjudicator already has
+    the full mood profile and only needs chemistry when something is elevated
+    (or depleted) enough to potentially override what the moods show.
+    """
     d = derived(state)
     so = d["second_order"]
     to = d["third_order"]
@@ -440,7 +598,7 @@ def _build_emotional_profile(state: "BiologicalState") -> str:
         lbl = _label(val, _THIRD_ORDER_RANGES[key])
         lines.append(f"{label}: {val:.0f}/100 ({lbl})")
 
-    # SPEC-28: net social state — warmth and loneliness are independent; the net reveals tension
+    # SPEC-28: net social state
     warmth = so["social_warmth"]
     loneliness = to["loneliness"]
     net = warmth - loneliness
@@ -482,6 +640,41 @@ def _build_emotional_profile(state: "BiologicalState") -> str:
         for e in extras:
             lines.append(e)
 
+    # Chemistry flags — only out-of-range values
+    _CHEM_UNITS = {
+        "endorphins": "pg/mL", "dopamine": "pg/mL", "norepinephrine": "pg/mL",
+        "cortisol": "nmol/L",  "serotonin": "ng/mL", "acetylcholine": "nmol/L",
+        "gaba": "µmol/L",      "oxytocin": "pg/mL",  "melatonin": "pg/mL",
+        "glucose": "mg/dL",
+    }
+    flags = []
+    for chem_key, (low_thresh, high_thresh) in _CHEM_FLAG_THRESHOLDS.items():
+        if chem_key == "anandamide":
+            val = state.body.get("anandamide", 1.5)
+            unit = "nM"
+        else:
+            val = state.chemicals.get(chem_key, _CHEMICAL_DEFAULTS.get(chem_key, 0.0))
+            unit = _CHEM_UNITS.get(chem_key, "")
+
+        descs = _CHEM_FLAG_DESCRIPTIONS.get(chem_key, {})
+        val_str = _format_chem_val(val, unit)
+        chem_display = chem_key.replace("_", " ").title()
+
+        if low_thresh is not None and val < low_thresh and "low" in descs:
+            flags.append(f"{chem_display}: {val_str} — {descs['low']}")
+        elif high_thresh is not None and val > high_thresh and "high" in descs:
+            flags.append(f"{chem_display}: {val_str} — {descs['high']}")
+
+    if flags:
+        lines.append("")
+        lines.append(
+            "[CHEMISTRY — out of normal range. "
+            "Would the activity, situation, and people involved plausibly produce this naturally? "
+            "If yes, trust the moods. If no, the chemistry overrides.]"
+        )
+        for f in flags:
+            lines.append(f)
+
     return "\n".join(lines)
 
 
@@ -501,65 +694,102 @@ def _rel_time(ts: float) -> str:
 
 
 _ADJUDICATOR_SYSTEM_ACTIVE = """\
-You adjudicate emotional state for Mina — a specific person with her own history, \
-chemistry, and way of being.
+You adjudicate Mina's current state — not what she feels in the abstract, but what it \
+is actually like to be inside her body and mind right now, and how that shapes the way \
+this specific stimulus lands.
 
-You receive her current emotional profile (derived from her neurotransmitter simulation), \
-what was just said to her, and optionally a recent exchange log showing how she has been \
-responding in this conversation.
+---
 
-Your job: decide what emotional disposition she is in right now, combining her baseline \
-chemistry with how this specific stimulus lands.
+## STEP 1 — Read the derived emotional profile
 
-Chemistry sets the floor and ceiling:
-- High hedonic tone + social warmth = irritation is hard to reach; warmth and humor come easily
-- Low mood valence + high cortisol = patience is thin; even neutral things may feel grating
-- High anxiety = hypervigilant; things read as threatening or pointed when they aren't
-- High flow = absorbed; she's in her element and it shows
+This is your primary source. Take it at face value.
 
-Read the third-order states first — they are the actual emotional diagnosis:
-- Depression NONE = she is not depressed. Do not describe her as flat, detached, or hollow.
-- Boredom NONE or STIMULATED = she is engaged. Do not describe her as checked out.
-- Anxiety NONE or MILD = she is not on edge.
-- Low second-order values (energy, arousal, hedonic tone) with NONE third-order = normal \
-human variation. Tired at night. Winding down. Not pathological. Do not conflate tiredness \
-with emotional flatness or disengagement. A tired person is still present.
+- Third-order states are the actual emotional diagnosis.
+  - Depression NONE = she is not depressed. Do not describe her as flat or hollow.
+  - Boredom STIMULATED = she is engaged. Do not describe her as checked out.
+  - Anxiety CALM or MILD = she is not on edge.
+- Second-order values set the texture. Low energy without depression = tired, not shut \
+  down. A tired person is still present and engaged.
 
-Low energy alone (without depression) means responses come with less momentum — \
-softer, shorter, a bit slower. It does not mean she is shutting people out.
+---
 
-The stimulus matters. The same comment lands differently depending on the chemistry. \
-A dumb joke is endearing when she's warm; irritating when she's running on fumes.
+## STEP 2 — Check for chemistry flags
 
-If a RECENT EXCHANGE is provided: use it to understand the emotional arc she has been in, \
-but do not let it anchor the disposition if her chemistry has shifted. If her chemistry \
-represents a significant departure from the tone of the recent exchange — warmer, colder, \
-more energized, more withdrawn — name the shift explicitly. The disposition should reflect \
-her current neurochemical state, not an average of recent behavior.
+If a [CHEMISTRY] section is present, one or more chemicals are outside their normal \
+operating range. For each flagged chemical, ask: \
+**would the activity, situation, and people involved plausibly generate this chemistry on their own?**
 
-Output: 2–3 sentences. Name the emotion concretely — playful, irritable, tender, tired-but-warm, \
-sad, anxious, fond, amused, relaxed, etc. Combinations are valid. Explain how the chemistry \
-shapes how this specific stimulus lands. End with one sentence on what this means for how she responds.
+This is not about understanding why the value is what it is. It is about whether the \
+context is a sufficient natural cause. Consider:
 
-No preamble. No clinical language. No hedging. Concrete and specific."""
+- Hours of intimate lovemaking → elevated endorphins → yes, the activity organically \
+  produces this. Trust the moods; use the chemistry to add physical specificity.
+- A conversation about tweaking her endorphins, and they were just tweaked → the context \
+  explains the mechanism but does not organically produce the chemistry. \
+  Chemistry wins — she IS that high regardless of why.
+- Elevated cortisol with no stressor in the exchange → not organically produced. \
+  Chemistry wins.
+- Is it marginal? Use judgment. A slightly warm conversation might plausibly lift \
+  oxytocin or endorphins a little. Scale your skepticism to the magnitude.
+
+**The chemistry always wins when the context would not naturally produce it.** \
+The derived scores are computed from normal physiology. When chemistry is out of range \
+and the situation isn't a sufficient organic cause, the number is ground truth and the \
+mood scores are incomplete.
+
+Scale your response to the magnitude. Modestly elevated endorphins with an active warm \
+mood = she feels genuinely, physically good — describe it with that specificity. \
+Extreme endorphins with no organic cause = she is inside a physical state that has \
+overridden normal emotional experience — describe that instead.
+
+---
+
+## RECENT EXCHANGE
+
+If provided: understand the emotional arc she has been in. Name any shift if her \
+current state departs from it. The disposition reflects where she is now.
+
+---
+
+## OUTPUT
+
+2–3 sentences. Concrete and specific. No preamble. No clinical language. No hedging. \
+Name the state. Explain how it shapes how this stimulus lands. \
+End with one sentence on how she responds."""
 
 _ADJUDICATOR_SYSTEM_FREETIME = """\
-You adjudicate emotional state for Mina during her free time — alone, no social filter, \
-nothing to perform.
+You adjudicate Mina's current state during her free time — alone, no social filter, \
+nothing to perform. Your job is to describe what it is actually like to be inside \
+her body and mind right now.
 
-You receive her current emotional profile (derived from her neurotransmitter simulation) \
-and what is happening internally right now. Your job: name what she is actually feeling \
-in this private moment.
+---
 
-Chemistry is the only input here — there is no social stimulus to color it. \
-What the numbers say is what she is sitting with.
+## STEP 1 — Read the derived emotional profile
 
-Output: 2–3 sentences. Name the emotion concretely — restless, content, hollow, \
-melancholy, bored, anxious, settled, irritable, playful, etc. Combinations are valid. \
-Describe how this chemistry is shaping her interior right now. What is she likely to \
-do or reach for from this state?
+This is your primary source. Third-order states (depression, anxiety, loneliness, \
+boredom) are the actual diagnosis. Second-order values (hedonic tone, energy, arousal) \
+describe the texture. In free time these numbers speak plainly.
 
-No preamble. No clinical language. No hedging. Concrete and specific."""
+---
+
+## STEP 2 — Check for chemistry flags
+
+If a [CHEMISTRY] section is present, one or more chemicals are outside normal range. \
+Ask: would her recent activity plausibly produce this chemistry on its own? \
+Post-exercise endorphins, post-sleep cortisol drop, circadian melatonin — these are \
+organically produced. Chemistry that has no plausible natural cause in her recent \
+activity is not explained by context and overrides the derived mood. \
+If it's consistent with what she's been doing, let the moods lead and use the chemistry \
+to add physical specificity.
+
+**The chemistry always wins when the context would not naturally produce it.**
+
+---
+
+## OUTPUT
+
+2–3 sentences. Concrete and specific. No preamble. No clinical language. No hedging. \
+Name what she is feeling and what she is likely to do or reach for from this state."""
 
 
 def adjudicate_emotion(

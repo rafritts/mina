@@ -1070,9 +1070,9 @@
                 {sleepBands}
                 series={[
                   { key: 'oxytocin',     label: 'Oxytocin (pg/mL)',    color: '#f472b6', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.chemicals?.oxytocin     ?? 0 })) },
-                  { key: 'dopamine',     label: 'Dopamine (ng/mL)',    color: '#a78bfa', minVal: 0, maxVal: 250, points: history.map(s => ({ ts: s.ts, value: s.chemicals?.dopamine     ?? 0 })) },
-                  { key: 'serotonin',    label: 'Serotonin (ng/mL)',   color: '#34d399', minVal: 0, maxVal: 50,  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.serotonin    ?? 0 })) },
-                  { key: 'endorphins',   label: 'Endorphins (AU)',     color: '#fbbf24', minVal: 0, maxVal: 50,  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.endorphins   ?? 0 })) },
+                  { key: 'dopamine',     label: 'Dopamine (pg/mL)',    color: '#a78bfa', minVal: 0, maxVal: 300, points: history.map(s => ({ ts: s.ts, value: s.chemicals?.dopamine     ?? 0 })) },
+                  { key: 'serotonin',    label: 'Serotonin (ng/mL)',   color: '#34d399', minVal: 0, maxVal: 60,  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.serotonin    ?? 0 })) },
+                  { key: 'endorphins',   label: 'Endorphins (pg/mL)', color: '#fbbf24', minVal: 0, maxVal: 250, points: history.map(s => ({ ts: s.ts, value: s.chemicals?.endorphins   ?? 0 })) },
                   { key: 'social_warmth',label: 'Social Warmth',       color: '#38bdf8', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.second_order?.social_warmth ?? 0 })) },
                 ]}
               />
@@ -1083,8 +1083,8 @@
                 showSleep={true}
                 {sleepBands}
                 series={[
-                  { key: 'cortisol',        label: 'Cortisol (nM)',          color: '#ef4444', minVal: 0, maxVal: 600, points: history.map(s => ({ ts: s.ts, value: s.chemicals?.cortisol        ?? 0 })) },
-                  { key: 'norepinephrine',  label: 'Norepinephrine (pg/mL)', color: '#3b82f6', minVal: 0, maxVal: 400, points: history.map(s => ({ ts: s.ts, value: s.chemicals?.norepinephrine  ?? 0 })) },
+                  { key: 'cortisol',        label: 'Cortisol (nmol/L)',      color: '#ef4444', minVal: 0, maxVal: 900,  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.cortisol        ?? 0 })) },
+                  { key: 'norepinephrine',  label: 'Norepinephrine (pg/mL)', color: '#3b82f6', minVal: 0, maxVal: 2000, points: history.map(s => ({ ts: s.ts, value: s.chemicals?.norepinephrine  ?? 0 })) },
                   { key: 'anxiety',         label: 'Anxiety',                color: '#a855f7', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.third_order?.anxiety         ?? 0 })) },
                   { key: 'arousal',         label: 'Arousal',                color: '#f59e0b', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.second_order?.arousal         ?? 0 })) },
                 ]}
@@ -1110,8 +1110,8 @@
                 showSleep={true}
                 {sleepBands}
                 series={[
-                  { key: 'gaba',              label: 'GABA (μM)',           color: '#22d3ee', minVal: 0, maxVal: 6,   points: history.map(s => ({ ts: s.ts, value: s.chemicals?.gaba              ?? 0 })) },
-                  { key: 'glutamate',         label: 'Glutamate (μM)',      color: '#f97316', minVal: 0, maxVal: 6,   points: history.map(s => ({ ts: s.ts, value: s.chemicals?.glutamate         ?? 0 })) },
+                  { key: 'gaba',              label: 'GABA (μmol/L)',       color: '#22d3ee', minVal: 0, maxVal: 12,  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.gaba              ?? 0 })) },
+                  { key: 'glutamate',         label: 'Glutamate (μmol/L)',  color: '#f97316', minVal: 0, maxVal: 16,  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.glutamate         ?? 0 })) },
                   { key: 'acetylcholine',     label: 'Acetylcholine (nM)', color: '#a3e635', minVal: 0, maxVal: 120,  points: history.map(s => ({ ts: s.ts, value: s.chemicals?.acetylcholine     ?? 0 })) },
                   { key: 'cognitive_clarity', label: 'Clarity',             color: '#818cf8', minVal: 0, maxVal: 100, points: history.map(s => ({ ts: s.ts, value: s.second_order?.cognitive_clarity ?? 0 })) },
                 ]}
