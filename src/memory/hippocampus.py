@@ -154,6 +154,7 @@ class _OllamaEmbeddingFunction:
 
     def _embed(self, texts: list[str]) -> list[list[float]]:
         import urllib.request
+        import urllib.error
         import json as _json
 
         embeddings = []
@@ -164,9 +165,23 @@ class _OllamaEmbeddingFunction:
                 data=payload,
                 headers={"Content-Type": "application/json"},
             )
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                result = _json.loads(resp.read())
-            embeddings.append(result["embedding"])
+            last_err = None
+            for attempt in range(3):
+                try:
+                    with urllib.request.urlopen(req, timeout=30) as resp:
+                        result = _json.loads(resp.read())
+                    embeddings.append(result["embedding"])
+                    last_err = None
+                    break
+                except urllib.error.HTTPError as e:
+                    last_err = e
+                    if e.code < 500:
+                        raise  # client errors are not transient
+                    time.sleep(1.0 * (attempt + 1))
+                except Exception:
+                    raise
+            if last_err is not None:
+                raise last_err
         return embeddings
 
     def __call__(self, input: list[str]) -> list[list[float]]:
@@ -235,9 +250,14 @@ def rag_add(text: str, metadata: Optional[dict] = None) -> None:
             _reset_collection()
             collection = _get_collection()
             if collection:
-                collection.add(documents=[text], ids=[doc_id], metadatas=[meta])
+                try:
+                    collection.add(documents=[text], ids=[doc_id], metadatas=[meta])
+                except Exception:
+                    pass  # embedding still failing after reset — skip this entry
         else:
-            raise
+            # Embedding errors (e.g. Ollama 500) are logged and skipped, not fatal
+            import sys
+            print(f"[RAG] rag_add failed, skipping entry: {e}", file=sys.stderr)
 
 
 # Recent pool: half-life of 20 minutes — aggressively favours the last hour of conversation.

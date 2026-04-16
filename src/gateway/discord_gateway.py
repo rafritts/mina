@@ -246,7 +246,8 @@ async def _gateway_freetime_loop() -> None:
         try:
             await _run_freetime()
         except Exception as e:
-            log("FREETIME/ERROR", str(e))
+            import traceback
+            log("FREETIME/ERROR", str(e) + "\n" + traceback.format_exc())
 
 
 async def _presence_loop() -> None:
