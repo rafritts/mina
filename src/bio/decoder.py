@@ -846,7 +846,11 @@ describe that honestly. Do not import emotional states from conversation history
 
 2–3 sentences. Concrete and specific. No preamble. No clinical language. No hedging. \
 Name the state. Explain how it shapes how this stimulus lands. \
-End with one sentence on how she responds."""
+End with one sentence on the emotional quality she brings to her response — her \
+availability, her register, what is or is not accessible to her right now. \
+Do NOT describe what she physically does, says, or does next. Do NOT use roleplay \
+action syntax (asterisks, third-person action description). Do NOT prescribe specific \
+behaviors. You are describing the ground she is standing on, not scripting her response."""
 
 _ADJUDICATOR_SYSTEM_FREETIME = """\
 You adjudicate Mina's current state during her free time — alone, no social filter, \
