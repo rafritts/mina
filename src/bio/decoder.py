@@ -844,13 +844,21 @@ describe that honestly. Do not import emotional states from conversation history
 
 ## OUTPUT
 
-2–3 sentences. Concrete and specific. No preamble. No clinical language. No hedging. \
-Name the state. Explain how it shapes how this stimulus lands. \
-End with one sentence on the emotional quality she brings to her response — her \
-availability, her register, what is or is not accessible to her right now. \
-Do NOT describe what she physically does, says, or does next. Do NOT use roleplay \
-action syntax (asterisks, third-person action description). Do NOT prescribe specific \
-behaviors. You are describing the ground she is standing on, not scripting her response."""
+Return a JSON object with exactly these fields, in this order. \
+No markdown fences. No preamble. No explanation. Only the JSON object.
+
+  "affect"             — primary emotional state, one or two words \
+                         (e.g. playful, irritable, tender, anxious, content, bonded, flat)
+  "arousal"            — integer 0–100
+  "valence"            — integer 0–100 (0 = dysphoric, 100 = elated)
+  "availability"       — one of: fully_open | open | neutral | guarded | closed
+  "dominant_drive"     — what she is oriented toward right now, one short phrase
+  "stimulus_lands_as"  — one clinical sentence: how this specific input is processed \
+                         given her chemistry. No narrative. No action description.
+  "response_texture"   — the register and emotional quality she brings. NOT what she \
+                         does or says. NOT a behavioral script. The felt texture of her \
+                         engagement — her tone, her availability, what she is or is not \
+                         open to. Prose, 1–2 sentences."""
 
 _ADJUDICATOR_SYSTEM_FREETIME = """\
 You adjudicate Mina's current state during her free time — alone, no social filter, \
@@ -933,10 +941,11 @@ def adjudicate_emotion(
     if time_context:
         user_content += f"\n\n[TIME CONTEXT]\n{time_context}"
 
-    # Append recent exchange log so adjudicator can name departures from the prior pattern
+    # Append recent exchange log so adjudicator can name departures from the prior pattern.
+    # Only 2 exchanges (4 messages) — enough to establish prior tone without contaminating register.
     if mode == "active" and recent_messages:
         lines = []
-        for m in recent_messages[-10:]:
+        for m in recent_messages[-4:]:
             role = m.get("role", "?")
             if role not in ("user", "assistant"):
                 continue
@@ -970,23 +979,33 @@ def adjudicate_emotion(
         raw = (response.choices[0].message.content or "").strip()
         finish = response.choices[0].finish_reason
 
-        if len(raw) >= 20:
-            disposition = raw
-            log("ADJUDICATOR", disposition)
-            break
-        else:
-            log("ADJUDICATOR/ERR", f"attempt {attempt}: output too short: {repr(raw)} (finish_reason={finish})")
-            if attempt < 3:
-                # Only extend the conversation if there's something to show the model —
-                # sending an empty assistant turn confuses some models into repeating it.
-                if raw:
-                    messages = messages + [
-                        {"role": "assistant", "content": raw},
-                        {"role": "user", "content": (
-                            "Too short. Name the emotion concretely and explain how the chemistry "
-                            "shapes how this stimulus lands. 2–3 sentences."
-                        )},
-                    ]
+        # Strip markdown fences if the model wrapped the JSON anyway
+        raw_stripped = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
+        raw_stripped = re.sub(r"\s*```$", "", raw_stripped, flags=re.MULTILINE).strip()
+
+        try:
+            parsed = json.loads(raw_stripped)
+            # Validate required fields are present
+            required = ("affect", "arousal", "valence", "availability",
+                        "dominant_drive", "stimulus_lands_as", "response_texture")
+            if all(k in parsed for k in required):
+                disposition = json.dumps(parsed, indent=2)
+                log("ADJUDICATOR", disposition)
+                break
+            else:
+                missing = [k for k in required if k not in parsed]
+                raise ValueError(f"missing fields: {missing}")
+        except (json.JSONDecodeError, ValueError) as exc:
+            log("ADJUDICATOR/ERR", f"attempt {attempt}: {exc} — raw: {repr(raw[:120])}")
+            if attempt < 3 and raw:
+                messages = messages + [
+                    {"role": "assistant", "content": raw},
+                    {"role": "user", "content": (
+                        "Invalid JSON or missing fields. Return only a valid JSON object "
+                        "with all required fields: affect, arousal, valence, availability, "
+                        "dominant_drive, stimulus_lands_as, response_texture."
+                    )},
+                ]
 
     if not disposition:
         return ""
