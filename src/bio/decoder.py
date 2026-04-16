@@ -1004,8 +1004,20 @@ comedown, not just the current snapshot. A spike means something just hit.
 
 ## OUTPUT
 
-2–3 sentences. Concrete and specific. No preamble. No clinical language. No hedging. \
-Name what she is feeling and what she is likely to do or reach for from this state."""
+Return a JSON object with exactly these fields, in this order. \
+No markdown fences. No preamble. No explanation. Only the JSON object.
+
+  "affect"             — primary emotional state, one or two words \
+                         (e.g. restless, content, flat, anxious, tender, edgy, drifting)
+  "arousal"            — integer 0–100
+  "valence"            — integer 0–100 (0 = dysphoric, 100 = elated)
+  "availability"       — one of: fully_open | open | neutral | guarded | closed
+  "dominant_drive"     — what she is oriented toward right now, one short phrase
+  "stimulus_lands_as"  — one clinical sentence: how the current moment and solitude \
+                         are registering given her chemistry. No narrative.
+  "response_texture"   — the quality and texture of her alone time — what she reaches \
+                         for, what she avoids, what she is or is not open to. \
+                         Prose, 1–2 sentences."""
 
 
 def adjudicate_emotion(

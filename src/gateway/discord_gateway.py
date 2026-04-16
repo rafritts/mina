@@ -359,7 +359,7 @@ async def _outbox_watcher() -> None:
         for line in lines:
             try:
                 msg = json.loads(line)
-                content = msg.get("content", "").strip()
+                content = _strip_emoji(msg.get("content", "").strip())
                 image_path = msg.get("image_path", "").strip()
                 if content:
                     for chunk in _chunk_text(content):
@@ -391,8 +391,34 @@ async def _followup_watcher() -> None:
 # Message delivery
 # ---------------------------------------------------------------------------
 
+_EMOJI_RE = re.compile(
+    "["
+    "\U0001F600-\U0001F64F"  # emoticons
+    "\U0001F300-\U0001F5FF"  # symbols & pictographs
+    "\U0001F680-\U0001F6FF"  # transport & map
+    "\U0001F700-\U0001F77F"  # alchemical
+    "\U0001F780-\U0001F7FF"  # geometric extended
+    "\U0001F800-\U0001F8FF"  # supplemental arrows
+    "\U0001F900-\U0001F9FF"  # supplemental symbols
+    "\U0001FA00-\U0001FA6F"  # chess symbols
+    "\U0001FA70-\U0001FAFF"  # symbols and pictographs extended-A
+    "\U00002702-\U000027B0"  # dingbats
+    "\U000024C2-\U0001F251"  # enclosed characters
+    "\U0000200D"             # zero-width joiner (used in compound emoji)
+    "\U0000FE0F"             # variation selector-16 (emoji presentation)
+    "]+",
+    flags=re.UNICODE,
+)
+
+
+def _strip_emoji(text: str) -> str:
+    return _EMOJI_RE.sub("", text).strip()
+
+
 async def _deliver(channel: discord.abc.Messageable, reply: str, image_paths: list[str]) -> None:
     """Send chunked text then any images to the channel."""
+    if reply:
+        reply = _strip_emoji(reply)
     if reply:
         for chunk in _chunk_text(reply):
             await channel.send(chunk)
@@ -421,9 +447,8 @@ async def _run_turn(channel: discord.abc.Messageable, messages: list[discord.Mes
         lines = [f"{m.author.display_name}: {m.content}" for m in messages]
         user_input = "\n".join(lines)
 
-    # Collect first image attachment across all batched messages
-    image_b64 = None
-    image_mime = "image/jpeg"
+    # Collect all image attachments across all batched messages
+    images: list[tuple[str, str]] = []
     for msg in messages:
         for att in msg.attachments:
             content_type = (att.content_type or "").split(";")[0].strip()
@@ -433,21 +458,19 @@ async def _run_turn(channel: discord.abc.Messageable, messages: list[discord.Mes
                         async with http.get(att.url) as resp:
                             if resp.status == 200:
                                 raw = await resp.read()
-                                image_b64, image_mime = _normalise_image(raw, content_type)
-                                out_kb = len(base64.b64decode(image_b64)) // 1024
+                                b64, mime = _normalise_image(raw, content_type)
+                                out_kb = len(base64.b64decode(b64)) // 1024
                                 over = "⚠ OVER LIMIT" if out_kb > 300 else "ok"
                                 log("VISION", f"{att.filename} {len(raw)//1024}KB → {out_kb}KB ({over})")
+                                images.append((b64, mime))
                 except Exception as e:
                     log("VISION/ERROR", f"{att.filename}: {e}")
-                break
-        if image_b64:
-            break
 
     try:
         async with channel.typing():
             reply, image_paths = await run_turn(
                 user_input, username=username,
-                image_b64=image_b64, image_mime=image_mime,
+                images=images or None,
             )
     except asyncio.CancelledError:
         raise

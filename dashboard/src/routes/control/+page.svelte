@@ -139,6 +139,32 @@
     if (r) injectValue = Math.round((r.min + r.max) / 2);
   });
 
+  // ---------------------------------------------------------------------------
+  // Hedonic setpoint reset
+  // ---------------------------------------------------------------------------
+
+  let setpointValue   = $state(15);
+  let resettingSetpoint = $state(false);
+  let setpointResult  = $state('');
+
+  async function resetSetpoint() {
+    resettingSetpoint = true;
+    setpointResult = '';
+    error = '';
+    try {
+      await apiFetch('/api/state', {
+        method: 'PATCH',
+        body: JSON.stringify({ hedonic_setpoint: setpointValue }),
+      });
+      setpointResult = `Setpoint reset to ${setpointValue}.`;
+      await pollStatus();
+    } catch (e) {
+      error = String(e);
+    } finally {
+      resettingSetpoint = false;
+    }
+  }
+
   // Cascade countdown
   function fmtCountdown(fireAt: number): string {
     const secs = fireAt - Date.now() / 1000;
@@ -246,6 +272,37 @@
 
     <!-- ═══════ RIGHT ═══════ -->
     <div class="flex flex-col gap-6">
+
+      <!-- Hedonic Setpoint Reset -->
+      <div class="card bg-base-200 p-4">
+        <h2 class="text-sm font-semibold opacity-60 uppercase tracking-wider mb-1">Hedonic Setpoint</h2>
+        <p class="text-xs opacity-50 mb-3">
+          Reset the allostatic setpoint to clear craving / deprivation notes. Floor is 15.
+        </p>
+        <div class="flex items-center gap-3">
+          <input
+            type="number"
+            class="input input-bordered input-sm w-24"
+            bind:value={setpointValue}
+            min="15"
+            max="100"
+            step="1"
+          />
+          <button
+            class="btn btn-sm btn-warning"
+            onclick={resetSetpoint}
+            disabled={resettingSetpoint}
+          >
+            {#if resettingSetpoint}
+              <span class="loading loading-spinner loading-xs"></span>
+            {/if}
+            Reset Setpoint
+          </button>
+        </div>
+        {#if setpointResult}
+          <p class="text-xs text-success mt-2">{setpointResult}</p>
+        {/if}
+      </div>
 
       <!-- HPA Cascade Queue -->
       <div class="card bg-base-200 p-4">

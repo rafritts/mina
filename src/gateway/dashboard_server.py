@@ -83,11 +83,12 @@ def healthz():
 # ---------------------------------------------------------------------------
 
 # Body fields that can be directly patched
-_BODY_PATCHABLE = {"adenosine", "anandamide", "two_ag"}
+_BODY_PATCHABLE = {"adenosine", "anandamide", "two_ag", "hedonic_setpoint"}
 _BODY_CLAMP = {
-    "adenosine":  (15.0, 100.0),
-    "anandamide": (0.0,  5.0),
-    "two_ag":     (0.0,  30.0),
+    "adenosine":        (15.0, 100.0),
+    "anandamide":       (0.0,  5.0),
+    "two_ag":           (0.0,  30.0),
+    "hedonic_setpoint": (15.0, 100.0),
 }
 
 # Mapping: flat API key → (nt_name, receptor_type) for receptor_sensitivity

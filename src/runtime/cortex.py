@@ -28,6 +28,25 @@ from .tools import TOOLS, call_tool, handle_generate_image
 DECODER_WINDOW_SIZE   = 20  # sliding window depth (~10 exchanges)
 MINA_IMMEDIATE_WINDOW = 4   # messages Mina receives directly (2 exchanges)
 
+_EMOJI_RE = re.compile(
+    "["
+    "\U0001F600-\U0001F64F"
+    "\U0001F300-\U0001F5FF"
+    "\U0001F680-\U0001F6FF"
+    "\U0001F700-\U0001FAFF"
+    "\U00002702-\U000027B0"
+    "\U000024C2-\U0001F251"
+    "\U0000200D"
+    "\U0000FE0F"
+    "]+",
+    flags=re.UNICODE,
+)
+
+
+def _strip_emoji(text: str) -> str:
+    return _EMOJI_RE.sub("", text).strip()
+
+
 # Backward-compat constants — gateway imports these for display/checks
 HISTORY_MAX      = DECODER_WINDOW_SIZE      # used by /context display
 HISTORY_FORCE_AT = DECODER_WINDOW_SIZE + 1  # disables gateway force-compact check
@@ -390,8 +409,7 @@ async def _mina_turn(
 async def run_turn(
     user_input: str,
     username: str = "user",
-    image_b64: str | None = None,
-    image_mime: str = "image/jpeg",
+    images: "list[tuple[str, str]] | None" = None,
 ) -> tuple[str, list[str]]:
     """
     Execute one full Mina turn.
@@ -399,8 +417,7 @@ async def run_turn(
     Args:
         user_input: The message text.
         username: Display name of the speaker (prefixed in history).
-        image_b64: Optional base64-encoded image for vision.
-        image_mime: MIME type of the image (default image/jpeg).
+        images: Optional list of (base64, mime_type) tuples for vision.
 
     Returns:
         (reply_text, image_paths) — reply is the final assistant text;
@@ -420,10 +437,12 @@ async def run_turn(
     state = load_state() if paused else load_and_advance()
     if paused:
         log("STATE", "Biological updates paused — time not advanced.")
-    log("USER", f"{username}: {user_input}" + (" [image]" if image_b64 else ""))
+    img_count = len(images) if images else 0
+    img_tag = f" [{img_count} image(s)]" if img_count else ""
+    log("USER", f"{username}: {user_input}{img_tag}")
 
     # [1] encode_stimulus — biological response to incoming message
-    stimulus = f"{username}: {user_input}" + (" [sent an image]" if image_b64 else "")
+    stimulus = f"{username}: {user_input}" + (f" [sent {img_count} image(s)]" if img_count else "")
     stimulus_deltas = await asyncio.to_thread(encode_stimulus, state, stimulus)
     if stimulus_deltas:
         state = apply_deltas(state, stimulus_deltas)
@@ -452,13 +471,12 @@ async def run_turn(
     cfg = load_config()
     mina_immediate = cfg.get("mina_immediate_window", MINA_IMMEDIATE_WINDOW)
 
-    # Build user content — multimodal if image attached
-    if image_b64:
-        user_content = [
-            {"type": "text", "text": f"{username}: {user_input}"},
-            {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
-        ]
-        log("VISION", f"Image attached ({image_mime})")
+    # Build user content — multimodal if images attached
+    if images:
+        user_content: list[dict] | str = [{"type": "text", "text": f"{username}: {user_input}"}]
+        for b64, mime in images:
+            user_content.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}})
+        log("VISION", f"{img_count} image(s) attached")
     else:
         user_content = f"{username}: {user_input}"
     decoder_window.append({"role": "user", "content": user_content, "ts": time.time()})
@@ -523,6 +541,11 @@ async def run_turn(
     )
     save_state(state)
 
+    # Strip emoji from all assistant entries before storing in decoder window / history
+    for entry in new_entries:
+        if entry.get("role") == "assistant" and isinstance(entry.get("content"), str):
+            entry["content"] = _strip_emoji(entry["content"])
+
     reply = ""
     for entry in reversed(new_entries):
         if entry.get("role") == "assistant" and entry.get("content"):
@@ -546,8 +569,8 @@ async def run_turn(
     save_decoder_window(decoder_window)
 
     # SPEC-32: append user message + final reply to the append-only conversation record
-    user_content = user_content if not image_b64 else (
-        # Strip image from stored entry — store text only
+    user_content = user_content if not images else (
+        # Strip images from stored entry — store text only
         next((b.get("text", "") for b in user_content if isinstance(b, dict) and b.get("type") == "text"), user_input)
         if isinstance(user_content, list) else user_content
     )
