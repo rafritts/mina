@@ -87,10 +87,10 @@ The hippocampus now always sees everything that happened since it last ran — r
 | `src/infra/config.py` | Add `CONVERSATION_FILE` and `CONSOLIDATION_STATE_FILE` path constants |
 | `src/gateway/discord_gateway.py` | Wipe both files on factory reset |
 
-### Open questions
+### Decisions
 
-1. **Backfill on first boot** — seed `conversation.jsonl` from the current `decoder_window.json` so the hippocampus doesn't cold-start.
-2. **File size** — grows indefinitely. Fine for now; rotation is a future concern.
+1. **Backfill on first boot** — no backfill. Factory reset before deploying. No migration code.
+2. **File size** — segment once per day, ideally triggered after Mina's long sleep window (4am–8am). Append-only per-day files, e.g. `conversation-2026-04-16.jsonl`.
 
 ---
 
@@ -173,15 +173,15 @@ This enables SPEC-31's isolation deterioration stages to be supplemented by actu
 
 | File | Change |
 |------|--------|
-| `src/runtime/heartbeat.py` | Append state snapshot to `bio_history.jsonl` each tick; prune entries older than 48h |
+| `src/runtime/heartbeat.py` | Append state snapshot to `bio_history.jsonl` each tick; prune entries older than 7 days |
 | `src/infra/config.py` | Add `BIO_HISTORY_FILE` path constant |
 | `src/gateway/dashboard_server.py` | Read from `bio_history.jsonl`; remove `_history_loop()` write logic |
 | `src/sim/engine.py` | Expose helper `_hours_above_threshold(history, field_path, threshold)` for duration queries |
 
-### Open questions
+### Decisions
 
-1. **48h window** — is 48h the right cap? SPEC-31's isolation stages go to 7 days. For multi-day duration tracking, the window may need to extend. Alternatively, the body dict could store onset timestamps for key threshold crossings (`cortisol_elevated_since`, `ghrelin_elevated_since`, etc.) as a lightweight complement to the full timeseries.
-2. **Tick interval** — at 60s ticks, 48h = ~2880 entries × ~500 bytes = ~1.4MB. Acceptable.
+1. **Window** — 7 days. At 60s ticks: ~10,080 entries × ~500 bytes = ~5MB. Negligible.
+2. **Tick interval** — 60s ticks confirmed. No change needed.
 
 ---
 
