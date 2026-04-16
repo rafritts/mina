@@ -716,7 +716,11 @@ async def on_message(message: discord.Message) -> None:
 
 def _wipe_user_data() -> list[str]:
     wiped = []
-    # Wipe conversation history (legacy + SPEC-27 formats), decoder trajectory, and adjudicator state
+    # Wipe conversation history (legacy + SPEC-27 + SPEC-32 formats), decoder trajectory, and adjudicator state
+    import glob as _glob
+    conv_daily_files = _glob.glob(os.path.join(_PROJECT_ROOT, "run", "conversation-*.jsonl"))
+    spec32_paths = [os.path.relpath(p, _PROJECT_ROOT).replace(os.sep, "/") for p in conv_daily_files]
+
     for rel_path in [
         "run/conversation.json",
         "run/conversation.json.archived",
@@ -724,7 +728,9 @@ def _wipe_user_data() -> list[str]:
         "run/decoder_history.jsonl",
         "run/bio_snapshots.jsonl",
         "run/last_search.json",
-    ]:
+        "run/consolidation_state.json",   # SPEC-32: hippocampus cursor
+        "run/bio_history.jsonl",           # SPEC-32: physiological timeseries
+    ] + spec32_paths:
         dst = os.path.join(_PROJECT_ROOT, rel_path)
         if os.path.exists(dst):
             os.remove(dst)

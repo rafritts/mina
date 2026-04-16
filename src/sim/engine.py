@@ -599,3 +599,48 @@ def advance(state: BiologicalState,
 
     s.last_updated = now
     return s
+
+
+# ---------------------------------------------------------------------------
+# SPEC-32: Duration query helper for bio_history timeseries
+# ---------------------------------------------------------------------------
+
+def hours_above_threshold(
+    bio_history: list[dict],
+    field_path: str,
+    threshold: float,
+) -> float:
+    """
+    Return how many hours the given field has continuously been above threshold,
+    counting backwards from the most recent entry.
+
+    field_path uses dot notation, e.g. "chemicals.cortisol" or "second_order.anxiety".
+    Returns 0.0 if the field is not found or the condition is not currently met.
+    """
+    if not bio_history:
+        return 0.0
+
+    keys = field_path.split(".")
+
+    def _get(entry: dict) -> float | None:
+        val = entry
+        for k in keys:
+            if not isinstance(val, dict):
+                return None
+            val = val.get(k)
+        return float(val) if val is not None else None
+
+    # Walk backwards until the condition is no longer met
+    most_recent = bio_history[-1]
+    if (_get(most_recent) or 0.0) <= threshold:
+        return 0.0
+
+    earliest_ts = most_recent.get("ts", 0.0)
+    for entry in reversed(bio_history):
+        val = _get(entry)
+        if val is None or val <= threshold:
+            break
+        earliest_ts = entry.get("ts", earliest_ts)
+
+    latest_ts = most_recent.get("ts", 0.0)
+    return (latest_ts - earliest_ts) / 3600.0

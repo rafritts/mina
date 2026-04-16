@@ -18,14 +18,20 @@ import time
 
 from openai import OpenAI
 
-from ..infra.config import DECODER_WINDOW_FILE, OUTBOX_FILE, PAUSED_FLAG, PROJECT_ROOT, load_config
+from ..infra.config import (
+    DECODER_WINDOW_FILE, OUTBOX_FILE, PAUSED_FLAG, PROJECT_ROOT,
+    load_config, get_conversation_file,
+)
 from ..infra.client import chat_create, MODEL
 from .cortex import apply_ts_label
 from ..infra.log import log as _log_raw
 from ..bio.decoder import biological_report, adjudicate_emotion, build_memory_context, needs_summary
 from ..bio.encoder import encode_stimulus, encode_response, evaluate_activity_deltas
-from ..memory.hippocampus import build_kag_context, build_rag_context, rag_add, rag_prune, write_kag, consolidate
-from .cortex import DECODER_WINDOW_SIZE, MINA_IMMEDIATE_WINDOW, _format_rag_block, _rag_write_and_trim
+from ..memory.hippocampus import (
+    build_kag_context, build_rag_context, build_rag_context_dual,
+    rag_add, rag_prune, write_kag, consolidate,
+)
+from .cortex import DECODER_WINDOW_SIZE, MINA_IMMEDIATE_WINDOW
 from ..bio.state import (
     BiologicalState,
     apply_deltas,
@@ -52,6 +58,15 @@ def _save_decoder_window(window: list[dict]) -> None:
     os.makedirs(os.path.dirname(DECODER_WINDOW_FILE), exist_ok=True)
     with open(DECODER_WINDOW_FILE, "w") as f:
         json.dump(window, f, indent=2)
+
+
+def _append_conversation(entries: list[dict]) -> None:
+    """SPEC-32: Append entries to today's conversation.jsonl."""
+    path = get_conversation_file()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a") as f:
+        for entry in entries:
+            f.write(json.dumps(entry) + "\n")
 
 
 def _user_recently_active(window_seconds: int = 60) -> bool:
@@ -526,9 +541,11 @@ async def _run_mina_free_time(
                 "role": "tool",
                 "tool_call_id": tc.id,
                 "content": tool_result,
+                "ts": time.time(),
             }
             new_entries.append(tool_entry)
-            session.append(tool_entry)
+            # Session copy has no ts — API doesn't accept custom fields on tool messages
+            session.append({k: v for k, v in tool_entry.items() if k != "ts"})
 
     else:
         # Hit the cap — get a final wrap-up response without offering more tools
@@ -570,7 +587,7 @@ async def run_freetime(force: bool = False) -> None:
 
     # --- Phase 1: Hippocampus consolidation ---
     _log("Phase 1: memory consolidation.")
-    reflection = await asyncio.to_thread(consolidate, state, decoder_window, kag_context)
+    reflection = await asyncio.to_thread(consolidate, state, kag_context)
 
     _log(f"Reflection summary: {reflection['reflection_summary']}")
 
@@ -599,7 +616,7 @@ async def run_freetime(force: bool = False) -> None:
     _log("Phase 2: Mina's free time.")
 
     kag_context = build_kag_context()
-    rag_context = build_rag_context("free time heartbeat")
+    rag_recent, rag_historical = build_rag_context_dual("free time heartbeat")
 
     state = load_and_advance()
 
@@ -650,12 +667,16 @@ async def run_freetime(force: bool = False) -> None:
 
     system_prompt, memory_context = await asyncio.gather(
         asyncio.to_thread(adjudicate_emotion, state, stimulus_text, "freetime", _ft_time_context),
-        asyncio.to_thread(build_memory_context, stimulus_text, kag_context, rag_context),
+        asyncio.to_thread(
+            build_memory_context,
+            stimulus_text, kag_context, rag_recent, rag_historical,
+            decoder_window, mina_immediate,
+        ),
     )
 
     if not system_prompt:
         _log("No emotional disposition from adjudicator — skipping Mina turn.")
-        _save_history(history)
+        _save_decoder_window(decoder_window)
         return
 
     if memory_context:
@@ -738,8 +759,35 @@ async def run_freetime(force: bool = False) -> None:
                 f.write(json.dumps({"content": outbound_message, "timestamp": time.time()}) + "\n")
             _log(f"Queued message to user: {outbound_message[:80]}")
 
-    # Write freetime entries to RAG and trim decoder window
-    decoder_window = _rag_write_and_trim(decoder_window)
+    # SPEC-32: append freetime assistant messages to conversation.jsonl
+    conv_entries = []
+    for entry in new_entries:
+        role = entry.get("role")
+        content = entry.get("content", "")
+        if role == "assistant" and content and not entry.get("tool_calls"):
+            conv_entries.append({
+                "role": "assistant",
+                "ts": entry.get("ts", time.time()),
+                "content": content,
+                "source": "freetime",
+            })
+    # Include do_action descriptions as context-bearing events
+    for pending_do in pending_dos:
+        activity    = pending_do.get("activity", "")
+        description = pending_do.get("description", "")
+        if activity:
+            conv_entries.append({
+                "role": "assistant",
+                "ts": time.time(),
+                "content": f"[do_action: {activity}] {description}".strip(),
+                "source": "freetime",
+            })
+    if conv_entries:
+        _append_conversation(conv_entries)
+
+    # Trim decoder window and save (RAG write now happens in hippocampus.consolidate)
+    if len(decoder_window) > DECODER_WINDOW_SIZE:
+        decoder_window = decoder_window[-DECODER_WINDOW_SIZE:]
     _save_decoder_window(decoder_window)
 
     _log("Complete.")

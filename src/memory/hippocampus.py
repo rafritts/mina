@@ -22,7 +22,10 @@ import time
 from typing import Optional
 
 from ..infra.client import chat_create, MODEL
-from ..infra.config import PROJECT_ROOT, REPO_ROOT, load_config
+from ..infra.config import (
+    PROJECT_ROOT, REPO_ROOT, RUN_DIR, load_config,
+    CONSOLIDATION_STATE_FILE, get_conversation_file,
+)
 from ..infra.text_filter import apply_word_filter, apply_replacements
 from ..bio.state import BiologicalState
 from ..bio.decoder import format_state_block
@@ -437,6 +440,87 @@ def rag_apply_replacements(replacements: list[dict]) -> int:
 
 
 # ---------------------------------------------------------------------------
+# SPEC-32: conversation.jsonl reading + consolidation cursor
+# ---------------------------------------------------------------------------
+
+def _read_conversation_since(since_ts: float) -> list[dict]:
+    """
+    Read all conversation entries with ts >= since_ts from daily conversation files.
+    Files are named conversation-YYYY-MM-DD.jsonl in run/.
+    Returns entries sorted by ts ascending.
+    """
+    import glob as _glob
+
+    pattern = os.path.join(RUN_DIR, "conversation-*.jsonl")
+    files = sorted(_glob.glob(pattern))
+    entries: list[dict] = []
+
+    for path in files:
+        try:
+            with open(path) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                        if entry.get("ts", 0.0) >= since_ts:
+                            entries.append(entry)
+                    except json.JSONDecodeError:
+                        pass
+        except FileNotFoundError:
+            pass
+
+    entries.sort(key=lambda e: e.get("ts", 0.0))
+    return entries
+
+
+def _load_consolidation_state() -> dict:
+    """Load the consolidation cursor. Returns defaults if missing."""
+    try:
+        with open(CONSOLIDATION_STATE_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"last_consolidated_ts": 0.0}
+
+
+def _save_consolidation_state(state_dict: dict) -> None:
+    os.makedirs(os.path.dirname(CONSOLIDATION_STATE_FILE), exist_ok=True)
+    with open(CONSOLIDATION_STATE_FILE, "w") as f:
+        json.dump(state_dict, f)
+
+
+def _format_conversation_block(entries: list[dict]) -> str:
+    """Format conversation entries as a text block for RAG storage."""
+    import time as _time
+    lines = []
+    for e in entries:
+        role    = e.get("role", "?")
+        content = e.get("content", "")
+        ts      = e.get("ts")
+        if not content:
+            continue
+        if isinstance(content, list):
+            content = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
+        content = str(content).strip()[:400]
+        if not content:
+            continue
+        label = "USER" if role == "user" else "MINA"
+        if ts:
+            delta = _time.time() - ts
+            if delta < 3600:
+                age = f"{int(delta/60)}m ago"
+            elif delta < 86400:
+                age = f"{int(delta/3600)}h ago"
+            else:
+                age = f"{int(delta/86400)}d ago"
+            lines.append(f"[{age}] {label}: {content}")
+        else:
+            lines.append(f"{label}: {content}")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Consolidation LLM prompt
 # ---------------------------------------------------------------------------
 
@@ -586,33 +670,43 @@ def _parse_consolidation_output(raw: str) -> dict:
 
 def consolidate(
     state: BiologicalState,
-    conversation_history: list[dict],
     kag_context: str,
 ) -> dict:
     """
-    Run memory consolidation (freetime reflection).
+    SPEC-32: Run memory consolidation (freetime reflection).
+
+    Reads new conversation entries from conversation.jsonl since last_consolidated_ts,
+    runs an LLM consolidation pass, writes new RAG entries (structured episodic memories
+    from the LLM + a rolling block of the raw conversation), and updates the cursor.
 
     Returns dict with keys:
         reflection_summary: str
         rag_entries: list[dict]
         kag_updates: dict
     """
+    import time as _time
+
+    # Load cursor — only consolidate what's new since last run
+    con_state = _load_consolidation_state()
+    since_ts  = con_state.get("last_consolidated_ts", 0.0)
+    new_entries = _read_conversation_since(since_ts)
+
     state_block = format_state_block(state)
 
     history_lines = []
-    for msg in conversation_history:
-        role = msg.get("role", "?")
-        content = msg.get("content", "")
+    for entry in new_entries:
+        role    = entry.get("role", "?")
+        content = entry.get("content", "")
         if isinstance(content, list):
-            content = " ".join(
-                c.get("text", "") for c in content if isinstance(c, dict)
-            )
-        history_lines.append(f"{role.upper()}: {content[:500]}")
+            content = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
+        history_lines.append(f"{role.upper()}: {str(content)[:500]}")
 
     content_parts = [
         state_block,
         kag_context,
-        "## Conversation History Since Last Compaction\n" + "\n".join(history_lines),
+        "## Conversation Since Last Consolidation\n" + (
+            "\n".join(history_lines) if history_lines else "(nothing new)"
+        ),
     ]
 
     user_content = "\n\n---\n\n".join(content_parts)
@@ -629,4 +723,16 @@ def consolidate(
     token_stats.record_response("hippocampus", response)
 
     raw = response.choices[0].message.content or ""
-    return _parse_consolidation_output(raw)
+    result = _parse_consolidation_output(raw)
+
+    # Rolling RAG write: store the raw conversation block so it's retrievable
+    # by cosine similarity. This replaces _rag_write_and_trim from cortex/freetime.
+    if new_entries:
+        block = _format_conversation_block(new_entries)
+        if block:
+            rag_add(block, {"source": "conversation", "ts": _time.time()})
+
+    # Advance cursor to now so next consolidation sees only newer entries
+    _save_consolidation_state({"last_consolidated_ts": _time.time()})
+
+    return result

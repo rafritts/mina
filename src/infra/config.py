@@ -26,6 +26,17 @@ OUTBOX_FILE          = os.path.join(RUN_DIR, "outbox.jsonl")
 OVERDOSE_TIMER_FILE  = os.path.join(RUN_DIR, "overdose_timer.json")
 FOLLOWUP_QUEUE_FILE  = os.path.join(RUN_DIR, "followup_queue.json")
 
+# SPEC-32: Single source truths
+CONSOLIDATION_STATE_FILE = os.path.join(RUN_DIR, "consolidation_state.json")
+BIO_HISTORY_FILE         = os.path.join(RUN_DIR, "bio_history.jsonl")
+
+
+def get_conversation_file() -> str:
+    """Return today's conversation file path (date-stamped, segments daily)."""
+    import time as _time
+    date_str = _time.strftime("%Y-%m-%d")
+    return os.path.join(RUN_DIR, f"conversation-{date_str}.jsonl")
+
 # LLM configuration — read once at import time
 MODEL    = os.getenv("MODEL",    "grok-4-1-fast-reasoning")
 BASE_URL = os.getenv("BASE_URL", "https://api.x.ai/v1")

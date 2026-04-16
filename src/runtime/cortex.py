@@ -15,7 +15,8 @@ import time
 
 from ..infra.client import chat_create, MODEL
 from ..infra.config import (
-    HISTORY_FILE, DECODER_WINDOW_FILE, LAST_ACTIVE_FILE, ADMIN_FILE, PAUSED_FLAG, load_config
+    HISTORY_FILE, DECODER_WINDOW_FILE, LAST_ACTIVE_FILE, ADMIN_FILE, PAUSED_FLAG,
+    load_config, get_conversation_file,
 )
 from ..infra.log import log
 from ..bio.decoder import biological_report, adjudicate_emotion, build_memory_context, needs_summary
@@ -168,19 +169,17 @@ def save_decoder_window(window: list[dict]) -> None:
         json.dump(window, f, indent=2)
 
 
-def _rag_write_and_trim(window: list[dict]) -> list[dict]:
+def _append_conversation(entries: list[dict], source: str = "discord") -> None:
     """
-    Write the last DECODER_WINDOW_SIZE messages as a RAG block (high-overlap
-    sliding blocks → near-guaranteed cache hits on retrieval), then trim the
-    window to DECODER_WINDOW_SIZE.  Returns the (possibly trimmed) window.
+    SPEC-32: Append user-visible entries to today's conversation.jsonl.
+    Tool call intermediate turns are excluded; only user + final assistant content.
     """
-    from ..memory.hippocampus import rag_add
-    block = _format_rag_block(window[-DECODER_WINDOW_SIZE:])
-    if block:
-        rag_add(block, {"source": "conversation", "ts": time.time()})
-    if len(window) > DECODER_WINDOW_SIZE:
-        window = window[-DECODER_WINDOW_SIZE:]
-    return window
+    import json as _json
+    path = get_conversation_file()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a") as f:
+        for entry in entries:
+            f.write(_json.dumps(entry) + "\n")
 
 
 # ---------------------------------------------------------------------------
@@ -229,9 +228,13 @@ def api_messages(history: list[dict], system_prompt: str, state_note: str = "") 
             if isinstance(content, str) and content.startswith("[COMPACT]"):
                 compact_parts.append(content[len("[COMPACT]\n"):])
             continue
-        # Only label user messages — labeling assistant messages causes the LLM
-        # to mimic the "[just now]" prefix in its own generated output.
+        # Label user messages and freetime tool results with relative time so Mina
+        # knows how long ago those events happened.  Do NOT label assistant messages —
+        # the LLM mimics the prefix in its own output.
         if role == "user":
+            conversation.append(apply_ts_label(msg))
+        elif role == "tool" and msg.get("ts") is not None:
+            # Freetime tool results carry ts; active-turn tool results do not.
             conversation.append(apply_ts_label(msg))
         else:
             conversation.append({k: v for k, v in msg.items() if k != "ts"})
@@ -536,10 +539,23 @@ async def run_turn(
             state = apply_deltas(state, response_deltas)
             save_state(state)
 
-    # Append response entries to the decoder window, write to RAG, trim, save
+    # Append response entries to the decoder window and save
     decoder_window.extend(new_entries)
-    decoder_window = _rag_write_and_trim(decoder_window)
+    if len(decoder_window) > DECODER_WINDOW_SIZE:
+        decoder_window = decoder_window[-DECODER_WINDOW_SIZE:]
     save_decoder_window(decoder_window)
+
+    # SPEC-32: append user message + final reply to the append-only conversation record
+    user_content = user_content if not image_b64 else (
+        # Strip image from stored entry — store text only
+        next((b.get("text", "") for b in user_content if isinstance(b, dict) and b.get("type") == "text"), user_input)
+        if isinstance(user_content, list) else user_content
+    )
+    conv_ts = time.time()
+    _append_conversation([
+        {"role": "user",      "ts": conv_ts, "content": user_input, "source": "discord"},
+        {"role": "assistant", "ts": conv_ts, "content": reply,      "source": "discord"},
+    ])
 
     from ..infra import token_stats as _ts
     _ts.increment_turns()

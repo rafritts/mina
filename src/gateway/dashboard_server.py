@@ -36,9 +36,8 @@ import uvicorn
 # ---------------------------------------------------------------------------
 
 _STATE_FILE      = _PROJECT_ROOT / "run" / "state.json"
-_HISTORY_FILE    = _PROJECT_ROOT / "run" / "history.jsonl"
+_HISTORY_FILE    = _PROJECT_ROOT / "run" / "bio_history.jsonl"   # SPEC-32: written by heartbeat, not here
 _DASHBOARD_BUILD = _PROJECT_ROOT / "dashboard" / "build"
-_HISTORY_MAX_LINES = 10000  # ~28 hours at 10s intervals
 
 # ---------------------------------------------------------------------------
 # Auth
@@ -47,70 +46,12 @@ _HISTORY_MAX_LINES = 10000  # ~28 hours at 10s intervals
 DASHBOARD_TOKEN = os.getenv("DASHBOARD_TOKEN", "")
 
 
-# ---------------------------------------------------------------------------
-# History snapshots
-# ---------------------------------------------------------------------------
-
-def _snapshot_state() -> dict | None:
-    """Extract a compact snapshot for history recording."""
-    try:
-        from ..bio.state import load_state
-        from ..sim.psych.derived import derived
-        s = load_state()
-        d = derived(s)
-        return {
-            "ts": time.time(),
-            "chemicals": {
-                k: round(s.chemicals.get(k, 0.0), 2)
-                for k in ("oxytocin", "dopamine", "serotonin", "norepinephrine",
-                          "cortisol", "endorphins", "acetylcholine", "melatonin",
-                          "gaba", "glutamate")
-            },
-            "second_order": {k: round(v, 1) for k, v in d["second_order"].items()},
-            "third_order":  {k: round(v, 1) for k, v in d["third_order"].items()},
-            "sleeping": s.sleeping,
-        }
-    except Exception:
-        return None
-
-
-def _trim_history() -> None:
-    """Keep only the last _HISTORY_MAX_LINES lines."""
-    try:
-        lines = _HISTORY_FILE.read_text().splitlines(keepends=True)
-        if len(lines) > _HISTORY_MAX_LINES:
-            _HISTORY_FILE.write_text("".join(lines[-_HISTORY_MAX_LINES:]))
-    except Exception:
-        pass
-
-
-async def _history_loop() -> None:
-    """Background task: snapshot state to history.jsonl every 10 seconds."""
-    while True:
-        await asyncio.sleep(10)
-        snap = _snapshot_state()
-        if snap is None:
-            continue
-        try:
-            with _HISTORY_FILE.open("a") as f:
-                f.write(json.dumps(snap) + "\n")
-            # Trim periodically (every ~1000 entries ≈ every ~2.8 hours)
-            size = _HISTORY_FILE.stat().st_size
-            if size > 5_000_000:  # ~5 MB
-                _trim_history()
-        except Exception:
-            pass
-
+# SPEC-32: bio_history.jsonl is written by heartbeat.py, not the dashboard.
+# Dashboard reads it directly via /api/history.
 
 @asynccontextmanager
 async def _lifespan(app):
-    history_task = asyncio.create_task(_history_loop())
     yield
-    history_task.cancel()
-    try:
-        await history_task
-    except asyncio.CancelledError:
-        pass
 
 
 # ---------------------------------------------------------------------------
