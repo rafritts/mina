@@ -237,7 +237,7 @@ def rag_add(text: str, metadata: Optional[dict] = None) -> None:
             raise
 
 
-_RAG_RECENCY_HALF_LIFE_DAYS = 14.0  # older entries decay toward zero over ~2 weeks
+_RAG_RECENCY_HALF_LIFE_DAYS = 4.0  # older entries decay toward zero; halves every 4 days
 
 
 def rag_query(query: str, n_results: int = 5) -> list[str]:
