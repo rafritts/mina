@@ -237,7 +237,7 @@ def rag_add(text: str, metadata: Optional[dict] = None) -> None:
             raise
 
 
-_RAG_RECENCY_HALF_LIFE_DAYS = 4.0  # older entries decay toward zero; halves every 4 days
+_RAG_RECENCY_HALF_LIFE_HOURS = 2.0  # entries from 2h ago score at 50%; yesterday is ~0%
 
 
 def rag_query(query: str, n_results: int = 5) -> list[str]:
@@ -268,7 +268,7 @@ def rag_query(query: str, n_results: int = 5) -> list[str]:
         metas     = results.get("metadatas", [[]])[0]
 
         now = time.time()
-        half_life_seconds = _RAG_RECENCY_HALF_LIFE_DAYS * 86400
+        half_life_seconds = _RAG_RECENCY_HALF_LIFE_HOURS * 3600
 
         scored = []
         for doc, dist, meta in zip(docs, distances, metas):
