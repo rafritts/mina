@@ -16,7 +16,7 @@ from src.memory.hippocampus import (
     read_identity,
     read_kag,
 )
-from src.infra.config import REPO_ROOT, PROJECT_ROOT, PERSONALITY_FILE, CONFIG_FILE
+from src.infra.config import REPO_ROOT, PROJECT_ROOT, CONFIG_FILE
 
 
 # ---------------------------------------------------------------------------
@@ -35,10 +35,6 @@ def test_identity_dir_exists():
 
 def test_kag_dir_exists():
     assert os.path.isdir(_KAG_DIR), f"KAG dir not found: {_KAG_DIR}"
-
-
-def test_personality_file_exists():
-    assert os.path.isfile(PERSONALITY_FILE), f"personality.json not found: {PERSONALITY_FILE}"
 
 
 def test_config_file_exists():
