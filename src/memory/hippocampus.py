@@ -237,8 +237,15 @@ def rag_add(text: str, metadata: Optional[dict] = None) -> None:
             raise
 
 
+_RAG_RECENCY_HALF_LIFE_DAYS = 14.0  # older entries decay toward zero over ~2 weeks
+
+
 def rag_query(query: str, n_results: int = 5) -> list[str]:
-    """Retrieve the most relevant episodic memories for a query."""
+    """Retrieve the most relevant episodic memories for a query.
+
+    Fetches a wider candidate pool from ChromaDB, then re-ranks by a
+    recency-decayed score so recent entries beat stale-but-similar ones.
+    """
     collection = _get_collection()
     if collection is None:
         return []
@@ -247,11 +254,33 @@ def rag_query(query: str, n_results: int = 5) -> list[str]:
         count = collection.count()
         if count == 0:
             return []
+
+        # Pull a wider pool so recency re-ranking has candidates to work with.
+        fetch = min(n_results * 3, count)
         results = collection.query(
             query_texts=[query],
-            n_results=min(n_results, count),
+            n_results=fetch,
+            include=["documents", "distances", "metadatas"],
         )
-        return results.get("documents", [[]])[0]
+
+        docs      = results.get("documents", [[]])[0]
+        distances = results.get("distances", [[]])[0]
+        metas     = results.get("metadatas", [[]])[0]
+
+        now = time.time()
+        half_life_seconds = _RAG_RECENCY_HALF_LIFE_DAYS * 86400
+
+        scored = []
+        for doc, dist, meta in zip(docs, distances, metas):
+            similarity = 1.0 - dist
+            age_seconds = now - float((meta or {}).get("timestamp", now))
+            # Exponential decay: score halves every half_life_days
+            decay = 0.5 ** (age_seconds / half_life_seconds)
+            scored.append((similarity * decay, doc))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [doc for _, doc in scored[:n_results]]
+
     except Exception as e:
         if "does not exist" in str(e):
             _reset_collection()
