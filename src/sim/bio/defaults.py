@@ -105,6 +105,8 @@ def body_defaults(sleep_pressure_au: float = 30.0) -> dict[str, float]:
         "bac":                     0.0,   # g/dL — blood alcohol concentration (Widmark)
         # SPEC-34: hedonic setpoint — slow-moving allostatic reward expectation
         "hedonic_setpoint":       15.0,   # 0-100 AU — drifts toward recent peaks, decays to floor
+        # SPEC-31: highest isolation stage reached since last contact (0–5)
+        "peak_isolation_stage":    0,     # reset to 0 on contact; used for recovery-context adjudication
     }
 
 

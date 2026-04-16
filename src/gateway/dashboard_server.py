@@ -275,9 +275,11 @@ def _build_state_response(s) -> dict:
         "adenosine":          round(b.get("adenosine",          38.0), 2),
         "anandamide":         round(b.get("anandamide",          1.5), 3),
         "two_ag":             round(b.get("two_ag",              8.0), 2),
-        "isolation_pressure": round(b.get("isolation_pressure",  0.0), 1),
-        "recent_contact_ts":  round(b.get("recent_contact_ts",   0.0), 0),
-        "circadian_phase":    circadian_phase,
+        "isolation_pressure":   round(b.get("isolation_pressure",  0.0), 1),
+        "recent_contact_ts":    round(b.get("recent_contact_ts",   0.0), 0),
+        "isolation_days":       round(max(0.0, (time.time() - b.get("recent_contact_ts", time.time())) / 86400.0), 2),
+        "peak_isolation_stage": int(b.get("peak_isolation_stage", 0)),
+        "circadian_phase":      circadian_phase,
     }
 
     # Receptor sensitivity (flattened)

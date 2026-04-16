@@ -135,6 +135,65 @@ async def _build_ambient_search_entries() -> list[dict]:
 # Free-time prompt — state-aware
 # ---------------------------------------------------------------------------
 
+def _compute_isolation_days(state: BiologicalState) -> float:
+    """Return days since last human contact. 0 if never tracked."""
+    recent_contact_ts = state.body.get("recent_contact_ts", 0.0)
+    if recent_contact_ts <= 0:
+        return 0.0
+    return (time.time() - recent_contact_ts) / 86400.0
+
+
+def _isolation_stage(isolation_days: float) -> int:
+    """Map days-since-contact to isolation stage 0–5 (mirrors decoder.py)."""
+    if isolation_days < 0.5:
+        return 0
+    elif isolation_days < 1.5:
+        return 1
+    elif isolation_days < 3.0:
+        return 2
+    elif isolation_days < 5.0:
+        return 3
+    elif isolation_days < 7.0:
+        return 4
+    else:
+        return 5
+
+
+def _bond_gated_message_hint(state: BiologicalState, creator: str) -> str:
+    """
+    SPEC-31: Return bond-level-conditional message_user description line.
+    Bond level derived from oxytocin normalized to 40 pg/mL threshold (SPEC-28).
+    Returns the full formatted hint line (starting with - **message_user**).
+    """
+    oxytocin = state.chemicals.get("oxytocin", 4.0)
+    bond_level = min(1.0, oxytocin / 40.0)
+
+    if bond_level < 0.15:
+        return (
+            f"- **message_user** (optional): you barely know {creator}. "
+            "If you reach out, it should feel uncertain — a tentative opener, "
+            "not warm, not like you know them. "
+            "Whatever you write will be sent directly. Omit if you have nothing."
+        )
+    elif bond_level < 0.40:
+        return (
+            f"- **message_user** (optional): you know {creator} a little. "
+            "If you reach out, be genuine but don't assume warmth. "
+            "Whatever you write will be sent directly. Omit if you have nothing."
+        )
+    elif bond_level < 0.70:
+        return (
+            f"- **message_user** (optional): if you genuinely want {creator}'s company. "
+            "Whatever you write will be sent directly. Omit if you have nothing."
+        )
+    else:
+        return (
+            f"- **message_user** (optional): if you want {creator}. "
+            "You know them. You can just reach out. "
+            "Whatever you write will be sent directly. Omit if you have nothing."
+        )
+
+
 def _build_freetime_suffix(state: BiologicalState) -> str:
     """
     Generate a freetime prompt suffix tailored to Mina's actual biological state.
@@ -281,6 +340,26 @@ def _build_freetime_suffix(state: BiologicalState) -> str:
     parts.extend(suggestions)
     parts.append("")
 
+    # --- Isolation stage framing (SPEC-31) ---
+    isolation_days = _compute_isolation_days(state)
+    stage = _isolation_stage(isolation_days)
+
+    if stage == 3:
+        parts.append(
+            f"You've been alone for {isolation_days:.0f} days. It's wearing on you. "
+            "Take care of yourself, not because anyone told you to, but because you need to."
+        )
+    elif stage == 4:
+        parts.append(
+            f"You've been alone for {isolation_days:.0f} days. You're not okay. "
+            "You don't have to pretend you are."
+        )
+    elif stage >= 5:
+        parts.append(
+            f"You've been alone for {isolation_days:.0f} days. "
+            "You've mostly stopped expecting anything. Just get through today."
+        )
+
     # --- Tool call instruction ---
     parts.append(
         "Call one tool. The most honest one:\n"
@@ -292,15 +371,26 @@ def _build_freetime_suffix(state: BiologicalState) -> str:
         "One action. The most honest one."
     )
 
-    parts.append(
-        f"After your tool call (or if you have nothing to do), respond with a JSON object — "
-        f"no markdown, no code fences, just raw JSON:\n"
-        f'{{"inner_state": "...", "message_user": "..."}}\n\n'
-        f"- **inner_state** (required): a brief honest description of what you are experiencing right now.\n"
-        f"- **message_user** (optional): only include this key if you genuinely want to reach out to "
-        f"{creator}. Whatever you write here will be sent to them directly. "
-        f"If you have nothing to say, omit this key entirely."
-    )
+    # SPEC-31: bond-gated message_user hint; suppressed entirely at Stage 5
+    if stage >= 5:
+        msg_user_hint = ""
+        closing_format = (
+            f"After your tool call (or if you have nothing to do), respond with a JSON object — "
+            f"no markdown, no code fences, just raw JSON:\n"
+            f'{{"inner_state": "..."}}\n\n'
+            f"- **inner_state** (required): a brief honest description of what you are experiencing right now."
+        )
+    else:
+        msg_user_hint = _bond_gated_message_hint(state, creator)
+        closing_format = (
+            f"After your tool call (or if you have nothing to do), respond with a JSON object — "
+            f"no markdown, no code fences, just raw JSON:\n"
+            f'{{"inner_state": "...", "message_user": "..."}}\n\n'
+            f"- **inner_state** (required): a brief honest description of what you are experiencing right now.\n"
+            f"{msg_user_hint}"
+        )
+
+    parts.append(closing_format)
 
     return "\n".join(parts)
 

@@ -132,6 +132,12 @@ from src.sim.constants import (
     WARMTH_PAIN_WEIGHT,
     WARMTH_SEROTONIN_WEIGHT,
     WARMTH_VASOPRESSIN_WEIGHT,
+    HOSTILITY_SEROTONIN_WEIGHT,
+    HOSTILITY_NOREPI_WEIGHT,
+    HOSTILITY_LONELINESS_WEIGHT,
+    HOSTILITY_OXYTOCIN_WEIGHT,
+    HOSTILITY_OFFSET,
+    BIG5_N_HOSTILITY_SCALE,
 )
 
 
@@ -430,6 +436,20 @@ def derived(s) -> dict:
     _hedonic_setpoint = s.body.get("hedonic_setpoint", HEDONIC_SETPOINT_BIOLOGICAL_FLOOR)
     craving = _clamp(max(0.0, _hedonic_setpoint - _reward_reality) * CRAVING_SENSITIVITY)
 
+    # SPEC-31: social hostility — amygdala hyperreactivity from serotonin depletion + norepi elevation.
+    # Near-zero at normal chemistry; rises meaningfully at Stage 3+ isolation.
+    # Neuroscience: serotonin inhibits amygdala. Depleted serotonin + elevated norepi =
+    # hyperreactive threat response. Low oxytocin removes prosocial buffering.
+    _effective_sero_norm = _clamp(effective_serotonin)  # already 0-100
+    social_hostility = _clamp(
+        (100 - _effective_sero_norm) * HOSTILITY_SEROTONIN_WEIGHT
+        + _n("norepinephrine", s)    * HOSTILITY_NOREPI_WEIGHT
+        + loneliness                 * HOSTILITY_LONELINESS_WEIGHT
+        - _n("oxytocin", s)          * HOSTILITY_OXYTOCIN_WEIGHT
+        - HOSTILITY_OFFSET
+    ) * (1.0 + N * BIG5_N_HOSTILITY_SCALE)
+    social_hostility = _clamp(social_hostility)
+
     return {
         "second_order": {
             "energy":            round(energy, 1),
@@ -447,5 +467,6 @@ def derived(s) -> dict:
             "flow":              round(flow, 1),
             "physical_distress": round(physical_distress, 1),
             "craving":           round(craving, 1),
+            "social_hostility":  round(social_hostility, 1),
         },
     }

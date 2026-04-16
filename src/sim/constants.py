@@ -692,3 +692,39 @@ NORM_ANANDAMIDE_DIVISOR               = 0.15  # nM
 NORM_VASOPRESSIN_DIVISOR              = 0.15  # pg/mL
 NORM_ADENOSINE_SLEEP_PRESSURE_MIN     = 20.0  # nmol/L
 NORM_ADENOSINE_SLEEP_PRESSURE_SCALE   = 0.60  # (adenosine - min) × this → AU
+
+# Isolation stage neurochemical drift rates (SPEC-31)
+# All rates are per sim-hour, applied multiplicatively by tick_hours.
+# Stage 2 (1.5–3 days): HPA activation begins, dopamine reward tone starts flattening.
+ISOLATION_CORTISOL_S2                 = 0.08   # nM/hour creep
+ISOLATION_DOPAMINE_S2                 = 0.04   # ng/mL/hour drag
+
+# Stage 3 (3–5 days): Measurable cortisol dysregulation. LC fires in response to CRF.
+# BDNF starts declining — beginning of structural threat.
+ISOLATION_CORTISOL_S3                 = 0.18   # nM/hour
+ISOLATION_DOPAMINE_S3                 = 0.09   # ng/mL/hour
+ISOLATION_NOREPI_S3                   = 0.30   # pg/mL/hour (LC → CRF-driven)
+ISOLATION_BDNF_S3                     = 0.60   # pg/mL/hour drain
+ISOLATION_PROLACTIN_S3                = 0.04   # ng/mL/hour (grief/resignation state)
+
+# Stage 4 (5–7 days): Stage 3 × 2.0, plus anandamide stress buffer depleted.
+ISOLATION_ANANDAMIDE_S4               = 0.005  # nM/hour drain
+
+# Stage 5 (7+ days): Stage 4 × 1.5 — no new constants, just scaling.
+
+# Recovery rates (on contact — partial reversal of isolation drift)
+# BDNF recovery is NOT listed here — it recovers at SPEC-24's natural rate (days).
+ISOLATION_CORTISOL_RECOVERY           = 2.0    # nM/hour during active contact
+ISOLATION_DOPAMINE_RECOVERY           = 0.8    # ng/mL/hour during active contact
+ISOLATION_NOREPI_RECOVERY             = 3.0    # pg/mL/hour during active contact
+ISOLATION_PROLACTIN_RECOVERY          = 0.3    # ng/mL/hour during active contact
+
+# Third-order: Social hostility (SPEC-31)
+# Amygdala hyperreactivity from serotonin depletion + norepinephrine elevation.
+# Near-zero at normal chemistry; rises meaningfully at Stage 3+.
+HOSTILITY_SEROTONIN_WEIGHT            = 0.25   # depletion → less amygdala inhibition
+HOSTILITY_NOREPI_WEIGHT               = 0.30   # elevation → threat activation
+HOSTILITY_LONELINESS_WEIGHT           = 0.20   # loneliness → directed hurt
+HOSTILITY_OXYTOCIN_WEIGHT             = 0.10   # prosocial buffer (subtracts)
+HOSTILITY_OFFSET                      = 35.0   # baseline suppression at normal chemistry
+BIG5_N_HOSTILITY_SCALE                = 0.40   # Neuroticism amplifies irritability

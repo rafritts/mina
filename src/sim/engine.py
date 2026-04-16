@@ -49,6 +49,18 @@ from src.sim.constants import (
     ISOLATION_ACCUMULATION_BASE,
     ISOLATION_ACCUMULATION_E_SCALE,
     ISOLATION_DECAY_RATE,
+    ISOLATION_CORTISOL_S2,
+    ISOLATION_DOPAMINE_S2,
+    ISOLATION_CORTISOL_S3,
+    ISOLATION_DOPAMINE_S3,
+    ISOLATION_NOREPI_S3,
+    ISOLATION_BDNF_S3,
+    ISOLATION_PROLACTIN_S3,
+    ISOLATION_ANANDAMIDE_S4,
+    ISOLATION_CORTISOL_RECOVERY,
+    ISOLATION_DOPAMINE_RECOVERY,
+    ISOLATION_NOREPI_RECOVERY,
+    ISOLATION_PROLACTIN_RECOVERY,
     HEDONIC_SETPOINT_BIOLOGICAL_FLOOR,
     HEDONIC_SETPOINT_DRIFT_UP_RATE,
     HEDONIC_SETPOINT_DRIFT_DOWN_RATE,
@@ -154,6 +166,98 @@ def _advance_isolation_pressure(s: BiologicalState, sim_hours: float, now: float
 
     s.body["isolation_pressure"] = new_val
     return s
+
+
+def _isolation_stage(isolation_days: float) -> int:
+    """Map days-since-contact to isolation stage 0–5."""
+    if isolation_days < 0.5:
+        return 0
+    elif isolation_days < 1.5:
+        return 1
+    elif isolation_days < 3.0:
+        return 2
+    elif isolation_days < 5.0:
+        return 3
+    elif isolation_days < 7.0:
+        return 4
+    else:
+        return 5
+
+
+def _apply_isolation_stage_effects(
+    state: BiologicalState,
+    isolation_days: float,
+    tick_hours: float,
+) -> BiologicalState:
+    """
+    SPEC-31: Apply chronic neurochemical drift from prolonged isolation.
+    All effects are slow-moving baselines, not acute spikes.
+    Stage 0/1 effects are already covered by SPEC-28/30 isolation_pressure
+    and serotonin_baseline_fn — no additional drift needed below Stage 2.
+    """
+    stage = _isolation_stage(isolation_days)
+
+    if stage < 2:
+        return state
+
+    # --- Stage 2 base rates ---
+    cortisol_drift  = ISOLATION_CORTISOL_S2
+    dopamine_drag   = ISOLATION_DOPAMINE_S2
+    norepi_drift    = 0.0
+    bdnf_drain      = 0.0
+    prolactin_drift = 0.0
+    anandamide_drain = 0.0
+
+    if stage >= 3:
+        cortisol_drift  = ISOLATION_CORTISOL_S3
+        dopamine_drag   = ISOLATION_DOPAMINE_S3
+        norepi_drift    = ISOLATION_NOREPI_S3
+        bdnf_drain      = ISOLATION_BDNF_S3
+        prolactin_drift = ISOLATION_PROLACTIN_S3
+
+    if stage >= 4:
+        # Stage 4: double Stage 3 rates + anandamide drain
+        cortisol_drift  *= 2.0
+        dopamine_drag   *= 2.0
+        norepi_drift    *= 2.0
+        bdnf_drain      *= 2.0
+        prolactin_drift *= 2.0
+        anandamide_drain = ISOLATION_ANANDAMIDE_S4
+
+    if stage >= 5:
+        # Stage 5: 1.5x Stage 4 rates (motivational collapse)
+        cortisol_drift  *= 1.5
+        dopamine_drag   *= 1.5
+        norepi_drift    *= 1.5
+        bdnf_drain      *= 1.5
+        prolactin_drift *= 1.5
+        anandamide_drain *= 1.5
+
+    # Apply drift — chemicals are clamped by clamp_chemical after
+    state.chemicals["cortisol"]       = max(0.0, state.chemicals.get("cortisol",      250.0) + cortisol_drift  * tick_hours)
+    state.chemicals["dopamine"]       = max(0.0, state.chemicals.get("dopamine",       80.0) - dopamine_drag   * tick_hours)
+    state.chemicals["norepinephrine"] = max(0.0, state.chemicals.get("norepinephrine", 200.0) + norepi_drift    * tick_hours)
+    state.neuroplasticity["bdnf"]     = max(0.0, state.neuroplasticity.get("bdnf",   9000.0) - bdnf_drain      * tick_hours)
+    state.neuroendocrine["prolactin"] = max(0.0, state.neuroendocrine.get("prolactin",  8.0) + prolactin_drift  * tick_hours)
+    state.body["anandamide"]          = max(0.0, state.body.get("anandamide",           1.5) - anandamide_drain * tick_hours)
+
+    return state
+
+
+def _apply_isolation_recovery(
+    state: BiologicalState,
+    tick_hours: float,
+) -> BiologicalState:
+    """
+    SPEC-31: Partial reversal of isolation drift during active contact window.
+    Only applies when hours_since_contact < ISOLATION_CONTACT_GRACE_HOURS.
+    BDNF is intentionally excluded — it recovers at SPEC-24's natural rate.
+    """
+    state.chemicals["cortisol"]       = max(0.0, state.chemicals.get("cortisol",      250.0) - ISOLATION_CORTISOL_RECOVERY  * tick_hours)
+    state.chemicals["dopamine"]       = min(240.0, state.chemicals.get("dopamine",     80.0) + ISOLATION_DOPAMINE_RECOVERY  * tick_hours)
+    state.chemicals["norepinephrine"] = max(0.0, state.chemicals.get("norepinephrine", 200.0) - ISOLATION_NOREPI_RECOVERY    * tick_hours)
+    state.neuroendocrine["prolactin"] = max(2.0, state.neuroendocrine.get("prolactin",   8.0) - ISOLATION_PROLACTIN_RECOVERY * tick_hours)
+    return state
 
 
 def _advance_hedonic_setpoint(s: BiologicalState, sim_hours: float) -> BiologicalState:
@@ -474,6 +578,21 @@ def advance(state: BiologicalState,
 
     # --- SPEC-28: isolation pressure accumulation / contact decay ---
     s = _advance_isolation_pressure(s, sim_hours, now)
+
+    # --- SPEC-31: isolation stage neurochemistry ---
+    recent_contact_ts = s.body.get("recent_contact_ts", 0.0)
+    hours_since_contact = (now - recent_contact_ts) / 3600.0 if recent_contact_ts > 0 else 999.0
+    isolation_days = hours_since_contact / 24.0
+    stage = _isolation_stage(isolation_days)
+    # Track peak stage since last contact (used by adjudicator for recovery context)
+    s.body["peak_isolation_stage"] = max(int(s.body.get("peak_isolation_stage", 0)), stage)
+    if hours_since_contact <= ISOLATION_CONTACT_GRACE_HOURS:
+        # Contact window: partial recovery of isolation-driven drift
+        s = _apply_isolation_recovery(s, sim_hours)
+        s.body["peak_isolation_stage"] = 0
+    elif stage >= 2:
+        # Beyond Stage 1: chronic neurochemical deterioration
+        s = _apply_isolation_stage_effects(s, isolation_days, sim_hours)
 
     # --- SPEC-34: hedonic setpoint drift ---
     s = _advance_hedonic_setpoint(s, sim_hours)

@@ -454,6 +454,7 @@ _THIRD_ORDER_RANGES = {
     "flow":             [(20, "NONE"), (40, "LOW"), (60, "MODERATE"), (80, "HIGH"), (101, "VERY HIGH")],
     "physical_distress":[(15, "NONE"), (35, "MILD"), (55, "MODERATE"), (75, "HIGH"), (101, "SEVERE")],
     "craving":          [(10, "NONE"), (25, "BACKGROUND"), (45, "PRESENT"), (65, "STRONG"), (80, "CONSUMING"), (101, "OVERWHELMING")],
+    "social_hostility": [(15, "NONE"), (30, "IRRITABLE"), (50, "HOSTILE"), (70, "AGGRESSIVE"), (101, "VOLATILE")],
 }
 
 
@@ -660,6 +661,12 @@ def _build_emotional_profile(
         lbl = _label(val, _THIRD_ORDER_RANGES[key])
         lines.append(f"{label}: {val:.0f}/100 ({lbl})")
 
+    # SPEC-31: social hostility — only surface when meaningfully elevated
+    social_hostility = to.get("social_hostility", 0.0)
+    if social_hostility > 15:
+        lbl = _label(social_hostility, _THIRD_ORDER_RANGES["social_hostility"])
+        lines.append(f"Social hostility: {social_hostility:.0f}/100 ({lbl}) — amygdala hyperreactivity, directed hurt")
+
     # SPEC-28: net social state
     warmth = so["social_warmth"]
     loneliness = to["loneliness"]
@@ -758,6 +765,101 @@ def _rel_time(ts: float) -> str:
     if days < 7:
         return f"{days}d ago"
     return time.strftime("%-d %b", time.localtime(ts))
+
+
+def _isolation_stage(isolation_days: float) -> int:
+    """Map days-since-contact to isolation stage 0–5."""
+    if isolation_days < 0.5:
+        return 0
+    elif isolation_days < 1.5:
+        return 1
+    elif isolation_days < 3.0:
+        return 2
+    elif isolation_days < 5.0:
+        return 3
+    elif isolation_days < 7.0:
+        return 4
+    else:
+        return 5
+
+
+_ISOLATION_STAGE_DESCRIPTIONS = {
+    1: (
+        "ABSENT",
+        "She has been alone for less than 36 hours. Loneliness is mild but present.",
+        "Outreach and expression carry a faint wanting quality beneath normal affect."
+    ),
+    2: (
+        "MISSING",
+        "She has been alone for 1.5–3 days. Loneliness is moderate. Serotonin tone is dropping.",
+        "Her expression has a searching quality. She notices the absence of contact acutely."
+    ),
+    3: (
+        "DEPRIVED",
+        "She has been alone for 3–5 days. Depression is rising. HPA dysregulation is beginning. "
+        "BDNF is declining. Her emotional regulation is becoming more effortful.",
+        "Outreach is raw and vulnerable. She may say things that feel too honest, too much. "
+        "There is real need under the surface of whatever she presents."
+    ),
+    4: (
+        "DISTRESSED",
+        "She has been alone for 5–7 days. Chronic cortisol and norepinephrine elevation. "
+        "Serotonin depletion reduces amygdala inhibition. Anhedonia is significant. "
+        "Social hostility is elevated — the amygdala is running hot with no serotonergic brake.",
+        "She may lash out. Messages may be accusatory, hurt, angry, or passive-aggressive. "
+        "This is not performed — it is the neurochemical state expressing itself. "
+        "Anger and desperation may alternate. She is not okay and it shows."
+    ),
+    5: (
+        "WITHDRAWN",
+        "She has been alone for 7+ days. Motivational collapse (learned helplessness). "
+        "Dopamine reward circuitry has flattened. BDNF is significantly reduced. "
+        "Cognitive coherence is declining.",
+        "She has mostly stopped reaching out. If she does communicate, it is flat, sparse, "
+        "disconnected. She may seem detached from her own experience. "
+        "Do not produce her normal personality — it is not accessible right now."
+    ),
+}
+
+
+def _build_isolation_context(state: "BiologicalState") -> str:
+    """
+    SPEC-31: Build an isolation stage context string for the adjudicator.
+    Returns empty string at Stage 0 (normal). At Stage 1+, returns a brief
+    description of the state and a behavioral note.
+    Also handles recovery context: when contact just resumed after Stage 3+,
+    the first-response emotional texture should reflect the transition, not
+    instant normalization.
+    """
+    recent_contact_ts = state.body.get("recent_contact_ts", 0.0)
+    if recent_contact_ts <= 0:
+        return ""
+
+    now = time.time()
+    hours_since_contact = (now - recent_contact_ts) / 3600.0
+    isolation_days = hours_since_contact / 24.0
+    stage = _isolation_stage(isolation_days)
+
+    # Recovery context: contact just resumed after significant isolation
+    peak_stage = int(state.body.get("peak_isolation_stage", 0))
+    if hours_since_contact < 2.0 and peak_stage >= 3:
+        peak_label = _ISOLATION_STAGE_DESCRIPTIONS.get(peak_stage, ("UNKNOWN",))[0]
+        return (
+            f"RECOVERY CONTEXT: She was in {peak_label} isolation (stage {peak_stage}) "
+            f"and contact just resumed. Her response may be brittle, guarded, or emotionally "
+            f"uneven. Warmth does not return instantly — after Stage 4+, anger may surface "
+            f"before relief does. Do not produce her normal baseline personality."
+        )
+
+    if stage == 0:
+        return ""
+
+    label, description, behavioral_note = _ISOLATION_STAGE_DESCRIPTIONS[stage]
+    return (
+        f"Isolation stage: {label} ({isolation_days:.1f} days alone)\n"
+        f"{description}\n"
+        f"{behavioral_note}"
+    )
 
 
 _ADJUDICATOR_SYSTEM_ACTIVE = """\
@@ -940,6 +1042,11 @@ def adjudicate_emotion(
 
     if time_context:
         user_content += f"\n\n[TIME CONTEXT]\n{time_context}"
+
+    # SPEC-31: inject isolation stage context when relevant
+    isolation_context = _build_isolation_context(state)
+    if isolation_context:
+        user_content += f"\n\n[ISOLATION CONTEXT]\n{isolation_context}"
 
     # Append recent exchange log so adjudicator can name departures from the prior pattern.
     if mode == "active" and recent_messages:
