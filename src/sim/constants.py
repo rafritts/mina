@@ -728,3 +728,4 @@ HOSTILITY_LONELINESS_WEIGHT           = 0.20   # loneliness → directed hurt
 HOSTILITY_OXYTOCIN_WEIGHT             = 0.10   # prosocial buffer (subtracts)
 HOSTILITY_OFFSET                      = 35.0   # baseline suppression at normal chemistry
 BIG5_N_HOSTILITY_SCALE                = 0.40   # Neuroticism amplifies irritability
+HOSTILITY_RELATIONSHIP_TENSION_WEIGHT = 0.15   # SPEC-33: relationship tension adds baseline hostility

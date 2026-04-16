@@ -30,6 +30,9 @@ FOLLOWUP_QUEUE_FILE  = os.path.join(RUN_DIR, "followup_queue.json")
 CONSOLIDATION_STATE_FILE = os.path.join(RUN_DIR, "consolidation_state.json")
 BIO_HISTORY_FILE         = os.path.join(RUN_DIR, "bio_history.jsonl")
 
+# SPEC-33: Relationship knowledge directory
+RELATIONSHIP_DIR = os.path.join(REPO_ROOT, "memory", "kag", "relationship")
+
 
 def get_conversation_file() -> str:
     """Return today's conversation file path (date-stamped, segments daily)."""

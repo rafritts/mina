@@ -30,6 +30,7 @@ from ..bio.encoder import encode_stimulus, encode_response, evaluate_activity_de
 from ..memory.hippocampus import (
     build_kag_context, build_rag_context, build_rag_context_dual,
     rag_add, rag_prune, write_kag, consolidate,
+    get_relationship_bond_level, consolidate_relationship,
 )
 from .cortex import DECODER_WINDOW_SIZE, MINA_IMMEDIATE_WINDOW
 from ..bio.state import (
@@ -176,12 +177,13 @@ def _isolation_stage(isolation_days: float) -> int:
 
 def _bond_gated_message_hint(state: BiologicalState, creator: str) -> str:
     """
-    SPEC-31: Return bond-level-conditional message_user description line.
-    Bond level derived from oxytocin normalized to 40 pg/mL threshold (SPEC-28).
+    SPEC-31/33: Return bond-level-conditional message_user description line.
+    SPEC-33: Bond level from relationship file (stable across absences) blended
+    with live oxytocin, so a deeply bonded Mina doesn't lose that context after
+    a few days of silence.
     Returns the full formatted hint line (starting with - **message_user**).
     """
-    oxytocin = state.chemicals.get("oxytocin", 4.0)
-    bond_level = min(1.0, oxytocin / 40.0)
+    bond_level = get_relationship_bond_level(state, creator)
 
     if bond_level < 0.15:
         return (
@@ -587,6 +589,16 @@ async def run_freetime(force: bool = False) -> None:
 
     # --- Phase 1: Hippocampus consolidation ---
     _log("Phase 1: memory consolidation.")
+
+    # SPEC-33: relationship consolidation (short_term write at sleep or 22h elapsed)
+    owner_name = cfg.get("admin_name", "")
+    if owner_name:
+        try:
+            state = await asyncio.to_thread(consolidate_relationship, state, owner_name)
+            save_state(state)  # persist any receptor_sensitivity changes
+        except Exception as _rel_err:
+            _log(f"Relationship consolidation error (non-fatal): {_rel_err}")
+
     reflection = await asyncio.to_thread(consolidate, state, kag_context)
 
     _log(f"Reflection summary: {reflection['reflection_summary']}")

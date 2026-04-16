@@ -767,10 +767,8 @@ def _wipe_user_data() -> list[str]:
                 os.remove(full)
                 wiped.append(os.path.relpath(full, _PROJECT_ROOT).replace(os.sep, "/"))
     os.makedirs(kag_dir, exist_ok=True)
-    rel_md = os.path.join(kag_dir, "RELATIONSHIP.md")
-    with open(rel_md, "w") as f:
-        f.write("# Relationship with User\n\nNo history yet.\n")
-    wiped.append("memory/kag/RELATIONSHIP.md (reset to blank)")
+    # SPEC-33: relationship directory is wiped above (all files removed); no RELATIONSHIP.md bootstrap.
+    # The relationship starts fresh — no entry is more accurate than a blank one.
     try:
         rag_wipe()  # imported from hippocampus at top of file
         wiped.append("memory/rag/ (RAG wiped)")

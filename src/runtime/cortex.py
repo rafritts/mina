@@ -21,7 +21,7 @@ from ..infra.config import (
 from ..infra.log import log
 from ..bio.decoder import biological_report, adjudicate_emotion, build_memory_context, needs_summary
 from ..memory.hippocampus import build_kag_context, build_rag_context, build_rag_context_dual
-from ..bio.encoder import encode_stimulus, encode_response, evaluate_activity_deltas
+from ..bio.encoder import encode_stimulus, encode_response, evaluate_activity_deltas, compute_relationship_modifier
 from ..bio.state import apply_deltas, load_and_advance, load_state, save_state
 from .tools import TOOLS, call_tool, handle_generate_image
 
@@ -457,6 +457,21 @@ async def run_turn(
     stimulus_deltas = await asyncio.to_thread(encode_stimulus, state, stimulus)
     if stimulus_deltas:
         state = apply_deltas(state, stimulus_deltas)
+
+    # [1a] SPEC-33: relationship modifier — applied once per owner message
+    # Stable disposition from relationship file, not raw oxytocin.
+    _admin_name = load_config().get("admin_name", "")
+    if _admin_name and username.lower() == _admin_name.lower():
+        try:
+            from ..memory.hippocampus import _get_net_relationship_dimensions
+            _net_dims = _get_net_relationship_dimensions(_admin_name)
+            _rel_deltas = compute_relationship_modifier(_net_dims)
+            if _rel_deltas:
+                state = apply_deltas(state, _rel_deltas)
+                log("REL/MODIFIER", ", ".join(f"{k}: {v:+.2f}" for k, v in _rel_deltas.items()))
+        except Exception as _e:
+            log("REL/MODIFIER/ERR", str(_e))
+
     # SPEC-28: mark contact so isolation_pressure decays during active conversation
     state.body["recent_contact_ts"] = time.time()
     save_state(state)

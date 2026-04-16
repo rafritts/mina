@@ -233,6 +233,28 @@ def _apply_isolation_stage_effects(
         prolactin_drift *= 1.5
         anandamide_drain *= 1.5
 
+    # SPEC-33: scale isolation pain by bonding dimension — deep bond → isolation hurts more.
+    # A caring relationship that's absent stings more than an indifferent one.
+    # Read from relationship file, not raw oxytocin (which decays in absence).
+    try:
+        import json as _json
+        _cfg_path = os.path.join(_PROJECT_ROOT, "config.json")
+        with open(_cfg_path) as _f:
+            _cfg = _json.load(_f)
+        _owner = _cfg.get("admin_name", "")
+        if _owner:
+            from src.memory.hippocampus import _get_net_relationship_dimensions
+            _net_dims   = _get_net_relationship_dimensions(_owner)
+            _net_bonding = _net_dims.get("bonding", 0.0)  # -2 to +2
+            bonding_scale = max(0.3, 1.0 + _net_bonding * 0.2)  # 0.6 → 1.4, min 0.3
+        else:
+            bonding_scale = 1.0
+    except Exception:
+        bonding_scale = 1.0
+
+    cortisol_drift *= bonding_scale
+    dopamine_drag  *= bonding_scale
+
     # Apply drift — chemicals are clamped by clamp_chemical after
     state.chemicals["cortisol"]       = max(0.0, state.chemicals.get("cortisol",      250.0) + cortisol_drift  * tick_hours)
     state.chemicals["dopamine"]       = max(0.0, state.chemicals.get("dopamine",       80.0) - dopamine_drag   * tick_hours)

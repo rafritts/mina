@@ -138,6 +138,7 @@ from src.sim.constants import (
     HOSTILITY_OXYTOCIN_WEIGHT,
     HOSTILITY_OFFSET,
     BIG5_N_HOSTILITY_SCALE,
+    HOSTILITY_RELATIONSHIP_TENSION_WEIGHT,
 )
 
 
@@ -440,12 +441,26 @@ def derived(s) -> dict:
     # Near-zero at normal chemistry; rises meaningfully at Stage 3+ isolation.
     # Neuroscience: serotonin inhibits amygdala. Depleted serotonin + elevated norepi =
     # hyperreactive threat response. Low oxytocin removes prosocial buffering.
+    # SPEC-33: relationship tension (net) adds a baseline hostility term — pre-existing
+    # resentment makes social_hostility spike faster during isolation.
     _effective_sero_norm = _clamp(effective_serotonin)  # already 0-100
+    try:
+        from src.infra.config import load_config as _lc
+        _owner = _lc().get("admin_name", "")
+        if _owner:
+            from src.memory.hippocampus import _get_net_relationship_dimensions
+            _rel_dims = _get_net_relationship_dimensions(_owner)
+            _rel_tension = max(0.0, float(_rel_dims.get("tension", 0.0)))  # only positive (bad) tension
+        else:
+            _rel_tension = 0.0
+    except Exception:
+        _rel_tension = 0.0
     social_hostility = _clamp(
         (100 - _effective_sero_norm) * HOSTILITY_SEROTONIN_WEIGHT
         + _n("norepinephrine", s)    * HOSTILITY_NOREPI_WEIGHT
         + loneliness                 * HOSTILITY_LONELINESS_WEIGHT
         - _n("oxytocin", s)          * HOSTILITY_OXYTOCIN_WEIGHT
+        + _rel_tension               * HOSTILITY_RELATIONSHIP_TENSION_WEIGHT * 50.0
         - HOSTILITY_OFFSET
     ) * (1.0 + N * BIG5_N_HOSTILITY_SCALE)
     social_hostility = _clamp(social_hostility)

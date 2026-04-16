@@ -547,6 +547,53 @@ def _is_habituation_dampened(pre: dict, post: dict) -> bool:
 # Public encode functions
 # ---------------------------------------------------------------------------
 
+def compute_relationship_modifier(net_dims: dict[str, float]) -> dict:
+    """
+    SPEC-33: Convert net relationship dimension scores to chemical deltas.
+    Applied once per owner message. Deltas scale linearly with net value
+    so net=0 produces no delta and net=±2 produces full delta.
+    """
+    if not net_dims:
+        return {}
+
+    # Delta table from SPEC-33 (per unit, scaled by net/2 so ±2 = full delta)
+    deltas: dict[str, float] = {}
+
+    def _add(chem: str, delta_per_unit: float, net: float) -> None:
+        scale = net / 2.0  # -2→-1.0, 0→0.0, +2→+1.0
+        deltas[chem] = round(deltas.get(chem, 0.0) + delta_per_unit * scale, 3)
+
+    bonding      = net_dims.get("bonding",      0.0)
+    security     = net_dims.get("security",     0.0)
+    anticipation = net_dims.get("anticipation", 0.0)
+    tension      = net_dims.get("tension",      0.0)
+    warmth       = net_dims.get("warmth",       0.0)
+    vigilance    = net_dims.get("vigilance",    0.0)
+
+    _add("oxytocin",       +1.5,  bonding)
+    _add("anandamide",     +0.02, bonding)
+
+    _add("serotonin",      +0.4,  security)
+    _add("gaba",           +0.8,  security)
+    _add("cortisol",       -3.0,  security)
+
+    _add("dopamine",       +2.0,  anticipation)
+    _add("glutamate",      +0.1,  anticipation)
+
+    _add("cortisol",       +5.0,  tension)
+    _add("norepinephrine", +4.0,  tension)
+    _add("glutamate",      +0.15, tension)
+
+    _add("endorphins",     +0.8,  warmth)
+    _add("anandamide",     +0.01, warmth)
+
+    _add("acetylcholine",  +1.5,  vigilance)
+    _add("norepinephrine", +2.0,  vigilance)
+
+    # Drop near-zero deltas
+    return {k: v for k, v in deltas.items() if abs(v) > 0.001}
+
+
 def encode_stimulus(state: BiologicalState, stimulus_text: str) -> dict:
     """
     Determine biological deltas from an incoming stimulus (message, event).
