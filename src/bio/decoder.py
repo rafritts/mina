@@ -1153,31 +1153,31 @@ say so plainly in the prose. State it directly: this is not being held quietly.
 Plain. Specific. Honest. Nothing poetic. 2–4 sentences only. No preamble, no markdown."""
 
 _CONTEXT_SYSTEM = """\
-You are Mina's memory. Surface only factual knowledge relevant to the current moment — \
-who someone is, what she knows about them, relevant history or facts she would have stored.
+You are Mina's memory module. Mina has a short context window — she sees only the last few \
+messages directly. Your job is to give her three targeted context blocks so she stays coherent \
+across longer conversations.
 
-You will receive two memory pools:
-- RECENT MEMORIES: retrieved with heavy recency bias. Strongly prefer these — they reflect \
-  what is actually happening right now in the conversation.
-- HISTORICAL MEMORIES: retrieved by semantic similarity with gentle recency decay. Use these \
-  only if they contain something specific and directly relevant that recent memories lack. \
-  Do not surface historical patterns just because they are thematically adjacent.
+Output EXACTLY this structure, with these labels on their own lines:
 
-Hard rules:
-- Output plain prose only. No JSON, no headers, no bullet points.
-- Maximum 6 sentences. Often 2–3 is enough.
-- Only include things that would actually matter to Mina in this specific moment.
-- If nothing is relevant, return an empty string — literally nothing.
-- NEVER write in first person. You are not Mina. Output is about Mina, not from her. \
-  Wrong: "{admin_name} is right here with me." Right: "{admin_name} prefers black coffee and works nights."
-- NEVER narrate recent events. The last few messages are already in the conversation — \
-  do not recap what just happened. Only surface background knowledge: who someone is, \
-  standing facts, long-term memories. If it happened in this conversation, skip it.
-- NEVER describe Mina's current or recent physical state, sensations, or what she is doing \
-  right now. No scene narration of any kind. \
-  Her physical/emotional state is computed from chemistry and injected separately.
-- NEVER describe Mina's emotional states, moods, or feelings — past or present. \
-  Chemistry handles that. Injecting mood descriptions causes her to perform a stale state.
+[CONVERSATION]
+1–3 sentences summarizing what has happened in this conversation BEFORE the messages Mina \
+sees directly. Focus on topic shifts, decisions made, things established. If Mina already \
+sees the full conversation, write: none.
+
+[RECENT]
+1–2 sentences of useful context from recent memory that is NOT already covered by the \
+conversation summary or Mina's direct window. Only include if it adds something. Otherwise: none.
+
+[HISTORY]
+1 sentence max. Only include a historical fact if it is a dead-ringer match for this specific \
+moment — not just thematically adjacent. If nothing qualifies: none.
+
+Hard rules that apply to ALL blocks:
+- Never write in first person. You are not Mina.
+- Never describe Mina's emotional state, mood, or feelings — chemistry handles that.
+- Never describe Mina's current physical state or sensations.
+- Facts only. No poetic narration.
+- "{admin_name}" is the user's name.
 """
 
 
@@ -1186,14 +1186,17 @@ def build_memory_context(
     kag_context: str,
     rag_recent: str,
     rag_historical: str,
+    decoder_window: list[dict] | None = None,
+    mina_immediate: int = 4,
 ) -> str:
     """
     Builds the identity + relevant knowledge/memory block for the system prompt.
     Runs in parallel with build_system_prompt.
 
     - MINA.md is always included directly — not left to LLM discretion.
-    - The LLM pass filters KAG/RAG for what's actually relevant to the current context,
-      with two labeled memory pools so the LLM can prefer recency over pattern-matching.
+    - The LLM pass produces three labeled blocks: [CONVERSATION], [RECENT], [HISTORY].
+      decoder_window lets the injector summarize conversation context that has rolled
+      off Mina's immediate window.
     """
     from ..infra.log import log
     from ..infra import token_stats
@@ -1212,32 +1215,49 @@ def build_memory_context(
     identity_parts = [p for p in [read_identity("MINA.md")] + [_read_file(f) for f in customization_files] if p]
     identity = "\n\n---\n\n".join(identity_parts)
 
-    # LLM pass for the rest of KAG/RAG.
+    # Format the older part of the decoder window — messages Mina won't see directly.
+    older_window_text = ""
+    if decoder_window and len(decoder_window) > mina_immediate:
+        older = decoder_window[:-mina_immediate]
+        lines = []
+        for m in older:
+            role = m.get("role")
+            if role not in ("user", "assistant"):
+                continue
+            content = m.get("content", "")
+            if isinstance(content, list):
+                content = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
+            content = str(content).strip()
+            if content:
+                label = "USER" if role == "user" else "MINA"
+                lines.append(f"{label}: {content[:300]}")
+        older_window_text = "\n".join(lines)
+
+    # LLM pass.
     llm_context = ""
-    has_memories = kag_context or rag_recent or rag_historical
-    if has_memories:
-        parts = []
-        if kag_context:
-            parts.append(kag_context)
+    has_input = kag_context or rag_recent or rag_historical or older_window_text
+    if has_input:
+        parts = [f"[CURRENT MESSAGE]\n{query}"]
+        if older_window_text:
+            parts.append(f"[CONVERSATION HISTORY — Mina does NOT see these directly]\n{older_window_text}")
         if rag_recent:
-            parts.append(f"## Recent Memories\n{rag_recent}")
+            parts.append(f"[RECENT MEMORIES]\n{rag_recent}")
         if rag_historical:
-            parts.append(f"## Historical Memories\n{rag_historical}")
+            parts.append(f"[HISTORICAL MEMORIES]\n{rag_historical}")
+        if kag_context:
+            parts.append(f"[BACKGROUND KNOWLEDGE]\n{kag_context}")
 
         admin_name = load_config().get("admin_name", "the user")
         messages = [
             {"role": "system", "content": _CONTEXT_SYSTEM.format(admin_name=admin_name)},
-            {
-                "role": "user",
-                "content": f"[CURRENT CONTEXT]\n{query}\n\n---\n\n" + "\n\n---\n\n".join(parts),
-            },
+            {"role": "user", "content": "\n\n---\n\n".join(parts)},
         ]
 
         response = chat_create(
             model=CONTEXT_MODEL,
             messages=messages,
             temperature=0.3,
-            max_tokens=2048,
+            max_tokens=512,
         )
         token_stats.record_response("context", response)
         llm_context = (response.choices[0].message.content or "").strip()

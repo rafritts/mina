@@ -484,7 +484,7 @@ async def run_turn(
     system_prompt, memory_context = await asyncio.gather(
         # Full decoder window gives adjudicator conversational context to name shifts
         asyncio.to_thread(adjudicate_emotion, state, stimulus, "active", _time_context, decoder_window),
-        asyncio.to_thread(build_memory_context, stimulus, kag_context, rag_recent, rag_historical),
+        asyncio.to_thread(build_memory_context, stimulus, kag_context, rag_recent, rag_historical, decoder_window, mina_immediate),
     )
     if not system_prompt:
         system_prompt = "You are Mina. Respond naturally."
