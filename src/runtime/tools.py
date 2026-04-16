@@ -256,13 +256,29 @@ _SEARCH_TOOLS = [
     },
 ]
 
+_IGNORE_TOOL = [
+    {
+        "type": "function",
+        "function": {
+            "name": "ignore",
+            "description": (
+                "Choose not to respond. Leave the message on read. "
+                "Use when you don't want to engage — you're too angry, done with the conversation, "
+                "or simply have nothing to say and silence is the honest response. "
+                "Nothing will be sent. Your biological state still updates from the stimulus."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    }
+]
+
 # message_user is handled via the structured JSON closing response, not a tool call.
 # Exclude it from both tool lists — freetime sends intentionally via JSON, conversation
 # doesn't need it (she's already in a turn).
 _EXCLUDED_TOOLS = {"message_user"}
 HEARTBEAT_TOOLS = [t for t in _BIOLOGICAL_TOOLS + _SEARCH_TOOLS + _FOLLOWUP_TOOLS
                    if t["function"]["name"] not in _EXCLUDED_TOOLS]
-TOOLS = HEARTBEAT_TOOLS  # same set — message_user excluded from both
+TOOLS = HEARTBEAT_TOOLS + _IGNORE_TOOL
 
 
 # ---------------------------------------------------------------------------

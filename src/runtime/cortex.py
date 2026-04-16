@@ -337,6 +337,17 @@ async def _mina_turn(
 
             log("TOOL", f"{name}({args})")
 
+            if name == "ignore":
+                log("MINA", "[left on read]")
+                # Append the tool call entry so context records she chose silence
+                new_entries.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": "[no response sent]",
+                    "ts": time.time(),
+                })
+                return new_entries, state, image_paths
+
             tool_deltas: dict = {}
             tool_content: str = ""
             if name == "generate_image":
