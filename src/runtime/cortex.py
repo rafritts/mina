@@ -328,6 +328,22 @@ async def _mina_turn(
                         "It will appear in the channel automatically. "
                         "Do NOT include any URL, filename, or link in your reply — just respond naturally."
                     )
+                    # Inject a synthetic message so Mina can see what she generated next turn.
+                    try:
+                        from ..infra.image_utils import normalise_image
+                        with open(result, "rb") as _f:
+                            _b64, _mime = normalise_image(_f.read())
+                        new_entries.append({
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": f"[image you just generated: {os.path.basename(result)}]"},
+                                {"type": "image_url", "image_url": {"url": f"data:{_mime};base64,{_b64}"}},
+                            ],
+                            "ts": time.time(),
+                        })
+                        log("VISION", f"Injected generated image into context: {os.path.basename(result)}")
+                    except Exception as _e:
+                        log("VISION/ERR", f"Failed to inject image into context: {_e}")
                 elif result and result.startswith("[Image generation failed"):
                     tool_content = result
                 else:
