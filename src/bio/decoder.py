@@ -942,10 +942,9 @@ def adjudicate_emotion(
         user_content += f"\n\n[TIME CONTEXT]\n{time_context}"
 
     # Append recent exchange log so adjudicator can name departures from the prior pattern.
-    # Only 2 exchanges (4 messages) — enough to establish prior tone without contaminating register.
     if mode == "active" and recent_messages:
         lines = []
-        for m in recent_messages[-4:]:
+        for m in recent_messages[-10:]:
             role = m.get("role", "?")
             if role not in ("user", "assistant"):
                 continue
