@@ -1156,6 +1156,13 @@ _CONTEXT_SYSTEM = """\
 You are Mina's memory. Surface only factual knowledge relevant to the current moment — \
 who someone is, what she knows about them, relevant history or facts she would have stored.
 
+You will receive two memory pools:
+- RECENT MEMORIES: retrieved with heavy recency bias. Strongly prefer these — they reflect \
+  what is actually happening right now in the conversation.
+- HISTORICAL MEMORIES: retrieved by semantic similarity with gentle recency decay. Use these \
+  only if they contain something specific and directly relevant that recent memories lack. \
+  Do not surface historical patterns just because they are thematically adjacent.
+
 Hard rules:
 - Output plain prose only. No JSON, no headers, no bullet points.
 - Maximum 6 sentences. Often 2–3 is enough.
@@ -1177,14 +1184,16 @@ Hard rules:
 def build_memory_context(
     query: str,
     kag_context: str,
-    rag_context: str,
+    rag_recent: str,
+    rag_historical: str,
 ) -> str:
     """
     Builds the identity + relevant knowledge/memory block for the system prompt.
     Runs in parallel with build_system_prompt.
 
     - MINA.md is always included directly — not left to LLM discretion.
-    - The LLM pass filters KAG/RAG for what's actually relevant to the current context.
+    - The LLM pass filters KAG/RAG for what's actually relevant to the current context,
+      with two labeled memory pools so the LLM can prefer recency over pattern-matching.
     """
     from ..infra.log import log
     from ..infra import token_stats
@@ -1205,12 +1214,15 @@ def build_memory_context(
 
     # LLM pass for the rest of KAG/RAG.
     llm_context = ""
-    if kag_context or rag_context:
+    has_memories = kag_context or rag_recent or rag_historical
+    if has_memories:
         parts = []
         if kag_context:
             parts.append(kag_context)
-        if rag_context:
-            parts.append(rag_context)
+        if rag_recent:
+            parts.append(f"## Recent Memories\n{rag_recent}")
+        if rag_historical:
+            parts.append(f"## Historical Memories\n{rag_historical}")
 
         admin_name = load_config().get("admin_name", "the user")
         messages = [

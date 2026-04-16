@@ -237,15 +237,14 @@ def rag_add(text: str, metadata: Optional[dict] = None) -> None:
             raise
 
 
-_RAG_RECENCY_HALF_LIFE_HOURS = 2.0  # entries from 2h ago score at 50%; yesterday is ~0%
+# Recent pool: half-life of 20 minutes — aggressively favours the last hour of conversation.
+_RAG_HALF_LIFE_RECENT_HOURS  = 0.33   # 20 min; entries from 20min ago score ~50%
+# Historical pool: half-life of 48 hours — gentle decay, keeps multi-day coherence.
+_RAG_HALF_LIFE_HISTORY_HOURS = 48.0   # 2 days; yesterday scores ~50%, last week ~1%
 
 
-def rag_query(query: str, n_results: int = 5) -> list[str]:
-    """Retrieve the most relevant episodic memories for a query.
-
-    Fetches a wider candidate pool from ChromaDB, then re-ranks by a
-    recency-decayed score so recent entries beat stale-but-similar ones.
-    """
+def _rag_query_with_half_life(query: str, n_results: int, half_life_hours: float) -> list[str]:
+    """Internal: fetch a wide candidate pool and re-rank by similarity * recency decay."""
     collection = _get_collection()
     if collection is None:
         return []
@@ -255,7 +254,6 @@ def rag_query(query: str, n_results: int = 5) -> list[str]:
         if count == 0:
             return []
 
-        # Pull a wider pool so recency re-ranking has candidates to work with.
         fetch = min(n_results * 3, count)
         results = collection.query(
             query_texts=[query],
@@ -268,14 +266,13 @@ def rag_query(query: str, n_results: int = 5) -> list[str]:
         metas     = results.get("metadatas", [[]])[0]
 
         now = time.time()
-        half_life_seconds = _RAG_RECENCY_HALF_LIFE_HOURS * 3600
+        half_life_s = half_life_hours * 3600
 
         scored = []
         for doc, dist, meta in zip(docs, distances, metas):
-            similarity = 1.0 - dist
-            age_seconds = now - float((meta or {}).get("timestamp", now))
-            # Exponential decay: score halves every half_life_days
-            decay = 0.5 ** (age_seconds / half_life_seconds)
+            similarity  = 1.0 - dist
+            age_s       = now - float((meta or {}).get("timestamp", now))
+            decay       = 0.5 ** (age_s / half_life_s)
             scored.append((similarity * decay, doc))
 
         scored.sort(key=lambda x: x[0], reverse=True)
@@ -287,13 +284,38 @@ def rag_query(query: str, n_results: int = 5) -> list[str]:
         return []
 
 
+def rag_query(query: str, n_results: int = 5) -> list[str]:
+    """Retrieve memories using the recent half-life (default behaviour)."""
+    return _rag_query_with_half_life(query, n_results, _RAG_HALF_LIFE_RECENT_HOURS)
+
+
 def build_rag_context(query: str, n_results: int = 5) -> str:
-    """Retrieve relevant memories and format as a context block."""
+    """Single-pool context block (used by freetime / consolidation)."""
     memories = rag_query(query, n_results)
     if not memories:
         return ""
     lines = "\n".join(f"- {m}" for m in memories)
     return f"## Relevant Memories\n{lines}"
+
+
+def build_rag_context_dual(query: str, n_results: int = 4) -> tuple[str, str]:
+    """
+    Return two separate memory pools as (recent, historical) strings.
+
+    recent     — aggressively recency-weighted (20-min half-life)
+    historical — gentle recency decay (48-hour half-life), cosine-dominant
+    Duplicates between pools are removed from historical.
+    """
+    recent_docs  = _rag_query_with_half_life(query, n_results, _RAG_HALF_LIFE_RECENT_HOURS)
+    history_docs = _rag_query_with_half_life(query, n_results, _RAG_HALF_LIFE_HISTORY_HOURS)
+
+    # Deduplicate: drop anything from historical that already appears in recent.
+    recent_set   = set(recent_docs)
+    history_docs = [d for d in history_docs if d not in recent_set]
+
+    recent_str  = "\n".join(f"- {m}" for m in recent_docs)  if recent_docs  else ""
+    history_str = "\n".join(f"- {m}" for m in history_docs) if history_docs else ""
+    return recent_str, history_str
 
 
 def rag_prune(ttl_days: int = 180) -> int:
