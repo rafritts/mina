@@ -124,7 +124,12 @@ def _format_rag_block(window: list[dict]) -> str:
         ts = m.get("ts")
         prefix = f"[{_rel_time(ts)}] " if ts else ""
         role_label = "USER" if role == "user" else "MINA"
-        lines.append(f"{prefix}{role_label}: {content[:400]}")
+        adj = m.get("adj")
+        if role_label == "MINA" and adj:
+            adj_str = json.dumps(adj)
+            lines.append(f"{prefix}{role_label}: {content[:400]}\n[ADJ: {adj_str}]")
+        else:
+            lines.append(f"{prefix}{role_label}: {content[:400]}")
     return "\n".join(lines)
 
 
@@ -256,7 +261,8 @@ def api_messages(history: list[dict], system_prompt: str, state_note: str = "") 
             # Freetime tool results carry ts; active-turn tool results do not.
             conversation.append(apply_ts_label(msg))
         else:
-            conversation.append({k: v for k, v in msg.items() if k != "ts"})
+            # Strip ts and adj — internal metadata, never sent to LLM
+            conversation.append({k: v for k, v in msg.items() if k not in ("ts", "adj")})
 
     full_system = system_prompt
     if compact_parts:
@@ -538,6 +544,15 @@ async def run_turn(
     if memory_context:
         system_prompt = memory_context + "\n\n---\n\n" + system_prompt
 
+    # SPEC-35: extract adjudicator JSON so it can be attached to the assistant entry
+    _adj_json: dict | None = None
+    _adj_match = re.search(r'\[EMOTIONAL DISPOSITION\]\s*(\{.*?\})', system_prompt, re.DOTALL)
+    if _adj_match:
+        try:
+            _adj_json = json.loads(_adj_match.group(1))
+        except json.JSONDecodeError:
+            pass
+
     # [3b] Override — injected directly into system prompt, bypasses decoder.
     override = consume_admin_instructions()
     if override:
@@ -577,6 +592,13 @@ async def run_turn(
         if entry.get("role") == "assistant" and entry.get("content"):
             reply = entry["content"]
             break
+
+    # SPEC-35: attach adjudicator JSON to the final assistant entry
+    if _adj_json:
+        for entry in reversed(new_entries):
+            if entry.get("role") == "assistant" and entry.get("content"):
+                entry["adj"] = _adj_json
+                break
 
     if reply:
         log("MINA", reply)

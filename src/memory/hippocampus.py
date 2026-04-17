@@ -589,6 +589,12 @@ long-term memory.
 
 - RAG entries should be meaningful episodic memories: things that happened, things said, \
 moments of connection or friction. Not summaries — specific moments.
+- When a MINA message is followed by an `[ADJ: ...]` annotation, use those fields directly \
+as the `affect`, `valence`, and `arousal` metadata for any RAG entry derived from that moment. \
+Do not invent emotional labels when the adjudicator already provided them.
+- RAG entry metadata schema: `{"type": "episodic", "importance": "high|medium|low", \
+"affect": "<word>", "valence": <0.0-1.0>, "arousal": <0.0-1.0>}` \
+(omit affect/valence/arousal if no ADJ annotation is present for that moment).
 - KAG updates: only update if something genuinely changed. Return null for unchanged files.
 - RELATIONSHIP.md should accumulate over time. Add to notable moments. Update trust level \
 based on what actually happened — don't inflate it. Trust increases slowly from evidence, \
