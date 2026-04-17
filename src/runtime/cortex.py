@@ -456,6 +456,7 @@ async def run_turn(
         log("STATE", "Biological updates paused — time not advanced.")
     img_count = len(images) if images else 0
     img_tag = f" [{img_count} image(s)]" if img_count else ""
+    print("=" * 20 + "MESSAGE START" + "=" * 20, flush=True)
     log("USER", f"{username}: {user_input}{img_tag}")
 
     # [1] encode_stimulus — biological response to incoming message
@@ -608,6 +609,7 @@ async def run_turn(
         if response_deltas:
             state = apply_deltas(state, response_deltas)
             save_state(state)
+    print("=" * 21 + "MESSAGE END" + "=" * 21, flush=True)
 
     # Append response entries to the decoder window and save
     decoder_window.extend(new_entries)
