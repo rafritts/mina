@@ -70,7 +70,7 @@
   <div class="flex justify-between items-center mb-1">
     <div class="tooltip tooltip-bottom text-left">
       <span class="text-sm font-medium cursor-help">{label}</span>
-      <div class="tooltip-content text-left text-xs leading-relaxed" style="max-width: 20rem; white-space: normal;">{@html tooltip.replace(/^([^\n]+)/, '<strong>$1</strong>').replace(/\n/g, '<br>')}</div>
+      <div class="tooltip-content text-left text-xs leading-relaxed" style="max-width: 20rem; white-space: normal;">{@html tooltip.replace(/\\n/g, '\n').replace(/^([^\n]+)/, '<strong>$1</strong>').replace(/\n/g, '<br>')}</div>
     </div>
     <div class="flex items-center gap-2">
       {#if saving}
