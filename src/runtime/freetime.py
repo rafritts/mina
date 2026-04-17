@@ -42,9 +42,10 @@ from ..bio.state import (
 )
 from .tools import HEARTBEAT_TOOLS, call_tool, handle_generate_image
 
-_LAST_ACTIVE_FILE  = os.path.join(PROJECT_ROOT, ".last_user_active")
-_LAST_SEARCH_FILE  = os.path.join(PROJECT_ROOT, "run", "last_search.json")
-_SEARCH_INTERVAL_S = 4 * 3600  # 4 hours
+_LAST_ACTIVE_FILE       = os.path.join(PROJECT_ROOT, ".last_user_active")
+_LAST_SEARCH_FILE       = os.path.join(PROJECT_ROOT, "run", "last_search.json")
+_SEARCH_INTERVAL_S      = 4 * 3600   # 4 hours
+_FREETIME_IDLE_WINDOW_S = 20 * 60    # must be idle this long before freetime runs
 
 
 def _load_decoder_window() -> list[dict]:
@@ -570,7 +571,7 @@ async def _run_mina_free_time(
 # ---------------------------------------------------------------------------
 
 async def run_freetime(force: bool = False) -> None:
-    if not force and _user_recently_active(window_seconds=20 * 60):
+    if not force and _user_recently_active(window_seconds=_FREETIME_IDLE_WINDOW_S):
         _log("User recently active — skipping freetime.")
         return
 
