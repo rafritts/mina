@@ -334,6 +334,43 @@ def biological_report(state: BiologicalState) -> str:
     return "\n".join(lines)
 
 
+def biological_report_compact(state: BiologicalState) -> str:
+    """Single-line state summary for log readability."""
+    d = derived(state)
+    so = d["second_order"]
+    to = d["third_order"]
+
+    def c(name: str) -> str:
+        val = state.chemicals.get(name, _CHEMICAL_DEFAULTS.get(name, 0.0))
+        lbl, _ = get_label(name, val)
+        return lbl.lower().replace(" ", "_")
+
+    sleep_tag = "SLEEPING" if state.sleeping else "AWAKE"
+    chems = (
+        f"cort={c('cortisol')} oxy={c('oxytocin')} norepi={c('norepinephrine')} "
+        f"dopa={c('dopamine')} sero={c('serotonin')} ach={c('acetylcholine')} "
+        f"gluc={c('glucose')} mela={c('melatonin')} sp={c('sleep_pressure')}"
+    )
+    derived_str = (
+        f"energy={so['energy']:.0f} clarity={so['cognitive_clarity']:.0f} "
+        f"valence={so['mood_valence']:.0f} anxiety={to['anxiety']:.0f} "
+        f"dep={to['depression']:.0f} lonely={to['loneliness']:.0f} boredom={to['boredom']:.0f}"
+    )
+
+    parts = [f"[{sleep_tag}]", chems, "|", derived_str]
+
+    try:
+        from .vital_signs import vital_signs as _vitals
+        vs = _vitals(state)
+        hr = vs["heart_rate"]["value"]
+        bp = vs["blood_pressure"]
+        parts.append(f"| HR={hr:.0f} BP={bp['systolic']:.0f}/{bp['diastolic']:.0f}")
+    except Exception:
+        pass
+
+    return " ".join(parts)
+
+
 # ---------------------------------------------------------------------------
 # Needs summary (freetime heartbeat stimulus)
 # ---------------------------------------------------------------------------

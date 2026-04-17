@@ -19,7 +19,7 @@ from ..infra.config import (
     load_config, get_conversation_file,
 )
 from ..infra.log import log
-from ..bio.decoder import biological_report, adjudicate_emotion, build_memory_context, needs_summary
+from ..bio.decoder import biological_report, biological_report_compact, adjudicate_emotion, build_memory_context, needs_summary
 from ..memory.hippocampus import build_kag_context, build_rag_context, build_rag_context_dual
 from ..bio.encoder import encode_stimulus, encode_response, evaluate_activity_deltas, compute_relationship_modifier
 from ..bio.state import apply_deltas, load_and_advance, load_state, save_state
@@ -496,8 +496,7 @@ async def run_turn(
         log("DANGER/ERROR", str(_e))
 
     # [2] biological_report — deterministic, logged only (not injected into prompts)
-    report = biological_report(state)
-    log("BIO/REPORT", f"\n{report}")
+    log("BIO/REPORT", biological_report_compact(state))
 
     decoder_window = load_decoder_window()
     cfg = load_config()
