@@ -4,6 +4,7 @@
   "comfyui_host": "localhost",
   "sleep_window_start": 4,
   "sleep_window_end": 8,
+  "sleep_hours_needed": 4,
   "naps_enabled": true,
   "admin_name": "Ryan",
 

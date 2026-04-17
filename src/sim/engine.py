@@ -525,7 +525,8 @@ def advance(state: BiologicalState,
     # --- Phase 4: adenosine + sleep/wake mechanics ---
 
     # Advance adenosine (replaces direct sleep_pressure manipulation)
-    s = _advance_adenosine(s, sim_hours)
+    sleep_hours_needed = float(cfg.get("sleep_hours_needed", 8.0))
+    s = _advance_adenosine(s, sim_hours, sleep_hours_needed)
 
     sleep_p = s.sleep_pressure  # property reads from body["adenosine"]
 
@@ -585,11 +586,14 @@ def advance(state: BiologicalState,
             s.sleeping    = True
             s.sleep_start = now
             lt = time.localtime(now)
-            wake = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday,
-                                int(sleep_end_hour), int((sleep_end_hour % 1) * 60), 0,
-                                lt.tm_wday, lt.tm_yday, lt.tm_isdst))
-            if wake <= now:
-                wake += 86400
+            # Hard ceiling: the configured end of the sleep window
+            ceiling = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday,
+                                   int(sleep_end_hour), int((sleep_end_hour % 1) * 60), 0,
+                                   lt.tm_wday, lt.tm_yday, lt.tm_isdst))
+            if ceiling <= now:
+                ceiling += 86400
+            # Normal wake: sleep_hours_needed hours from onset, capped at ceiling
+            wake = min(now + sleep_hours_needed * 3600, ceiling)
             s.sleep_expected_wake = wake
             try:
                 from log import log

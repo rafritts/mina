@@ -15,8 +15,8 @@ import time
 from src.sim.bio.state import BiologicalState
 from src.sim.constants import (
     ADENOSINE_BUILD_RATE_BASE,
-    ADENOSINE_CLEAR_RATE_SLEEP,
     ADENOSINE_FLOOR_SLEEP,
+    ADENOSINE_SLEEP_ONSET_NMOL,
     ADENOSINE_OREXIN_SUPPRESS_THRESHOLD,
     ADENOSINE_OREXIN_SUPPRESS_RATE,
     ADENOSINE_SLEEP_DRIVE_MIN,
@@ -48,23 +48,26 @@ from src.sim.events import EventBus
 # Process S: adenosine (homeostatic sleep pressure)
 # ---------------------------------------------------------------------------
 
-def _advance_adenosine(s: BiologicalState, sim_hours: float) -> BiologicalState:
+def _advance_adenosine(s: BiologicalState, sim_hours: float, sleep_hours_needed: float = 8.0) -> BiologicalState:
     """
     Update body["adenosine"] based on sleep/wake state.
 
     During waking: adenosine builds as a byproduct of neural ATP consumption.
       Base rate: 3.0 nmol/L/hr; stress (high cortisol) accelerates accumulation.
-    During sleep: glymphatic clearance removes adenosine at ~20 nmol/L/hr.
+    During sleep: glymphatic clearance rate is calibrated to deplete sleep pressure
+      over sleep_hours_needed hours (from typical onset level to floor).
       Floor at 15.0 nmol/L — complete clearance does not occur.
 
     sleep_pressure (0-100 AU) is derived from this value:
-        SP = (adenosine - 20) / 0.6
+        SP = (adenosine - ADENOSINE_SLEEP_DRIVE_MIN) / ADENOSINE_SLEEP_DRIVE_DIVISOR
     """
     a = s.body["adenosine"]
 
     if s.sleeping:
-        # Glymphatic system clears adenosine during NREM/SWS
-        a = max(ADENOSINE_FLOOR_SLEEP, a - ADENOSINE_CLEAR_RATE_SLEEP * sim_hours)
+        # Clearance rate calibrated so adenosine depletes from onset level to floor
+        # over exactly sleep_hours_needed hours of sleep.
+        clear_rate = (ADENOSINE_SLEEP_ONSET_NMOL - ADENOSINE_FLOOR_SLEEP) / sleep_hours_needed
+        a = max(ADENOSINE_FLOOR_SLEEP, a - clear_rate * sim_hours)
     else:
         # Neural activity accumulates adenosine; cortisol stress accelerates it
         base_rate    = ADENOSINE_BUILD_RATE_BASE

@@ -41,8 +41,12 @@ GLUCOSE_DECAY_ASLEEP           = 0.8     # mg/dL/hr — hepatic output nearly co
 HYDRATION_DECAY_RATE           = 0.4     # % TBW/hr — insensible losses at rest
 
 ADENOSINE_BUILD_RATE_BASE      = 3.0     # nmol/L/hr — metabolic byproduct of neural ATP use
-ADENOSINE_CLEAR_RATE_SLEEP     = 20.0    # nmol/L/hr — glymphatic clearance during sleep
 ADENOSINE_FLOOR_SLEEP          = 15.0    # nmol/L — minimum achievable during sleep
+# Typical adenosine at in-window sleep-onset threshold (AUTO_SLEEP_PROPENSITY_IN_WINDOW=70 AU):
+#   adenosine = threshold * ADENOSINE_SLEEP_DRIVE_DIVISOR + ADENOSINE_SLEEP_DRIVE_MIN
+#             = 70 * 0.70 + 20 = 69 nmol/L
+# Used to calibrate the clearance rate from sleep_hours_needed config.
+ADENOSINE_SLEEP_ONSET_NMOL     = 69.0    # nmol/L — adenosine at typical sleep-onset
 
 SLEEP_PRESSURE_BUILD_RATE      = 1.8     # AU/hr — legacy; derived from adenosine when needed
 SLEEP_PRESSURE_CLEAR_RATE      = 24.0    # AU/hr — during sleep
