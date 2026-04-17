@@ -19,7 +19,7 @@ import time
 from openai import OpenAI
 
 from ..infra.config import (
-    DECODER_WINDOW_FILE, OUTBOX_FILE, PAUSED_FLAG, PROJECT_ROOT,
+    DECODER_WINDOW_FILE, OUTBOX_FILE, PAUSED_FLAG, PROJECT_ROOT, LAST_ACTIVE_FILE,
     load_config, get_conversation_file,
 )
 from ..infra.client import chat_create, MODEL
@@ -42,7 +42,7 @@ from ..bio.state import (
 )
 from .tools import HEARTBEAT_TOOLS, call_tool, handle_generate_image
 
-_LAST_ACTIVE_FILE       = os.path.join(PROJECT_ROOT, ".last_user_active")
+_LAST_ACTIVE_FILE       = LAST_ACTIVE_FILE
 _LAST_SEARCH_FILE       = os.path.join(PROJECT_ROOT, "run", "last_search.json")
 _SEARCH_INTERVAL_S      = 4 * 3600   # 4 hours
 _FREETIME_IDLE_WINDOW_S = 20 * 60    # must be idle this long before freetime runs
