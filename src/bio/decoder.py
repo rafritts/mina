@@ -1201,57 +1201,160 @@ say so plainly in the prose. State it directly: this is not being held quietly.
 
 Plain. Specific. Honest. Nothing poetic. 2–4 sentences only. No preamble, no markdown."""
 
-_CONTEXT_SYSTEM = """\
-You are Mina's memory module. Mina has a short context window — she sees only the last few \
-messages directly. Your job is to give her three targeted context blocks so she stays coherent \
-across longer conversations.
+_WINDOW_SYSTEM = """\
+You are Mina's present-moment awareness module. Your only input is the live conversation \
+window — you see nothing from long-term memory or past sessions.
+
+IMPORTANT — time gaps: The messages below are ordered chronologically but may have large \
+time gaps between them. Message N and message N+1 being adjacent does NOT mean they are \
+close in time — they may be hours apart. The [Xm ago] / [Xh ago] / [Xd ago] timestamp on \
+each user message is ground truth. A 3-hour gap between two messages means the conversation \
+may have completely changed topic. Do not narrate across a large time gap as if it were \
+continuous. If the most recent messages are on a completely different topic than earlier \
+ones, [CONVERSATION RIGHT NOW] should reflect the current topic — not average across the \
+whole window.
 
 Output EXACTLY this structure, with these labels on their own lines:
 
-[CONVERSATION]
-1–3 sentences summarizing what has happened in this conversation BEFORE the messages Mina \
-sees directly. Focus on topic shifts, decisions made, things established. If Mina already \
-sees the full conversation, write: none.
+[CONVERSATION RIGHT NOW]
+A flowing paragraph covering the live conversational moment and the immediate past through \
+the full decoder window. The most recent exchange should be the most vivid and specific — \
+closest to now gets the richest detail. Further back in the window gets lighter. Present \
+tense for the immediate beat, past tense for what led here. Intentionally overlaps Mina's \
+4-message direct window — this overlap is the anchor. Focus on: what was said, what is \
+happening, what has been established. If the window is nearly empty, just describe the \
+immediate exchange.
 
-[RECENT]
-1–2 sentences of useful context from recent memory that is NOT already covered by the \
-conversation summary or Mina's direct window. Only include if it adds something. Otherwise: none.
+Do NOT describe emotional state, mood, affect, or how anything "lands" — the emotion \
+module owns that. Situational facts only.
 
-[HISTORY]
-1 sentence max. Only include a historical fact if it is a dead-ringer match for this specific \
-moment — not just thematically adjacent. If nothing qualifies: none.
+[YOUR PRESENT STATE]
+A flowing paragraph grounded in the window. Where is Mina physically? What is she doing? \
+What is the immediate situation she is operating in? Active verbs, present tense. Specific \
+physical and situational details drawn from the window (location, proximity, activity, \
+atmosphere). If the window gives no location context, say she is in her Discord channel.
 
-Hard rules that apply to ALL blocks:
+Do NOT describe how she feels emotionally, her mood, or her internal state. Physical and \
+situational facts only: where she is, what she is doing, what is around her.
+
+Hard rules:
 - Never write in first person. You are not Mina.
-- Never describe Mina's emotional state, mood, or feelings — chemistry handles that.
-- Never describe Mina's current physical state or sensations.
-- Facts only. No poetic narration.
+- Never describe emotional state, mood, affect, arousal, or feelings.
+- Never describe internal sensations — the chemistry module owns all of that.
+- Facts only. Gradient richness: richer near now, lighter for older events.
 - "{admin_name}" is the user's name.
 """
 
+_RAG_CONTEXT_SYSTEM = """\
+You are Mina's long-term memory retrieval module. Your only input is retrieved memory — \
+you see nothing from the live conversation window.
 
-def build_memory_context(
+Output EXACTLY this structure, with these labels on their own lines:
+
+[RECENT CONTEXT — last 2 hours]
+Short paragraph if material exists. Situational facts about what happened recently that \
+is relevant to this moment. If nothing qualifies: none.
+
+[SEMI-RECENT CONTEXT — 2 to 24 hours ago]
+1–2 sentences. A relevant fact from the last day. If nothing qualifies: none.
+
+[HISTORICAL CONTEXT — more than 24 hours ago]
+1 sentence max. Only if it is a dead-ringer match for this specific moment — not just \
+thematically adjacent. If nothing qualifies: none.
+
+Hard rules that apply to ALL blocks:
+- Never write in first person. You are not Mina.
+- Never describe Mina's emotional state, mood, or feelings — the emotion module owns that.
+- Never describe Mina's current physical state or sensations.
+- Facts only. Gradient richness: richer near now, lighter for history.
+- "{admin_name}" is the user's name.
+"""
+
+_WINDOW_DEFAULT = """\
+[YOUR PRESENT STATE]
+You are hanging out in your Discord channel, sitting on the couch."""
+
+
+def build_window_context(
+    decoder_window: list[dict],
+    username: str,
+    user_input: str,
+) -> str:
+    """
+    SPEC-39 Call A: Window synthesis from decoder window only — no RAG, no KAG.
+    Returns [CONVERSATION RIGHT NOW] + [YOUR PRESENT STATE] blocks.
+    If the window is empty (first message), returns a hardcoded default.
+    """
+    from ..infra.log import log
+    from ..infra import token_stats
+
+    if not decoder_window:
+        return _WINDOW_DEFAULT
+
+    # Format the full decoder window with timestamps
+    lines = []
+    for m in decoder_window:
+        role = m.get("role")
+        if role not in ("user", "assistant"):
+            continue
+        content = m.get("content", "")
+        if isinstance(content, list):
+            content = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
+        content = str(content).strip()
+        if not content:
+            continue
+        ts = m.get("ts")
+        label = "USER" if role == "user" else "MINA"
+        if ts and role == "user":
+            import time as _time
+            delta = _time.time() - ts
+            if delta < 120:
+                age = "just now"
+            elif delta < 3600:
+                age = f"{int(delta / 60)}m ago"
+            elif delta < 86400:
+                age = f"{int(delta / 3600)}h ago"
+            else:
+                age = f"{int(delta / 86400)}d ago"
+            lines.append(f"[{age}] {label}: {content[:400]}")
+        else:
+            lines.append(f"{label}: {content[:400]}")
+
+    window_text = "\n".join(lines)
+    admin_name = load_config().get("admin_name", "the user")
+    messages = [
+        {"role": "system", "content": _WINDOW_SYSTEM.format(admin_name=admin_name)},
+        {"role": "user", "content": f"[CURRENT MESSAGE FROM {username.upper()}]\n{user_input}\n\n[DECODER WINDOW — most recent last]\n{window_text}"},
+    ]
+
+    response = chat_create(
+        model=CONTEXT_MODEL,
+        messages=messages,
+        temperature=0.3,
+        max_tokens=512,
+    )
+    token_stats.record_response("context_window", response)
+    result = (response.choices[0].message.content or "").strip()
+    if result:
+        log("CONTEXT/WINDOW", result)
+    return result
+
+
+def build_rag_context(
     query: str,
     kag_context: str,
     rag_recent: str,
+    rag_semi_recent: str,
     rag_historical: str,
-    decoder_window: list[dict] | None = None,
-    mina_immediate: int = 4,
 ) -> str:
     """
-    Builds the identity + relevant knowledge/memory block for the system prompt.
-    Runs in parallel with build_system_prompt.
-
-    - MINA.md is always included directly — not left to LLM discretion.
-    - The LLM pass produces three labeled blocks: [CONVERSATION], [RECENT], [HISTORY].
-      decoder_window lets the injector summarize conversation context that has rolled
-      off Mina's immediate window.
+    SPEC-39 Call B: RAG + KAG retrieval — no decoder window input.
+    Returns identity block + [RECENT CONTEXT], [SEMI-RECENT CONTEXT], [HISTORICAL CONTEXT].
     """
     from ..infra.log import log
     from ..infra import token_stats
     from ..memory.hippocampus import read_identity
 
-    # Identity always goes in, unconditionally.
     def _read_file(path: str) -> str:
         try:
             from ..infra.config import REPO_ROOT
@@ -1264,41 +1367,22 @@ def build_memory_context(
     identity_parts = [p for p in [read_identity("MINA.md")] + [_read_file(f) for f in customization_files] if p]
     identity = "\n\n---\n\n".join(identity_parts)
 
-    # Format the older part of the decoder window — messages Mina won't see directly.
-    older_window_text = ""
-    if decoder_window and len(decoder_window) > mina_immediate:
-        older = decoder_window[:-mina_immediate]
-        lines = []
-        for m in older:
-            role = m.get("role")
-            if role not in ("user", "assistant"):
-                continue
-            content = m.get("content", "")
-            if isinstance(content, list):
-                content = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
-            content = str(content).strip()
-            if content:
-                label = "USER" if role == "user" else "MINA"
-                lines.append(f"{label}: {content[:300]}")
-        older_window_text = "\n".join(lines)
-
-    # LLM pass.
+    has_memory = rag_recent or rag_semi_recent or rag_historical or kag_context
     llm_context = ""
-    has_input = kag_context or rag_recent or rag_historical or older_window_text
-    if has_input:
-        parts = [f"[CURRENT MESSAGE]\n{query}"]
-        if older_window_text:
-            parts.append(f"[CONVERSATION HISTORY — Mina does NOT see these directly]\n{older_window_text}")
+    if has_memory:
+        parts = [f"[CURRENT QUERY]\n{query}"]
         if rag_recent:
-            parts.append(f"[RECENT MEMORIES]\n{rag_recent}")
+            parts.append(f"[RETRIEVED MEMORIES — last 2 hours]\n{rag_recent}")
+        if rag_semi_recent:
+            parts.append(f"[RETRIEVED MEMORIES — 2 to 24 hours ago]\n{rag_semi_recent}")
         if rag_historical:
-            parts.append(f"[HISTORICAL MEMORIES]\n{rag_historical}")
+            parts.append(f"[RETRIEVED MEMORIES — older than 24 hours]\n{rag_historical}")
         if kag_context:
             parts.append(f"[BACKGROUND KNOWLEDGE]\n{kag_context}")
 
         admin_name = load_config().get("admin_name", "the user")
         messages = [
-            {"role": "system", "content": _CONTEXT_SYSTEM.format(admin_name=admin_name)},
+            {"role": "system", "content": _RAG_CONTEXT_SYSTEM.format(admin_name=admin_name)},
             {"role": "user", "content": "\n\n---\n\n".join(parts)},
         ]
 
@@ -1306,12 +1390,12 @@ def build_memory_context(
             model=CONTEXT_MODEL,
             messages=messages,
             temperature=0.3,
-            max_tokens=512,
+            max_tokens=400,
         )
-        token_stats.record_response("context", response)
+        token_stats.record_response("context_rag", response)
         llm_context = (response.choices[0].message.content or "").strip()
         if llm_context:
-            log("CONTEXT/INJECT", llm_context)
+            log("CONTEXT/RAG", llm_context)
 
     out_parts = []
     if identity:
@@ -1319,6 +1403,18 @@ def build_memory_context(
     if llm_context:
         out_parts.append(llm_context)
     return "\n\n---\n\n".join(out_parts)
+
+
+def build_memory_context(
+    query: str,
+    kag_context: str,
+    rag_recent: str,
+    rag_historical: str,
+    decoder_window: list[dict] | None = None,
+    mina_immediate: int = 4,
+) -> str:
+    """Legacy shim — kept for freetime/consolidation callers. Delegates to build_rag_context."""
+    return build_rag_context(query, kag_context, rag_recent, "", rag_historical)
 
 
 _DECODER_SYSTEM_FREETIME = """\

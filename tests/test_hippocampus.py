@@ -52,8 +52,13 @@ def test_customization_md_readable():
 
 
 def test_relationship_md_readable():
-    content = read_kag("RELATIONSHIP.md")
-    assert content, "RELATIONSHIP.md returned empty — file missing or unreadable"
+    # SPEC-39: legacy RELATIONSHIP.md removed — SPEC-33 relationship/ryan.md is canonical.
+    # This test now verifies the new path works via read_relationship().
+    from src.memory.hippocampus import read_relationship
+    from src.infra.config import load_config
+    owner = load_config().get("admin_name", "ryan")
+    content = read_relationship(owner)
+    assert content is not None  # allowed to be empty if no relationship written yet
 
 
 def test_reflection_md_readable():

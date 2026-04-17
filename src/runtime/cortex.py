@@ -20,8 +20,8 @@ from ..infra.config import (
 )
 from ..infra.log import log
 from ..infra.turn_log import log_context_window, log_conversation
-from ..bio.decoder import biological_report, biological_report_compact, adjudicate_emotion, build_memory_context, needs_summary
-from ..memory.hippocampus import build_kag_context, build_rag_context, build_rag_context_dual
+from ..bio.decoder import biological_report, biological_report_compact, adjudicate_emotion, build_window_context, build_rag_context, needs_summary
+from ..memory.hippocampus import build_kag_context, build_rag_context as _hpc_rag_context, build_rag_context_bucketed
 from ..bio.encoder import encode_stimulus, encode_response, evaluate_activity_deltas, compute_relationship_modifier
 from ..bio.state import apply_deltas, load_and_advance, load_state, save_state
 from .tools import TOOLS, call_tool, handle_generate_image
@@ -515,10 +515,9 @@ async def run_turn(
         user_content = f"{username}: {user_input}"
     decoder_window.append({"role": "user", "content": user_content, "ts": time.time()})
 
-    # [3] emotion adjudication + memory context — run in parallel
-    # adjudicate_emotion: derived emotional profile + stimulus → concrete emotional disposition
+    # [3] Three-way parallel: window synthesis, RAG retrieval, emotion adjudication
     kag_context = build_kag_context()
-    rag_recent, rag_historical = build_rag_context_dual(user_input)
+    rag_recent, rag_semi_recent, rag_historical = build_rag_context_bucketed(user_input)
     stimulus = f"{username}: {user_input}"
 
     # Build time context: clock time + how long since the previous message
@@ -536,15 +535,42 @@ async def run_turn(
         _time_context_parts.append("Ongoing conversation")
     _time_context = "\n".join(_time_context_parts)
 
-    system_prompt, memory_context = await asyncio.gather(
-        # Full decoder window gives adjudicator conversational context to name shifts
+    system_prompt, window_context, rag_context = await asyncio.gather(
+        # adjudicator: full decoder window gives conversational context to name emotional shifts
         asyncio.to_thread(adjudicate_emotion, state, stimulus, "active", _time_context, decoder_window),
-        asyncio.to_thread(build_memory_context, stimulus, kag_context, rag_recent, rag_historical, decoder_window, mina_immediate),
+        # Call A: window synthesis — decoder window only, no RAG
+        asyncio.to_thread(build_window_context, decoder_window, username, user_input),
+        # Call B: RAG retrieval — memory only, no decoder window
+        asyncio.to_thread(build_rag_context, stimulus, kag_context, rag_recent, rag_semi_recent, rag_historical),
     )
     if not system_prompt:
         system_prompt = "You are Mina. Respond naturally."
-    if memory_context:
-        system_prompt = memory_context + "\n\n---\n\n" + system_prompt
+
+    # Assemble per SPEC-39 order:
+    # [IDENTITY] --- [CONVERSATION RIGHT NOW] [YOUR PRESENT STATE] [RECENT...] --- [EMOTIONAL DISPOSITION]
+    _sep = "\n\n---\n\n"
+    _identity_block = ""
+    _rag_memory_blocks = ""
+    if rag_context:
+        if _sep in rag_context:
+            _identity_block, _rag_memory_blocks = rag_context.split(_sep, 1)
+        else:
+            _identity_block = rag_context
+
+    _middle_parts = []
+    if window_context:
+        _middle_parts.append(window_context)
+    if _rag_memory_blocks:
+        _middle_parts.append(_rag_memory_blocks)
+    _middle = "\n\n".join(_middle_parts)
+
+    if _identity_block or _middle:
+        prefix_parts = []
+        if _identity_block:
+            prefix_parts.append(_identity_block)
+        if _middle:
+            prefix_parts.append(_middle)
+        system_prompt = _sep.join(prefix_parts) + _sep + system_prompt
 
     # SPEC-35: extract adjudicator JSON so it can be attached to the assistant entry
     _adj_json: dict | None = None

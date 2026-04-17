@@ -127,19 +127,10 @@ def build_kag_context() -> str:
         rel_content = read_relationship(owner_name)
         if rel_content:
             parts.append(f"## Relationship with {owner_name}\n{rel_content}")
-    else:
-        # Fallback to legacy RELATIONSHIP.md during migration
-        relationship = read_kag("RELATIONSHIP.md")
-        if relationship:
-            parts.append(f"## Relationship with User\n{relationship}")
 
     reflection = read_kag("REFLECTION.md")
     if reflection:
         parts.append(f"## Reflection\n{reflection}")
-
-    pending = read_kag("PENDING.md")
-    if pending:
-        parts.append(f"## Pending\n{pending}")
 
     knowledge_files = list_knowledge()
     for fname in sorted(knowledge_files):
@@ -329,6 +320,61 @@ def build_rag_context(query: str, n_results: int = 5) -> str:
     return f"## Relevant Memories\n{lines}"
 
 
+def build_rag_context_bucketed(query: str, n_results: int = 4) -> tuple[str, str, str]:
+    """
+    Return three hard time-bucketed memory pools: (recent, semi_recent, historical).
+
+    recent      — 0–2 hours   (ts >= now - 7200)
+    semi_recent — 2–24 hours  (now - 86400 <= ts < now - 7200)
+    historical  — 24h+        (ts < now - 86400)
+    """
+    collection = _get_collection()
+    if collection is None:
+        return "", "", ""
+
+    try:
+        count = collection.count()
+        if count == 0:
+            return "", "", ""
+    except Exception:
+        return "", "", ""
+
+    now = time.time()
+    cutoff_recent     = now - 7200    # 2 hours ago
+    cutoff_semi       = now - 86400   # 24 hours ago
+
+    def _query_bucket(where: dict) -> list[str]:
+        try:
+            fetch = min(n_results * 3, max(1, count))
+            results = collection.query(
+                query_texts=[query],
+                n_results=fetch,
+                where=where,
+                include=["documents", "distances"],
+            )
+            docs      = results.get("documents", [[]])[0]
+            distances = results.get("distances", [[]])[0]
+            scored = sorted(
+                zip([1.0 - d for d in distances], docs),
+                key=lambda x: x[0],
+                reverse=True,
+            )
+            return [doc for _, doc in scored[:n_results]]
+        except Exception as e:
+            if "does not exist" in str(e):
+                _reset_collection()
+            return []
+
+    recent_docs      = _query_bucket({"timestamp": {"$gte": cutoff_recent}})
+    semi_recent_docs = _query_bucket({"$and": [{"timestamp": {"$gte": cutoff_semi}}, {"timestamp": {"$lt": cutoff_recent}}]})
+    historical_docs  = _query_bucket({"timestamp": {"$lt": cutoff_semi}})
+
+    def _to_str(docs: list[str]) -> str:
+        return "\n".join(f"- {d}" for d in docs) if docs else ""
+
+    return _to_str(recent_docs), _to_str(semi_recent_docs), _to_str(historical_docs)
+
+
 def build_rag_context_dual(query: str, n_results: int = 4) -> tuple[str, str]:
     """
     Return two separate memory pools as (recent, historical) strings.
@@ -399,7 +445,7 @@ def rag_fix_word_filter() -> int:
 def kag_fix_word_filter() -> list[str]:
     """Apply word filter to all KAG files on disk. Returns list of modified filenames."""
     modified = []
-    for fname in ["RELATIONSHIP.md", "REFLECTION.md", "PENDING.md"]:
+    for fname in ["REFLECTION.md"]:
         content = read_kag(fname)
         if not content:
             continue
@@ -421,7 +467,7 @@ def kag_fix_word_filter() -> list[str]:
 def kag_apply_replacements(replacements: list[dict]) -> list[str]:
     """Apply an LLM-derived replacement list to all KAG files. Returns modified filenames."""
     modified = []
-    for fname in ["RELATIONSHIP.md", "REFLECTION.md", "PENDING.md"]:
+    for fname in ["REFLECTION.md"]:
         content = read_kag(fname)
         if not content:
             continue
