@@ -51,6 +51,9 @@ def log_context_window(messages: list[dict]) -> None:
         role = msg.get("role", "?").upper()
         content = msg.get("content", "")
 
+        if role == "SYSTEM":
+            continue
+
         # tool_call_id messages
         if "tool_call_id" in msg:
             lines.append(f"\n[TOOL RESULT  id={msg['tool_call_id']}]")
