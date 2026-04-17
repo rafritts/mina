@@ -19,6 +19,7 @@ from ..infra.config import (
     load_config, get_conversation_file,
 )
 from ..infra.log import log
+from ..infra.turn_log import log_context_window, log_conversation
 from ..bio.decoder import biological_report, biological_report_compact, adjudicate_emotion, build_memory_context, needs_summary
 from ..memory.hippocampus import build_kag_context, build_rag_context, build_rag_context_dual
 from ..bio.encoder import encode_stimulus, encode_response, evaluate_activity_deltas, compute_relationship_modifier
@@ -295,6 +296,7 @@ async def _mina_turn(
     Returns (new_history_entries, updated_state, image_paths).
     """
     messages = api_messages(history, system_prompt, state_note)
+    log_context_window(messages)
     new_entries: list[dict] = []
     image_paths: list[str] = []
     from ..infra import token_stats as _ts
@@ -632,6 +634,7 @@ async def run_turn(
     from ..infra import token_stats as _ts
     _ts.increment_turns()
 
+    log_conversation(username, user_input, reply)
     touch_last_active()
     return reply, image_paths
 
