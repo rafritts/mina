@@ -29,8 +29,9 @@
 
 <div class="{dimmed ? 'opacity-60' : ''}">
   <div class="flex justify-between items-center mb-1">
-    <div class="tooltip tooltip-bottom text-left" data-tip={tooltip}>
+    <div class="tooltip tooltip-bottom text-left">
       <span class="text-sm cursor-help {dimmed ? 'opacity-70' : ''}">{label}</span>
+      <div class="tooltip-content text-left text-xs leading-relaxed whitespace-pre-line" style="max-width: 20rem;">{tooltip}</div>
     </div>
     <div class="flex items-center gap-2">
       {#if entry}
