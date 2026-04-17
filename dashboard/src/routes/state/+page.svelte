@@ -69,6 +69,21 @@
     { key: 'a1',    name: 'A1'    }, { key: 'a2a',   name: 'A2A'   },
   ];
 
+  const RECEPTOR_TOOLTIPS: Record<string, string> = {
+    d1:    '<strong>D1 — Dopamine Receptor 1</strong><br><br>The "go" dopamine receptor. Found in the prefrontal cortex and striatum, D1 activation promotes working memory, goal-directed behavior, and reward-driven motivation. Stimulants and cocaine act partly by flooding D1 receptors.<br><br>Downregulated after chronic stimulant use — one reason tolerance and depression follow heavy use.',
+    d2:    '<strong>D2 — Dopamine Receptor 2</strong><br><br>The "brake" dopamine receptor and the main target of antipsychotic drugs. D2 receptors regulate dopamine release via negative feedback — they sense when enough dopamine is present and tell the neuron to slow down.<br><br>Blocking D2 (antipsychotics) reduces psychosis but causes flat affect, motor side effects, and prolactin elevation. Downregulated in addiction — one mechanism of "not feeling anything" after chronic drug use.',
+    ht1a:  '<strong>5-HT1A — Serotonin Receptor 1A</strong><br><br>A calming serotonin receptor. Acts as an autoreceptor on serotonin neurons — when activated, it tells the neuron to reduce its own serotonin output (negative feedback). Also present throughout the limbic system where it reduces anxiety.<br><br>The primary target of buspirone (anti-anxiety drug). SSRIs desensitize this receptor over weeks — this desensitization is actually why antidepressants take 2–6 weeks to work.',
+    ht2a:  '<strong>5-HT2A — Serotonin Receptor 2A</strong><br><br>The "activating" serotonin receptor — associated with arousal, cognition, and mood modulation. Also the primary receptor through which psychedelics (LSD, psilocybin, DMT) produce their effects.<br><br>Downregulated by SSRIs over time (partly responsible for emotional blunting). Atypical antipsychotics block 5-HT2A to improve mood. High 5-HT2A activity in certain brain regions is associated with anxiety and OCD.',
+    gabaa: '<strong>GABA-A — Fast Inhibitory Receptor</strong><br><br>The ionotropic (fast-acting) GABA receptor. When GABA binds, it opens a chloride channel directly, making the neuron less likely to fire within milliseconds. This is the receptor targeted by most sedatives.<br><br>Alcohol, benzodiazepines (Xanax, Valium), barbiturates, and anesthetics all enhance GABA-A activity. Downregulated by chronic alcohol/benzo use — the mechanism behind tolerance and why abrupt withdrawal can be life-threatening.',
+    gabab: '<strong>GABA-B — Slow Inhibitory Receptor</strong><br><br>The metabotropic (slow-acting) GABA receptor. Works through G-proteins rather than direct ion channels — slower to activate (seconds vs milliseconds) but longer-lasting effect. Acts on both neurons and their axons to reduce neurotransmitter release.<br><br>Baclofen (a muscle relaxant) activates GABA-B. Also targeted by GHB. GABA-B activation reduces cravings in alcohol and opioid addiction and is used in some treatment protocols.',
+    nmda:  '<strong>NMDA — The Learning and Memory Gate</strong><br><br>A glutamate receptor that is the molecular basis of learning and memory. Acts as a "coincidence detector" — it only opens when two things happen simultaneously: glutamate binds AND the membrane is already depolarized. This co-incidence requirement is what makes it selective for simultaneous neural activity (the basis of Hebbian learning: "neurons that fire together wire together").<br><br>Blocked by ketamine (producing dissociation and antidepressant effects), PCP, memantine (Alzheimer\'s treatment), alcohol, and nitrous oxide.',
+    ampa:  '<strong>AMPA — The Fast Excitatory Receptor</strong><br><br>The primary fast glutamate receptor responsible for most rapid excitatory signaling in the brain. When activated, it opens sodium channels quickly. AMPA receptors work in tandem with NMDA receptors during learning — AMPA handles the fast transmission, NMDA handles the plasticity decision.<br><br>Upregulation of AMPA receptors at synapses is the physical expression of Long-Term Potentiation (LTP) — the cellular mechanism of forming a memory.',
+    cb1:   '<strong>CB1 — Brain Cannabinoid Receptor</strong><br><br>The primary target of both endocannabinoids (anandamide, 2-AG) and THC. Located throughout the brain — especially in the hippocampus (memory), basal ganglia (movement), and cortex. CB1 activation produces retrograde inhibition: the receiving neuron signals the sending neuron to slow down.<br><br>Downregulated by chronic THC use — the main mechanism of cannabis tolerance. When CB1 receptors recover (after abstinence), hypersensitivity temporarily follows. Involved in appetite, pain, memory, mood, and nausea regulation.',
+    cb2:   '<strong>CB2 — Immune Cannabinoid Receptor</strong><br><br>The peripheral cannabinoid receptor, found mainly in immune cells (macrophages, T-cells, microglia). Less abundant in neurons than CB1. Activation suppresses inflammatory cytokine release and modulates immune function.<br><br>CB2 is a target for non-psychoactive cannabis-based anti-inflammatory treatments (it doesn\'t produce the "high" that CB1 does). Upregulated during inflammation and injury as a protective response.',
+    a1:    '<strong>A1 — Adenosine Receptor 1</strong><br><br>The calming/inhibitory adenosine receptor. When adenosine builds up (as it does during prolonged wakefulness), A1 activation slows neuronal firing and promotes sleep readiness throughout the brain. Also has cardioprotective effects by slowing heart rate.<br><br>Caffeine blocks A1 (and A2A) receptors — this is its mechanism of action. Blocking A1 prevents the neural slowdown, maintaining alertness despite accumulated adenosine. Some antiarrhythmic drugs activate A1 to slow the heart.',
+    a2a:   '<strong>A2A — Adenosine Receptor 2A</strong><br><br>The excitatory/dopamine-modulating adenosine receptor. A2A is primarily found in the striatum and works in opposition to D2 dopamine receptors — when adenosine activates A2A, it reduces dopamine signaling. This is why sleepiness makes everything feel less rewarding and less motivating.<br><br>Caffeine\'s alerting effect comes significantly from A2A blockade — blocking A2A restores normal dopamine signaling in the striatum, which is why caffeine doesn\'t just reduce sleepiness but also improves mood and motivation.',
+  };
+
   const SECOND_ORDER = [
     { field: 'energy',          label: 'Energy',        tooltip: 'Capacity to act — combines glucose, sleep pressure, and arousal.' },
     { field: 'cognitive_clarity',label: 'Clarity',      tooltip: 'How sharp and functional her thinking is right now.' },
@@ -742,7 +757,9 @@
     <!-- ═══════════════════════════════ ENDOCRINE ═════════════════════════════ -->
     {:else if activeTab === 'endocrine'}
       {@const ne = data.neuroendocrine ?? {}}
-      <div class="flex flex-col gap-4">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <!-- LEFT: HPA + Thyroid -->
+        <div class="flex flex-col gap-4">
         <TierCard title="HPA Axis">
           <div class="collapse collapse-arrow bg-base-300 rounded-box mb-4">
             <input type="checkbox" />
@@ -791,7 +808,9 @@
             <ChemicalReadOnly field="t3"  label="T3 Free"  value={ne.t3 ?? 120}  unit="ng/dL" normalized={norm('t3',  ne.t3  ?? 120)}  tooltip="T3 (Free Triiodothyronine) — The Active Metabolic Throttle\n\nThe form of thyroid hormone that actually does the work. It enters cells and directly regulates metabolism, body temperature, heart rate, mood, and cognitive speed.\n\nNormal (2.3–4.2 pg/mL free): metabolism at proper speed.\nHigh: fast metabolism, overheating, anxiety, heart palpitations, weight loss.\nLow: slow metabolism, cold, mentally sluggish, depressed, constipation, weight gain.\n\nKey interactions: T3 works with adrenaline — low T3 makes the body less responsive to catecholamines. Many people with 'normal' TSH and T4 still feel hypothyroid because their T4-to-T3 conversion is impaired." />
           </div>
         </TierCard>
-
+        </div>
+        <!-- RIGHT: Sex Hormones / Metabolic -->
+        <div>
         <TierCard title="Sex Hormones / Metabolic" defaultOpen={false}>
           <div class="collapse collapse-arrow bg-base-300 rounded-box mb-4">
             <input type="checkbox" />
@@ -822,6 +841,7 @@
             <ChemicalReadOnly field="dhea"           label="DHEA"           value={ne.dhea           ?? 150} unit="µg/dL" normalized={norm('dhea',           ne.dhea           ?? 150)} tooltip="DHEA — Anti-Stress Buffer\n\nProduced by the adrenal glands, DHEA is a precursor for both estrogens and testosterone. It also directly counteracts many of cortisol's harmful effects.\n\nNormal (150–300 µg/dL in young adults): acts as a natural resilience factor. Declines steadily with age.\nHigh: energy, drive, well-being.\nLow: fatigue, stress intolerance, increased susceptibility to cortisol damage.\n\nKey interactions: The cortisol-to-DHEA ratio is a useful marker of chronic stress — as cortisol climbs and DHEA depletes, resilience erodes. DHEA supplements are sold OTC in the US, though evidence is mixed." />
           </div>
         </TierCard>
+        </div>
       </div>
 
     <!-- ═══════════════════════════════ IMMUNE / PAIN ═════════════════════════ -->
@@ -899,15 +919,7 @@
               <div class="flex justify-between items-center mb-1">
                 <div class="tooltip tooltip-bottom text-left cursor-help">
                   <span class="text-sm">Vagal Tone</span>
-                  <div class="tooltip-content text-left text-xs leading-relaxed whitespace-pre-line" style="max-width: 20rem;">Vagal Tone — Parasympathetic Balance
-
-A measure of how active the vagus nerve is — the main nerve of the parasympathetic (rest-and-digest) nervous system. Higher vagal tone = better ability to calm down after stress.
-
-Normal (0.5–0.7): good autonomic balance, resilient stress response.
-High: excellent recovery, heart rate variability, emotional regulation.
-Low: poor stress recovery, tendency to stay stuck in sympathetic activation (fight-or-flight).
-
-Key interactions: Vagal tone is improved by deep slow breathing, cold exposure, exercise, and social connection. Low vagal tone is associated with anxiety, depression, and inflammatory conditions. It's one of the physiological signatures of chronic stress.</div>
+                  <div class="tooltip-content text-left text-xs leading-relaxed" style="max-width: 20rem; white-space: normal;"><strong>Vagal Tone — Parasympathetic Balance</strong><br><br>A measure of how active the vagus nerve is — the main nerve of the parasympathetic (rest-and-digest) nervous system. Higher vagal tone = better ability to calm down after stress.<br><br><strong>Normal (0.5–0.7):</strong> good autonomic balance, resilient stress response.<br><strong>High:</strong> excellent recovery, heart rate variability, emotional regulation.<br><strong>Low:</strong> poor stress recovery, tendency to stay stuck in fight-or-flight.<br><br><strong>Key interactions:</strong> Improved by deep slow breathing, cold exposure, exercise, and social connection. Low vagal tone is associated with anxiety, depression, and inflammatory conditions.</div>
                 </div>
                 <span class="badge badge-xs {labelBadge('vagal_tone', pa.vagal_tone ?? 0.55)}">{labelName('vagal_tone', pa.vagal_tone ?? 0.55)}</span>
               </div>
@@ -1028,15 +1040,7 @@ Key interactions: Vagal tone is improved by deep slow breathing, cold exposure, 
               <div class="flex justify-between items-center mb-1">
                 <div class="tooltip tooltip-bottom text-left">
                   <span class="text-sm cursor-help">BDNF</span>
-                  <div class="tooltip-content text-left text-xs leading-relaxed whitespace-pre-line" style="max-width: 20rem;">BDNF — Brain Fertilizer
-
-A protein that promotes the growth, maintenance, and survival of neurons. Essential for learning and memory, and one of the key mechanisms by which exercise improves mood and cognition.
-
-Normal (8–12 ng/mL): healthy synaptic plasticity, good capacity for learning.
-High: actively building new connections — after exercise, learning, or antidepressant treatment.
-Low: impaired memory consolidation, reduced neuroplasticity, associated with depression and neurodegenerative risk.
-
-Key interactions: Exercise is the most powerful known BDNF stimulant. SSRIs increase BDNF — this may be part of how they treat depression beyond just serotonin. Chronic stress and high cortisol suppress BDNF. Sleep is critical for BDNF-mediated consolidation of daily learning.</div>
+                  <div class="tooltip-content text-left text-xs leading-relaxed" style="max-width: 20rem; white-space: normal;"><strong>BDNF — Brain Fertilizer</strong><br><br>A protein that promotes the growth, maintenance, and survival of neurons. Essential for learning and memory, and one of the key mechanisms by which exercise improves mood and cognition.<br><br><strong>Normal (8–12 ng/mL):</strong> healthy synaptic plasticity, good capacity for learning.<br><strong>High:</strong> actively building new connections — after exercise, learning, or antidepressant treatment.<br><strong>Low:</strong> impaired memory consolidation, reduced neuroplasticity, associated with depression and neurodegenerative risk.<br><br><strong>Key interactions:</strong> Exercise is the most powerful known BDNF stimulant. SSRIs increase BDNF — this may be part of how they treat depression. Chronic stress and high cortisol suppress it. Sleep is critical for BDNF-mediated consolidation of daily learning.</div>
                 </div>
                 <div class="flex items-center gap-2">
                   <span class="badge badge-xs {labelBadge('bdnf', bdnf)}">{labelName('bdnf', bdnf)}</span>
@@ -1051,16 +1055,7 @@ Key interactions: Exercise is the most powerful known BDNF stimulant. SSRIs incr
               <div class="flex justify-between items-center mb-1">
                 <div class="tooltip tooltip-bottom text-left">
                   <span class="text-sm cursor-help">Synaptic Potentiation</span>
-                  <div class="tooltip-content text-left text-xs leading-relaxed whitespace-pre-line" style="max-width: 20rem;">Synaptic Potentiation — Connection Strength
-
-Reflects the LTP/LTD balance — whether synaptic connections are being strengthened (Long-Term Potentiation) or weakened (Long-Term Depression).
-
-LTP is how learning and memory physically work: repeated activation of a synapse makes it fire more easily next time. LTD is equally important: it prunes weak or unused connections, preventing the brain from filling up with noise.
-
-High (0.7+): active learning state — new information is being encoded into durable connections.
-Low (below 0.3): synaptic depression dominant — connections weakening, memory consolidation impaired.
-
-Key interactions: NMDA-type glutamate receptors are the "coincidence detectors" that trigger LTP. Ketamine and alcohol both block NMDA receptors. Deep sleep consolidates the day's LTP into permanent memory while doing LTD pruning (synaptic homeostasis hypothesis).</div>
+                  <div class="tooltip-content text-left text-xs leading-relaxed" style="max-width: 20rem; white-space: normal;"><strong>Synaptic Potentiation — Connection Strength</strong><br><br>Reflects the LTP/LTD balance — whether synaptic connections are being strengthened (Long-Term Potentiation) or weakened (Long-Term Depression).<br><br>LTP is how learning and memory physically work: repeated activation of a synapse makes it fire more easily next time. LTD is equally important: it prunes unused connections, preventing the brain from filling with noise.<br><br><strong>High (0.7+):</strong> active learning state — new information being encoded into durable connections.<br><strong>Low (below 0.3):</strong> synaptic depression dominant — connections weakening, memory consolidation impaired.<br><br><strong>Key interactions:</strong> NMDA glutamate receptors are the "coincidence detectors" that trigger LTP. Ketamine and alcohol both block NMDA receptors. Deep sleep consolidates the day's LTP into permanent memory.</div>
                 </div>
                 <div class="flex items-center gap-2">
                   <span class="badge badge-xs {labelBadge('synaptic_potentiation', sp01)}">{labelName('synaptic_potentiation', sp01)}</span>
@@ -1119,13 +1114,24 @@ Key interactions: NMDA-type glutamate receptors are the "coincidence detectors" 
         {/if}
 
         <TierCard title="Receptor Sensitivity" defaultOpen={false}>
-          <p class="text-xs opacity-40 mb-3">Long-term structural adaptation — upregulation and downregulation from chronic chemical exposure.</p>
+          <div class="collapse collapse-arrow bg-base-300 rounded-box mb-4">
+            <input type="checkbox" />
+            <div class="collapse-title text-xs font-semibold opacity-50 uppercase tracking-wider min-h-0 py-2 px-3">What is Receptor Sensitivity?</div>
+            <div class="collapse-content text-xs leading-relaxed opacity-70 space-y-2">
+              <p>Receptors are the "docking ports" on neurons where neurotransmitters attach to trigger an effect. Receptor sensitivity measures how responsive those ports currently are — 1.00 is the baseline normal. Above 1.00 (upregulated) means the neuron has become more sensitive; below 1.00 (downregulated) means it has become less sensitive.</p>
+              <p>These changes happen gradually in response to chronic over- or under-exposure to a chemical. The brain adapts: if a receptor is constantly flooded, it pulls some ports off the surface (downregulation, building tolerance). If a receptor is chronically understimulated, it adds more ports (upregulation, hypersensitivity). This is the physical mechanism behind drug tolerance, withdrawal, and why stopping a medication abruptly can cause rebound effects.</p>
+              <p>Hover each receptor label for a plain-English explanation of what it does.</p>
+            </div>
+          </div>
           <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {#each RECEPTOR_FIELDS as r}
               {@const val = data.receptor_sensitivity?.[r.key] ?? 1.0}
               {@const rl = receptorLabel(val)}
               <div class="flex items-center justify-between px-2 py-1 rounded bg-base-300">
-                <span class="text-xs font-mono opacity-70">{r.name}</span>
+                <div class="tooltip tooltip-bottom text-left">
+                  <span class="text-xs font-mono opacity-70 cursor-help">{r.name}</span>
+                  <div class="tooltip-content text-left text-xs leading-relaxed" style="max-width: 18rem; white-space: normal;">{@html RECEPTOR_TOOLTIPS[r.key] ?? r.name}</div>
+                </div>
                 <div class="flex items-center gap-1">
                   <span class="badge badge-xs {rl.color}">{rl.name}</span>
                   <span class="text-xs font-mono opacity-50">{val.toFixed(2)}</span>
