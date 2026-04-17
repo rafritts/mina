@@ -570,7 +570,7 @@ async def _run_mina_free_time(
 # ---------------------------------------------------------------------------
 
 async def run_freetime(force: bool = False) -> None:
-    if not force and _user_recently_active():
+    if not force and _user_recently_active(window_seconds=20 * 60):
         _log("User recently active — skipping freetime.")
         return
 
