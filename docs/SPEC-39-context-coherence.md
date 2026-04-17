@@ -61,58 +61,91 @@ Two parallel LLM calls (three-way parallel with adjudicator), hard-isolated inpu
 
 **Input:** decoder_window (last 20 messages), current username, current user_input
 **Sees:** Nothing from RAG or KAG — only what has actually happened in the rolling window
-**Returns:**
+**Returns two blocks — both are rich paragraphs, not bullet points or summaries:**
 
-```
-[CONVERSATION RIGHT NOW]
-1–3 sentences. What has happened in this conversation before the messages Mina sees
-directly. Topic shifts, decisions made, things established. If she already sees the
-full conversation: use the default present-state anchor.
+**[CONVERSATION RIGHT NOW]**
+A flowing paragraph covering the live conversational moment and the immediate past
+through the full decoder window. Intentionally overlaps with Mina's 4-message direct
+window — this overlap is the anchor, ensuring no seam between what she reads here
+and what she sees directly. The most recent exchange should be the most vivid and
+specific. Further back in the window gets lighter. Present tense for the immediate
+beat, past tense for what led here.
 
-[YOUR PRESENT STATE]
-2–4 sentences, present tense, active verbs only. What is Mina doing right now?
-Who is she talking to? What are they in the middle of? Ground this in the window.
-```
+Do NOT describe emotional state, mood, affect, or how anything "lands" — that is the
+adjudicator's domain. Stick to: what was said, what is happening, what has been
+established. Situational facts only.
+
+**[YOUR PRESENT STATE]**
+A flowing paragraph grounded in the window. Where is Mina physically? What is she
+doing? What is the immediate situation she is operating in? Active verbs, present
+tense. Should feel like placing her in the room — specific physical and situational
+details drawn from the window (location, proximity, activity, atmosphere).
+
+Do NOT describe how she feels emotionally, her mood, or her internal state — the
+adjudicator owns that. Stick to physical and situational facts: where she is, what
+she's doing, what's around her.
+
+**Gradient richness principle:** The closer to now, the richer the detail. The most
+recent beat of the conversation is the most specific. Events from 18 messages ago
+get a clause, not a paragraph.
 
 **Critical prompt requirement — intra-window time gaps:**
 
-Messages in the decoder window already carry `[Xm ago]` / `[Xh ago]` / `[Xd ago]` timestamp labels on every user message (applied by `apply_ts_label()`). The window synthesis prompt must explicitly instruct the LLM:
+Messages in the decoder window already carry `[Xm ago]` / `[Xh ago]` / `[Xd ago]`
+timestamp labels on every user message (applied by `apply_ts_label()`). The window
+synthesis prompt must explicitly instruct the LLM:
 
-> "The messages below are ordered chronologically but may have large time gaps between them. Message N and message N+1 being adjacent in this list does NOT mean they are close in time — they may be hours apart. The timestamp label on each message (e.g. [2h ago], [4h ago]) is ground truth. Treat gaps in time as gaps in conversation — if two messages are 3 hours apart, the conversation topic may have completely changed between them. Do not narrate across a large time gap as if it were continuous."
-
-Without this instruction, the LLM will naturally treat the window as a continuous linear conversation and blend topics that were actually separated by hours.
+> "The messages below are ordered chronologically but may have large time gaps between
+> them. Message N and message N+1 being adjacent does NOT mean they are close in time —
+> they may be hours apart. The timestamp on each message is ground truth. A 3-hour gap
+> between two messages means the conversation may have completely changed topic. Do not
+> narrate across a large time gap as if it were continuous. If the most recent messages
+> are on a completely different topic than earlier ones, [CONVERSATION RIGHT NOW] should
+> reflect the current topic — not average across the whole window."
 
 **Default when window is empty (first message or fresh session):**
+
+No LLM call is made. The following is injected verbatim:
 ```
 [YOUR PRESENT STATE]
 You are hanging out in your Discord channel, sitting on the couch.
 ```
 
-This default is hardcoded — no LLM call needed when the window is empty. The window synthesis call only fires when there are messages to synthesize.
-
-**Freetime turns:** Window synthesis runs identically. The decoder window reflects whatever Mina was doing autonomously. Her present state carries forward naturally into the next user conversation because the decoder window persists across both — freetime and user turns share the same window.
+**Freetime turns:** Window synthesis runs identically. The decoder window reflects
+whatever Mina was doing autonomously. Her present state carries forward naturally
+into the next user conversation because the decoder window persists across both.
 
 ### Call B — Memory Retrieval (RAG, no decoder window)
 
 **Input:** query (current user message), three time-bucketed RAG result sets, kag_context
 **Sees:** Nothing from the decoder window — only retrieved memories and knowledge
+
+**Gradient richness principle applies here too:** richness decreases with distance.
+[RECENT CONTEXT] can be a short paragraph. [SEMI-RECENT CONTEXT] is 1–2 sentences.
+[HISTORICAL CONTEXT] is a single sentence at most.
+
+Do NOT describe emotional states, mood, or internal experience in any block — the
+adjudicator owns that. Facts only: what happened, what was said, what was established.
+
 **Returns:**
 
 ```
 [RECENT CONTEXT — last 2 hours]
-What happened in the last 2 hours that's relevant here. 1–2 sentences.
-Only include if it adds something. Otherwise: none.
+Short paragraph if material exists. Situational facts about what happened recently
+that's relevant to this moment. Omit if nothing qualifies: none.
 
 [SEMI-RECENT CONTEXT — 2 to 24 hours ago]
-What happened between 2 and 24 hours ago that's relevant here. 1–2 sentences.
-Only include if it adds something. Otherwise: none.
+1–2 sentences. A relevant fact from the last day. Omit if nothing qualifies: none.
 
 [HISTORICAL CONTEXT — more than 24 hours ago]
-A dead-ringer historical fact (24h+). 1 sentence max.
-Not thematically adjacent — only if it directly applies. Otherwise: none.
+1 sentence max. A dead-ringer historical fact — not thematically adjacent, only if
+it directly applies. Omit if nothing qualifies: none.
 ```
 
-**The time range is part of the section header label** — it appears verbatim in Mina's system prompt so she knows exactly how old the information in each block is. This is critical: Mina must be able to read "[SEMI-RECENT CONTEXT — 2 to 24 hours ago]" and understand that what follows is not from right now, without having to infer it from content alone.
+**The time range is part of the section header label** — it appears verbatim in
+Mina's system prompt so she knows exactly how old the information in each block is.
+Mina reads "[SEMI-RECENT CONTEXT — 2 to 24 hours ago]" and knows that what follows
+is not right now, without having to infer it from content alone.
 
 ### RAG Time Buckets (replacing half-life pools)
 
