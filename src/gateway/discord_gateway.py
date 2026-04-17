@@ -553,7 +553,10 @@ async def _seed_channel(channel: discord.TextChannel) -> int:
     # Deduplication: check if the last message is already in history
     last_content = f"{messages[-1].author.display_name}: {messages[-1].content}"
     for entry in reversed(history):
-        if entry.get("role") == "user" and entry.get("content", "").endswith(messages[-1].content):
+        content = entry.get("content", "")
+        if isinstance(content, list):
+            content = " ".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
+        if entry.get("role") == "user" and content.endswith(messages[-1].content):
             return 0  # Already seeded
 
     # Append seed marker + messages
