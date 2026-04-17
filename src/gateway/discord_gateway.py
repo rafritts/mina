@@ -146,6 +146,8 @@ def _load_config() -> dict:
 
 async def _update_presence(state) -> None:
     """Set Discord presence to reflect Mina's current sleep/wake state."""
+    if not client.is_ready():
+        return
     if state.sleeping:
         if state.sleep_expected_wake:
             wake_str = time.strftime("%H:%M", time.localtime(state.sleep_expected_wake))
@@ -153,7 +155,7 @@ async def _update_presence(state) -> None:
         else:
             activity_name = "sleeping"
         await client.change_presence(
-            status=discord.Status.idle,
+            status=discord.Status.dnd,
             activity=discord.Activity(type=discord.ActivityType.watching, name=f"💤 {activity_name}"),
         )
     else:

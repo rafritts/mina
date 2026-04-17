@@ -572,8 +572,11 @@ def advance(state: BiologicalState,
         propensity = compute_sleep_propensity(s)
         sleep_start_hour = float(cfg.get("sleep_window_start", 1.0))
         sleep_end_hour   = float(cfg.get("sleep_window_end", 9.0))
-        in_window = (sleep_start_hour <= hour_of_day < sleep_end_hour or
-                     hour_of_day < sleep_end_hour)
+        # Handle windows that span midnight (e.g. start=23, end=7) vs same-day (start=4, end=8)
+        if sleep_start_hour > sleep_end_hour:
+            in_window = hour_of_day >= sleep_start_hour or hour_of_day < sleep_end_hour
+        else:
+            in_window = sleep_start_hour <= hour_of_day < sleep_end_hour
 
         # In window: propensity threshold is lower; exhaustion can override any time
         threshold = AUTO_SLEEP_PROPENSITY_IN_WINDOW if in_window else AUTO_SLEEP_PROPENSITY_OVERRIDE
