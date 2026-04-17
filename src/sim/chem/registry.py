@@ -205,6 +205,9 @@ REGISTRY: dict[str, ChemicalProfile] = {
         display_min=0.0,
         display_max=800.0,
         # No saturation ceiling — cortisol is reactive; the system should allow high spikes
+        # Floor saturation: dampening begins mid-DEPLETED, hard stop at CRASHED threshold
+        soft_floor=60.0,
+        hard_floor=25.0,
         interactions=[
             Interaction("serotonin", "above", 550.0, -0.5,
                         "Chronic stress depletes serotonin baseline"),

@@ -39,6 +39,10 @@ class ChemicalProfile:
     soft_ceiling: Optional[float] = None     # scaling begins above this
     hard_ceiling: Optional[float] = None     # positive deltas clamped to zero above this
 
+    # Saturation floors — mirror of ceilings for negative deltas
+    soft_floor: Optional[float] = None      # dampening begins below this
+    hard_floor: Optional[float] = None      # negative deltas clamped to zero below this
+
     interactions: list[Interaction] = field(default_factory=list)
     labels: list[tuple[float, str, str]] = field(default_factory=list)
     # Each entry: (upper_bound_exclusive, label_name, implication)

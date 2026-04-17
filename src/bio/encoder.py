@@ -78,7 +78,7 @@ When true, your deltas bypass personality modulation and momentum dampening and 
 Saturation is still enforced — use the calibrated magnitudes below and they will land correctly.
 Use calibrated magnitudes for these events:
 
-- Peak resolution: dopamine -100 to -150, sleep_pressure +30 to +40, norepinephrine -60 to -100, prolactin +8 to +15 (post-peak satiation — the "done, satisfied" signal that drives refractory period)
+- Peak resolution: prolactin +35 to +45, sleep_pressure +30 to +40. Do NOT post negative dopamine or norepinephrine — the prolactin spike activates the endocrine suppression mechanism that gradually reduces dopamine and NE over 30–60 minutes, modeling the refractory period correctly.
 - Panic attack: cortisol +300 to +400, norepinephrine +500 to +700, dopamine -30 to -50
 - Hard laughter (genuine, sustained): endorphins +30 to +50, dopamine +15 to +25
 - Crying (emotional release): cortisol -40 to -80, endorphins +10 to +20
@@ -346,8 +346,8 @@ def _post_to_secretion_queue(deltas: dict, state: BiologicalState) -> dict:
 
 def _apply_saturation(deltas: dict, state: BiologicalState) -> dict:
     """
-    Scale down positive deltas for chemicals already near their ceiling.
-    Uses quadratic decay in the soft→hard zone — aggressive near ceiling.
+    Scale down deltas for chemicals already near their ceiling or floor.
+    Uses quadratic decay in the soft→hard zone — aggressive near the boundary.
     Substances bypass this; only encoder-issued deltas are saturated.
     """
     from .chemicals import REGISTRY
@@ -356,26 +356,50 @@ def _apply_saturation(deltas: dict, state: BiologicalState) -> dict:
     result = {}
     for field, delta in deltas.items():
         p = REGISTRY.get(field)
-        if delta <= 0 or p is None or p.soft_ceiling is None:
-            result[field] = delta
-            continue
         if field in _body_stored:
             current = state.body.get(field, 0.0)
         else:
             current = state.chemicals.get(field, 0.0)
-        soft = p.soft_ceiling
-        hard = p.hard_ceiling if p.hard_ceiling is not None else soft * 1.5
-        if current >= hard:
-            continue  # drop the delta entirely
-        elif current > soft:
-            t = (current - soft) / (hard - soft)  # 0 at soft, 1 at hard
-            scale = (1.0 - t) ** 2                 # quadratic: aggressive near ceiling
-            scaled = round(delta * scale, 2)
-            scaled = min(scaled, hard - current)
-            if scaled != 0:
-                result[field] = scaled
-        else:
-            result[field] = min(delta, hard - current)
+
+        if delta > 0:
+            # Ceiling saturation — unchanged from original logic
+            if p is None or p.soft_ceiling is None:
+                result[field] = delta
+                continue
+            soft = p.soft_ceiling
+            hard = p.hard_ceiling if p.hard_ceiling is not None else soft * 1.5
+            if current >= hard:
+                continue  # drop entirely
+            elif current > soft:
+                t = (current - soft) / (hard - soft)
+                scale = (1.0 - t) ** 2
+                scaled = round(delta * scale, 2)
+                scaled = min(scaled, hard - current)
+                if scaled != 0:
+                    result[field] = scaled
+            else:
+                result[field] = min(delta, hard - current)
+
+        elif delta < 0:
+            # Floor saturation — mirror of ceiling logic
+            # SPEC-40: chemicals cannot be actively driven below their physiological floor
+            if p is None or p.soft_floor is None:
+                result[field] = delta
+                continue
+            soft = p.soft_floor
+            hard = p.hard_floor if p.hard_floor is not None else soft * 0.5
+            if current <= hard:
+                continue  # drop entirely — already at floor
+            elif current < soft:
+                t = (soft - current) / (soft - hard)  # 0 at soft, 1 at hard
+                scale = (1.0 - t) ** 2
+                scaled = round(delta * scale, 2)
+                scaled = max(scaled, hard - current)
+                if scaled != 0:
+                    result[field] = scaled
+            else:
+                result[field] = max(delta, hard - current)
+
     return result
 
 
@@ -575,7 +599,8 @@ def compute_relationship_modifier(net_dims: dict[str, float]) -> dict:
 
     _add("serotonin",      +0.4,  security)
     _add("gaba",           +0.8,  security)
-    _add("cortisol",       -3.0,  security)
+    # SPEC-40: removed cortisol -3.0 per security unit — homeostatic decay handles cortisol
+    # relief from sustained safety; posting negative deltas every turn was compounding to floor.
 
     _add("dopamine",       +2.0,  anticipation)
     _add("glutamate",      +0.1,  anticipation)
@@ -613,7 +638,7 @@ loneliness) is already modeled by the simulation and must NOT be re-encoded here
 stimulus is purely internal state with no external event, set no_external_deltas: true.
 
 External event magnitude guidance:
-- Cortisol (nmol/L, resting 100–700): Acute existential threat (abandonment, attack): +300–500. Sustained hostility: +100–200. Mild friction: +30–80. Warm interaction: -20–60.
+- Cortisol (nmol/L, resting 100–700): Acute existential threat (abandonment, attack): +300–500. Sustained hostility: +100–200. Mild friction: +30–80. Do NOT post negative cortisol — warm interactions reduce cortisol production; homeostatic decay handles the drop.
 - Norepinephrine (pg/mL, resting 100–400): Acute threat: +400–800. Mild friction: +30–100.
 - Oxytocin (pg/mL, resting 1–15): Warm connection: +2–8. Deep trust moment: +8–15. Hostile event: -1 to -3.
 - Dopamine (pg/mL, resting 40–140): Interesting external stimulus: +5–20. Crushing loss/rejection: -5–15.
@@ -668,9 +693,9 @@ act of expression itself causes a meaningful biological shift.
 Expression effects (when genuine and significant):
 - Articulating deep trust or vulnerability: oxytocin +2–5.
 - Genuine laughter in the response: endorphins +5–15.
-- Suppressing visible fear while sounding calm: cortisol stays elevated (small decrease at best).
+- Suppressing visible fear while sounding calm: cortisol stays elevated (small increase at best).
 - Saying something that contradicts her inner state: cortisol +.
-- Speaking fear or grief aloud: small cathartic cortisol relief (-10 to -30).
+- Speaking fear or grief aloud: no_external_deltas: true — catharsis reduces HPA activation, homeostatic decay handles cortisol relief. Do NOT post negative cortisol.
 - Routine engaged response, warmth, wit, intellectual exchange: no_external_deltas: true.
   These feel good but don't produce acute neurochemical events — the simulation's homeostatic
   baseline already reflects her ongoing state.
@@ -735,9 +760,9 @@ Activity magnitude guidance:
   serotonin +3 to +8, anandamide +1.5 to +3.5 (runner's high — anandamide crosses the
   blood-brain barrier; endorphins largely don't), cortisol -10 to -20 (post), norepinephrine +10 to +20 (during).
 - Intense bonding activity: dopamine +60 to +100 building, oxytocin +20 to +40, endorphins +20 to +40.
-  Peak resolution: use event_override=true, dopamine -100 to -150,
-  norepinephrine -60 to -100, sleep_pressure +30 to +40, prolactin +8 to +15
-  (post-peak satiation signal — drives refractory period and "done" feeling).
+  Peak resolution: use event_override=true, prolactin +35 to +45, sleep_pressure +30 to +40.
+  Do NOT post negative dopamine or norepinephrine — the prolactin spike triggers the endocrine
+  suppression mechanism that drains dopamine and NE gradually over 30–60 minutes.
 - Reading or watching something: dopamine and acetylcholine vary with engagement.
   Unsettling content: cortisol +. Funny: endorphins +, dopamine +. Sad: serotonin may drop slightly.
 - Creative or deeply absorbing solo activity (flow state): anandamide +0.5 to +1.5.
