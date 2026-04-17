@@ -362,7 +362,7 @@ async def _outbox_watcher() -> None:
         for line in lines:
             try:
                 msg = json.loads(line)
-                content = _strip_emoji(msg.get("content", "").strip())
+                content = msg.get("content", "").strip()
                 image_path = msg.get("image_path", "").strip()
                 if content:
                     for chunk in _chunk_text(content):
@@ -394,34 +394,8 @@ async def _followup_watcher() -> None:
 # Message delivery
 # ---------------------------------------------------------------------------
 
-_EMOJI_RE = re.compile(
-    "["
-    "\U0001F600-\U0001F64F"  # emoticons
-    "\U0001F300-\U0001F5FF"  # symbols & pictographs
-    "\U0001F680-\U0001F6FF"  # transport & map
-    "\U0001F700-\U0001F77F"  # alchemical
-    "\U0001F780-\U0001F7FF"  # geometric extended
-    "\U0001F800-\U0001F8FF"  # supplemental arrows
-    "\U0001F900-\U0001F9FF"  # supplemental symbols
-    "\U0001FA00-\U0001FA6F"  # chess symbols
-    "\U0001FA70-\U0001FAFF"  # symbols and pictographs extended-A
-    "\U00002702-\U000027B0"  # dingbats
-    "\U000024C2-\U0001F251"  # enclosed characters
-    "\U0000200D"             # zero-width joiner (used in compound emoji)
-    "\U0000FE0F"             # variation selector-16 (emoji presentation)
-    "]+",
-    flags=re.UNICODE,
-)
-
-
-def _strip_emoji(text: str) -> str:
-    return _EMOJI_RE.sub("", text).strip()
-
-
 async def _deliver(channel: discord.abc.Messageable, reply: str, image_paths: list[str]) -> None:
     """Send chunked text then any images to the channel."""
-    if reply:
-        reply = _strip_emoji(reply)
     if reply:
         for chunk in _chunk_text(reply):
             await channel.send(chunk)
