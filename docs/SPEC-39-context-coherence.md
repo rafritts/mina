@@ -74,6 +74,14 @@ full conversation: use the default present-state anchor.
 Who is she talking to? What are they in the middle of? Ground this in the window.
 ```
 
+**Critical prompt requirement — intra-window time gaps:**
+
+Messages in the decoder window already carry `[Xm ago]` / `[Xh ago]` / `[Xd ago]` timestamp labels on every user message (applied by `apply_ts_label()`). The window synthesis prompt must explicitly instruct the LLM:
+
+> "The messages below are ordered chronologically but may have large time gaps between them. Message N and message N+1 being adjacent in this list does NOT mean they are close in time — they may be hours apart. The timestamp label on each message (e.g. [2h ago], [4h ago]) is ground truth. Treat gaps in time as gaps in conversation — if two messages are 3 hours apart, the conversation topic may have completely changed between them. Do not narrate across a large time gap as if it were continuous."
+
+Without this instruction, the LLM will naturally treat the window as a continuous linear conversation and blend topics that were actually separated by hours.
+
 **Default when window is empty (first message or fresh session):**
 ```
 [YOUR PRESENT STATE]
@@ -91,18 +99,20 @@ This default is hardcoded — no LLM call needed when the window is empty. The w
 **Returns:**
 
 ```
-[RECENT CONTEXT]
+[RECENT CONTEXT — last 2 hours]
 What happened in the last 2 hours that's relevant here. 1–2 sentences.
 Only include if it adds something. Otherwise: none.
 
-[SEMI-RECENT CONTEXT]
+[SEMI-RECENT CONTEXT — 2 to 24 hours ago]
 What happened between 2 and 24 hours ago that's relevant here. 1–2 sentences.
 Only include if it adds something. Otherwise: none.
 
-[HISTORICAL CONTEXT]
+[HISTORICAL CONTEXT — more than 24 hours ago]
 A dead-ringer historical fact (24h+). 1 sentence max.
 Not thematically adjacent — only if it directly applies. Otherwise: none.
 ```
+
+**The time range is part of the section header label** — it appears verbatim in Mina's system prompt so she knows exactly how old the information in each block is. This is critical: Mina must be able to read "[SEMI-RECENT CONTEXT — 2 to 24 hours ago]" and understand that what follows is not from right now, without having to infer it from content alone.
 
 ### RAG Time Buckets (replacing half-life pools)
 
@@ -133,15 +143,15 @@ No gap. No contamination between present and past.
 ### Assembly Order in System Prompt
 
 ```
-[IDENTITY BLOCK]              ← MINA.md + customization (unchanged)
+[IDENTITY BLOCK]                                    ← MINA.md + customization (unchanged)
 
 ---
 
-[CONVERSATION RIGHT NOW]      ← Call A output
-[YOUR PRESENT STATE]          ← Call A output
-[RECENT CONTEXT]              ← Call B output
-[SEMI-RECENT CONTEXT]         ← Call B output
-[HISTORICAL CONTEXT]          ← Call B output
+[CONVERSATION RIGHT NOW]                            ← Call A output
+[YOUR PRESENT STATE]                                ← Call A output
+[RECENT CONTEXT — last 2 hours]                     ← Call B output
+[SEMI-RECENT CONTEXT — 2 to 24 hours ago]           ← Call B output
+[HISTORICAL CONTEXT — more than 24 hours ago]       ← Call B output
 
 ---
 
