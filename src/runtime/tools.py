@@ -13,7 +13,8 @@ import os
 import time
 from typing import Any
 
-from ..infra.config import OUTBOX_FILE, FOLLOWUP_QUEUE_FILE, load_config
+from ..infra.config import FOLLOWUP_QUEUE_FILE, load_config
+from ..infra import discord_send as _discord_send
 from ..bio.state import BiologicalState, save_state
 
 _BASE_URL_SEARCH = os.getenv("BASE_URL", "https://api.x.ai/v1")
@@ -406,10 +407,8 @@ def handle_message_user(args: dict, state: BiologicalState) -> tuple[str, Biolog
     content = args.get("content", "").strip()
     if not content:
         return "[message_user: no content provided]", state
-    os.makedirs(os.path.dirname(OUTBOX_FILE), exist_ok=True)
-    with open(OUTBOX_FILE, "a") as f:
-        f.write(json.dumps({"content": content, "timestamp": time.time()}) + "\n")
-    return "Message queued.", state
+    _discord_send.send_nowait(content=content)
+    return "Message sent.", state
 
 
 def handle_do_action(args: dict, state: BiologicalState) -> tuple[str, BiologicalState, dict]:

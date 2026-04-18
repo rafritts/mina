@@ -19,9 +19,10 @@ import time
 from openai import OpenAI
 
 from ..infra.config import (
-    DECODER_WINDOW_FILE, OUTBOX_FILE, PAUSED_FLAG, PROJECT_ROOT, LAST_ACTIVE_FILE,
+    DECODER_WINDOW_FILE, PAUSED_FLAG, PROJECT_ROOT, LAST_ACTIVE_FILE,
     load_config, get_conversation_file,
 )
+from ..infra import discord_send as _discord_send
 from ..infra.client import chat_create, MODEL
 from .cortex import apply_ts_label
 from ..infra.log import log as _log_raw
@@ -509,13 +510,11 @@ async def _run_mina_free_time(
             if name == "generate_image":
                 result = await handle_generate_image(args)
                 if result and result.endswith(".png") and os.path.exists(result):
-                    os.makedirs(os.path.dirname(OUTBOX_FILE), exist_ok=True)
-                    with open(OUTBOX_FILE, "a") as f:
-                        f.write(json.dumps({"image_path": result, "timestamp": time.time()}) + "\n")
+                    await _discord_send.send(image_path=result)
                     # Tell Mina the image is delivered as an attachment so she never
                     # invents a fake URL or filename in her reply.
                     tool_result = (
-                        "Image generated and queued as a Discord file attachment. "
+                        "Image generated and sent as a Discord file attachment. "
                         "It will appear in the channel automatically. "
                         "Do NOT include any URL, filename, or link in your reply — just respond naturally."
                     )
@@ -755,9 +754,14 @@ async def run_freetime(force: bool = False) -> None:
             pass  # LLM didn't return valid JSON — treat full text as inner_state, no send
 
         # Rewrite the closing entry so the decoder window stores readable text, not raw JSON.
-        # If a message was sent, store that; otherwise store inner_state.
+        # Label sent messages explicitly — without this, the next freetime session sees the
+        # message as an undelivered thought and sends it again.
         if _closing_entry_idx is not None:
-            readable = outbound_message if outbound_message else inner_state
+            if outbound_message:
+                _creator = cfg.get("admin_name") or "Ryan"
+                readable = f"[Sent to {_creator}]: {outbound_message}"
+            else:
+                readable = inner_state
             new_entries[_closing_entry_idx]["content"] = readable
 
         state = load_and_advance()
@@ -767,10 +771,8 @@ async def run_freetime(force: bool = False) -> None:
             save_state(state)
 
         if outbound_message:
-            os.makedirs(os.path.dirname(OUTBOX_FILE), exist_ok=True)
-            with open(OUTBOX_FILE, "a") as f:
-                f.write(json.dumps({"content": outbound_message, "timestamp": time.time()}) + "\n")
-            _log(f"Queued message to user: {outbound_message[:80]}")
+            await _discord_send.send(content=outbound_message)
+            _log(f"Sent message to user: {outbound_message[:80]}")
 
     # SPEC-32: append freetime assistant messages to conversation.jsonl
     conv_entries = []

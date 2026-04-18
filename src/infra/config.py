@@ -22,7 +22,6 @@ LAST_ACTIVE_FILE     = os.path.join(RUN_DIR, ".last_user_active")
 ADMIN_FILE           = os.path.join(RUN_DIR, "ADMIN_INSTRUCTIONS.md")
 PAUSED_FLAG          = os.path.join(RUN_DIR, ".paused")
 INJECT_FILE          = os.path.join(RUN_DIR, "subconscious_inject.md")
-OUTBOX_FILE          = os.path.join(RUN_DIR, "outbox.jsonl")
 OVERDOSE_TIMER_FILE  = os.path.join(RUN_DIR, "overdose_timer.json")
 FOLLOWUP_QUEUE_FILE  = os.path.join(RUN_DIR, "followup_queue.json")
 

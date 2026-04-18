@@ -6,7 +6,7 @@ When a followup fires:
   - Emotion is adjudicated against the deferred context (not current conversation)
   - KAG/RAG memory is built using the deferred context as the query
   - NO conversation history — the history at fire time is irrelevant
-  - Response is delivered via OUTBOX_FILE
+  - Response is delivered directly via discord_send
 """
 from __future__ import annotations
 
@@ -15,7 +15,8 @@ import json
 import os
 import time
 
-from ..infra.config import FOLLOWUP_QUEUE_FILE, OUTBOX_FILE
+from ..infra.config import FOLLOWUP_QUEUE_FILE
+from ..infra import discord_send as _discord_send
 from ..infra.log import log
 
 
@@ -118,10 +119,7 @@ async def fire_followup(entry: dict) -> None:
 
     log("FOLLOWUP/REPLY", reply[:120])
 
-    # Deliver via outbox (same as message_user)
-    os.makedirs(os.path.dirname(OUTBOX_FILE), exist_ok=True)
-    with open(OUTBOX_FILE, "a") as f:
-        f.write(json.dumps({"content": reply, "timestamp": time.time()}) + "\n")
+    await _discord_send.send(content=reply)
 
     # Apply biological effect of having expressed this
     response_deltas = await asyncio.to_thread(

@@ -34,6 +34,7 @@ from ..runtime.heartbeat import bio_tick_loop
 from ..runtime.freetime import run_freetime as _run_freetime
 from ..infra.log import log
 from ..infra.text_filter import apply_word_filter, apply_replacements, llm_derive_replacements
+from ..infra import discord_send as _discord_send
 
 # Suppress noisy-but-harmless WebSocket transport errors on reconnect
 class _SuppressResetError(logging.Filter):
@@ -51,7 +52,6 @@ _STOPPED_FLAG = os.path.join(_RUN_DIR, ".stopped")
 _PAUSED_FLAG = os.path.join(_RUN_DIR, ".paused")
 _READY_FILE = os.path.join(_RUN_DIR, "ready")
 _RESTART_PENDING_FILE = os.path.join(_RUN_DIR, "restart_pending.json")
-_OUTBOX_FILE = os.path.join(_RUN_DIR, "outbox.jsonl")
 _HOME_CHANNEL_FILE = os.path.join(_RUN_DIR, "home_channel.txt")
 
 DISCORD_TOKEN = os.getenv("MINA_BOT_TOKEN", "")
@@ -311,68 +311,51 @@ def _chunk_text(text: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Outbox watcher — delivers messages Mina queued via message_user tool
+# Channel resolver — used by the discord_send registry
 # ---------------------------------------------------------------------------
 
-async def _outbox_watcher() -> None:
-    """Check for outbound messages from Mina every 30 seconds and deliver them."""
-    while True:
-        await asyncio.sleep(30)
-        if not os.path.exists(_OUTBOX_FILE):
-            continue
-        try:
-            with open(_OUTBOX_FILE, "r") as f:
-                lines = [l.strip() for l in f if l.strip()]
-            if not lines:
-                continue
-            # Clear outbox before sending (avoid double-sends on error)
-            os.remove(_OUTBOX_FILE)
-        except (OSError, IOError):
-            continue
+async def _resolve_home_channel() -> discord.abc.Messageable | None:
+    """Return the home channel: last-active channel, falling back to config default."""
+    channel_id = None
+    try:
+        with open(_HOME_CHANNEL_FILE) as f:
+            channel_id = int(f.read().strip())
+    except (FileNotFoundError, ValueError, TypeError):
+        pass
 
-        # Resolve home channel — prefer last-active, fall back to config default
-        channel = None
-        channel_id = None
+    if channel_id is None:
+        cfg = _load_config()
+        default_id = cfg.get("discord_default_channel_id")
+        if default_id:
+            channel_id = int(default_id)
+
+    if channel_id is None:
+        return None
+
+    channel = client.get_channel(channel_id)
+    if channel is None:
         try:
-            with open(_HOME_CHANNEL_FILE) as f:
-                channel_id = int(f.read().strip())
-        except (FileNotFoundError, ValueError, TypeError):
+            channel = await client.fetch_channel(channel_id)
+        except Exception:
             pass
+    return channel
 
-        if channel_id is None:
-            cfg = _load_config()
-            default_id = cfg.get("discord_default_channel_id")
-            if default_id:
-                channel_id = int(default_id)
 
-        if channel_id is not None:
-            channel = client.get_channel(channel_id)
-            if channel is None:
-                try:
-                    channel = await client.fetch_channel(channel_id)
-                except Exception:
-                    pass
-
-        if channel is None:
-            log("OUTBOX", "No channel available — re-queuing messages.")
-            with open(_OUTBOX_FILE, "w") as f:
-                f.write("\n".join(lines) + "\n")
-            continue
-
-        for line in lines:
-            try:
-                msg = json.loads(line)
-                content = msg.get("content", "").strip()
-                image_path = msg.get("image_path", "").strip()
-                if content:
-                    for chunk in _chunk_text(content):
-                        await channel.send(chunk)
-                    log("OUTBOX", f"Delivered: {content[:80]}")
-                if image_path and os.path.exists(image_path):
-                    await channel.send(file=discord.File(image_path))
-                    log("OUTBOX", f"Delivered image: {os.path.basename(image_path)}")
-            except (json.JSONDecodeError, discord.DiscordException) as e:
-                log("OUTBOX/ERROR", str(e))
+async def _do_send(content: str = "", image_path: str = "") -> None:
+    channel = await _resolve_home_channel()
+    if channel is None:
+        log("SEND", "No channel available — message dropped.")
+        return
+    try:
+        if content:
+            for chunk in _chunk_text(content):
+                await channel.send(chunk)
+            log("SEND", f"Delivered: {content[:80]}")
+        if image_path and os.path.exists(image_path):
+            await channel.send(file=discord.File(image_path))
+            log("SEND", f"Delivered image: {os.path.basename(image_path)}")
+    except discord.DiscordException as e:
+        log("SEND/ERROR", str(e))
 
 
 # ---------------------------------------------------------------------------
@@ -614,13 +597,15 @@ async def on_ready():
     # Set initial presence
     await _update_presence(load_state())
 
+    # Register direct Discord sender (replaces file-based outbox)
+    _discord_send.register(_do_send)
+
     # Start background loops
     asyncio.create_task(bio_tick_loop())
     asyncio.create_task(_gateway_freetime_loop())
-    asyncio.create_task(_outbox_watcher())
     asyncio.create_task(_followup_watcher())
     asyncio.create_task(_presence_loop())
-    log("GATEWAY", "Bio tick, freetime, outbox watcher, followup watcher, and presence loop started.")
+    log("GATEWAY", "Bio tick, freetime, followup watcher, and presence loop started.")
 
     # Write ready file (supervisor/CLI uses this to detect startup)
     os.makedirs(_RUN_DIR, exist_ok=True)
@@ -699,7 +684,7 @@ async def on_message(message: discord.Message) -> None:
     channel_id = message.channel.id
     _pending.setdefault(channel_id, []).append(message)
 
-    # Track home channel so the outbox watcher knows where to send unprompted messages
+    # Track home channel for _resolve_home_channel
     with open(_HOME_CHANNEL_FILE, "w") as _f:
         _f.write(str(channel_id))
 
