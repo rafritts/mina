@@ -174,11 +174,6 @@ _BIOLOGICAL_TOOLS = [
                         "type": "string",
                         "description": "What to avoid in the image.",
                     },
-                    "workflow": {
-                        "type": "string",
-                        "enum": ["upscale", "no_upscale"],
-                        "description": "upscale (~60s, higher quality) or no_upscale (~20s, faster)",
-                    },
                     "seed": {
                         "type": "integer",
                         "description": "Random seed. 0 or omit for random.",
@@ -468,11 +463,10 @@ async def handle_generate_image(args: dict) -> str:
     dimensions      = args.get("dimensions", "832x1216")
     filename        = args.get("filename", "mina")
     negative_prompt = args.get("negative_prompt", None)
-    workflow        = args.get("workflow", "upscale")
     seed            = args.get("seed", None)
 
     from ..infra.log import log
-    log("COMFY", f"workflow={workflow} dimensions={dimensions} seed={seed}")
+    log("COMFY", f"dimensions={dimensions} seed={seed}")
     log("COMFY", f"prompt={prompt[:200]}")
     if negative_prompt:
         log("COMFY", f"negative={negative_prompt[:120]}")
@@ -484,7 +478,6 @@ async def handle_generate_image(args: dict) -> str:
             filename=filename,
             negative_prompt=negative_prompt,
             seed=seed,
-            workflow=workflow,
         )
         log("COMFY", f"output={path or 'none'}")
         return path or ""

@@ -23,7 +23,6 @@ log = logging.getLogger(__name__)
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.normpath(os.path.join(_SCRIPT_DIR, "../.."))
 _TEMPLATE_UPSCALE = os.path.join(_SCRIPT_DIR, "RestlessSimpleAPI_template.json")
-_TEMPLATE_NO_UPSCALE = os.path.join(_SCRIPT_DIR, "RestlessSimpleAPI_NoUpscale_template.json")
 _IMAGES_DIR = os.path.join(_PROJECT_ROOT, "memory", "images")
 
 COMFYUI_HOST = os.getenv("COMFYUI_HOST", "localhost")
@@ -46,7 +45,6 @@ async def generate_image(
     negative_prompt: str | None = None,
     seed: int | None = None,
     uid: str | None = None,
-    workflow: str = "upscale",
 ) -> str:
     """
     Generate an image via ComfyUI and save to memory/images/.
@@ -60,12 +58,11 @@ async def generate_image(
         negative_prompt: Defaults to a sensible set if not provided
         seed: None or 0 = random
         uid: Optional suffix for filename uniqueness
-        workflow: "upscale" (~60s) or "no_upscale" (~20s)
     """
     if negative_prompt is None:
         negative_prompt = "blurry, ugly, deformed, low quality, watermark, text, signature"
 
-    template_path = _TEMPLATE_NO_UPSCALE if workflow == "no_upscale" else _TEMPLATE_UPSCALE
+    template_path = _TEMPLATE_UPSCALE
 
     try:
         width, height = map(int, dimensions.split("x"))
@@ -179,7 +176,6 @@ if __name__ == "__main__":
     parser.add_argument("--filename", default="mina")
     parser.add_argument("--negative-prompt", default=None)
     parser.add_argument("--seed", type=int, default=None)
-    parser.add_argument("--workflow", default="upscale", choices=["upscale", "no_upscale"])
     args = parser.parse_args()
 
     path = asyncio.run(generate_image(
@@ -188,7 +184,6 @@ if __name__ == "__main__":
         args.filename,
         args.negative_prompt,
         args.seed,
-        workflow=args.workflow,
     ))
 
     if path:
