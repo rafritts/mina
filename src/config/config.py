@@ -15,7 +15,7 @@ RUN_DIR = os.path.join(REPO_ROOT, "run")
 
 # Canonical file paths
 STATE_FILE           = os.path.join(RUN_DIR, "state.json")
-CONFIG_FILE          = os.path.join(REPO_ROOT, "config.json")
+CONFIG_FILE          = os.path.join(REPO_ROOT, "identity", "config.json")
 HISTORY_FILE         = os.path.join(RUN_DIR, "conversation.json")   # kept for migration detection
 DECODER_WINDOW_FILE  = os.path.join(RUN_DIR, "decoder_window.json")
 LAST_ACTIVE_FILE     = os.path.join(RUN_DIR, ".last_user_active")
