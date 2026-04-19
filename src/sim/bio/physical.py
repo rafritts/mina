@@ -42,7 +42,7 @@ def _stats() -> dict:
     if now - _cache_ts < _CACHE_TTL and _cache:
         return _cache
     try:
-        from src.infra.config import load_config
+        from src.config.config import load_config
         cfg = load_config().get("physical_stats", {})
         _cache = {**_DEFAULTS, **cfg}
     except Exception:

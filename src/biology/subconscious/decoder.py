@@ -19,10 +19,10 @@ import os
 import re
 import time
 
-from ..infra.client import chat_create, DECODER_MODEL, CONTEXT_MODEL
-from ..infra.config import load_config, INJECT_FILE, RUN_DIR
-from .state import BiologicalState, derived, _CHEMICAL_DEFAULTS
-from .chemicals import REGISTRY, get_label
+from src.application.infra.client import chat_create, DECODER_MODEL, CONTEXT_MODEL
+from src.config.config import load_config, INJECT_FILE, RUN_DIR
+from src.biology.brainstem.state import BiologicalState, derived, _CHEMICAL_DEFAULTS
+from src.biology.brainstem.chemicals import REGISTRY, get_label
 
 # ---------------------------------------------------------------------------
 # Derived value range tables (0–100 normalized scale)
@@ -242,7 +242,7 @@ def biological_report(state: BiologicalState) -> str:
             lines.append(f"TOLERANCE: {substance} = {val:.2f}")
 
     if state.substances:
-        from ..sim.neuro.substances import SUBSTANCE_DEFS
+        from src.sim.neuro.substances import SUBSTANCE_DEFS
         lines.append(SEP)
         for name, dose in state.substances.items():
             level = dose.get("level", 0)
@@ -732,7 +732,7 @@ def _build_emotional_profile(
     if pain > 15:
         extras.append(f"Pain: {pain:.0f}/100")
     if state.substances:
-        from ..sim.neuro.substances import SUBSTANCE_DEFS
+        from src.sim.neuro.substances import SUBSTANCE_DEFS
         for name, dose in state.substances.items():
             level = dose.get("level", 0)
             if level > 15:
@@ -1074,8 +1074,8 @@ def adjudicate_emotion(
     recent_messages: decoder window — lets adjudicator name chemistry departures from
                      recent exchange tone. Only used in "active" mode.
     """
-    from ..infra.log import log
-    from ..infra import token_stats
+    from src.application.infra.log import log
+    from src.application.infra import token_stats
 
     # Load prior snapshots before saving current so we can compute deltas
     prior_snapshots = _load_bio_snapshots(3)
@@ -1285,8 +1285,8 @@ def build_window_context(
     Returns [CONVERSATION RIGHT NOW] + [YOUR PRESENT STATE] blocks.
     If the window is empty (first message), returns a hardcoded default.
     """
-    from ..infra.log import log
-    from ..infra import token_stats
+    from src.application.infra.log import log
+    from src.application.infra import token_stats
 
     if not decoder_window:
         return _WINDOW_DEFAULT
@@ -1351,13 +1351,13 @@ def build_rag_context(
     SPEC-39 Call B: RAG + KAG retrieval — no decoder window input.
     Returns identity block + [RECENT CONTEXT], [SEMI-RECENT CONTEXT], [HISTORICAL CONTEXT].
     """
-    from ..infra.log import log
-    from ..infra import token_stats
-    from ..memory.hippocampus import read_identity
+    from src.application.infra.log import log
+    from src.application.infra import token_stats
+    from src.biology.hippocampus.hippocampus import read_identity
 
     def _read_file(path: str) -> str:
         try:
-            from ..infra.config import REPO_ROOT
+            from src.config.config import REPO_ROOT
             with open(os.path.join(REPO_ROOT, path)) as fh:
                 return fh.read()
         except FileNotFoundError:
@@ -1782,8 +1782,8 @@ def build_system_prompt(
     Input: biological report (ground truth) only.
     Output: assembled system prompt string.
     """
-    from ..infra.log import log
-    from ..infra import token_stats
+    from src.application.infra.log import log
+    from src.application.infra import token_stats
 
     injection = _consume_injection()
     personality_block = _load_personality_block()

@@ -15,7 +15,7 @@ import time
 from typing import Optional
 
 from .state import BiologicalState
-from ..sim.constants import (
+from src.sim.constants import (
     DBP_BASELINE,
     BP_CORTISOL_THRESHOLD,
     BP_CORTISOL_SBP_RATE,
@@ -61,7 +61,7 @@ from ..sim.constants import (
     VAGAL_TONE_HRV_SLOPE,
 )
 
-from ..infra.config import OVERDOSE_TIMER_FILE as _OVERDOSE_TIMER_FILE
+from src.config.config import OVERDOSE_TIMER_FILE as _OVERDOSE_TIMER_FILE
 
 
 # ---------------------------------------------------------------------------

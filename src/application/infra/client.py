@@ -6,7 +6,7 @@ chat_create() from here instead of constructing their own OpenAI instances.
 """
 from typing import Optional
 from openai import OpenAI
-from .config import MODEL, BASE_URL, API_KEY, ENCODER_MODEL, DECODER_MODEL, CONTEXT_MODEL
+from src.config.config import MODEL, BASE_URL, API_KEY, ENCODER_MODEL, DECODER_MODEL, CONTEXT_MODEL
 
 __all__ = ["get_client", "chat_create", "MODEL", "BASE_URL", "API_KEY", "ENCODER_MODEL", "DECODER_MODEL", "CONTEXT_MODEL"]
 

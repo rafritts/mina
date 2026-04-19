@@ -21,14 +21,14 @@ import re
 import time
 from typing import Optional
 
-from ..infra.client import chat_create, MODEL
-from ..infra.config import (
+from src.application.infra.client import chat_create, MODEL
+from src.config.config import (
     PROJECT_ROOT, REPO_ROOT, RUN_DIR, load_config,
     CONSOLIDATION_STATE_FILE, RELATIONSHIP_DIR, get_conversation_file,
 )
-from ..infra.text_filter import apply_word_filter, apply_replacements
-from ..bio.state import BiologicalState
-from ..bio.decoder import format_state_block
+from src.application.infra.text_filter import apply_word_filter, apply_replacements
+from src.biology.brainstem.state import BiologicalState
+from src.biology.subconscious.decoder import format_state_block
 
 _IDENTITY_DIR = os.path.join(REPO_ROOT, "identity")
 _KAG_DIR      = os.path.join(REPO_ROOT, "memory", "kag")
@@ -1172,7 +1172,7 @@ def consolidate_relationship(state: BiologicalState, owner_name: str) -> Biologi
     """
     import time as _time
     from ..infra.log import log
-    from ..bio.decoder import format_state_block
+    from src.biology.subconscious.decoder import format_state_block
 
     rel_state = _load_relationship_state()
     now = _time.time()

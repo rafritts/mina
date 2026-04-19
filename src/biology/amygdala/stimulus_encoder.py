@@ -19,9 +19,9 @@ import re
 import time
 import urllib.request
 
-from ..infra.client import chat_create, ENCODER_MODEL as MODEL
-from ..infra.config import load_config
-from .state import BiologicalState
+from src.application.infra.client import chat_create, ENCODER_MODEL as MODEL
+from src.config.config import load_config
+from src.biology.brainstem.state import BiologicalState
 
 # ---------------------------------------------------------------------------
 # Prompt constants
@@ -236,7 +236,7 @@ def _apply_habituation_and_sensitization(
     SPEC-29 Layer 1+2: embed stimulus, compute content_novelty + source_sensitization,
     apply per-chemical rules. Mutates state.stimulus_window and state.sensitization.
     """
-    from ..infra.log import log
+    from src.application.infra.log import log
 
     # Layer 1a: content novelty via embedding
     embedding = _get_embedding(stimulus_text)
@@ -350,7 +350,7 @@ def _apply_saturation(deltas: dict, state: BiologicalState) -> dict:
     Uses quadratic decay in the soft→hard zone — aggressive near the boundary.
     Substances bypass this; only encoder-issued deltas are saturated.
     """
-    from .chemicals import REGISTRY
+    from src.biology.brainstem.chemicals import REGISTRY
     # SPEC-30: anandamide is body-stored, not in state.chemicals
     _body_stored = {"anandamide"}
     result = {}
@@ -476,7 +476,7 @@ def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, 
     On JSON parse failure, retries once with the bad output and error appended.
     Falls back to ({}, False) on any error — never crashes a turn.
     """
-    from ..infra.log import log
+    from src.application.infra.log import log
     subtag = label.replace("encode_", "").upper()
 
     last_raw: list[str] = [""]  # captures raw LLM output as side effect for retry message
@@ -488,7 +488,7 @@ def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, 
             temperature=0.3,
             response_format={"type": "json_object"},
         )
-        from ..infra import token_stats
+        from src.application.infra import token_stats
         token_stats.record_response(label, response)
         raw_content = response.choices[0].message.content or ""
         last_raw[0] = raw_content  # capture before any parsing so retry always has it
@@ -553,7 +553,7 @@ def _emit_event(
 ) -> None:
     """Emit a structured event to the log. Never crashes a turn."""
     try:
-        from ..infra.events import emit
+        from src.application.infra.events import emit
         emit(type, preview, display_deltas, event_override=event_override, momentum_dampened=momentum_dampened)
     except Exception:
         pass
@@ -624,7 +624,7 @@ def encode_stimulus(state: BiologicalState, stimulus_text: str) -> dict:
     Determine biological deltas from an incoming stimulus (message, event).
     Called before building the system prompt each turn.
     """
-    from .decoder import biological_report
+    from src.biology.subconscious.decoder import biological_report
     report = biological_report(state)
 
     prompt = f"""{report}
@@ -677,7 +677,7 @@ def encode_response(state: BiologicalState, response_text: str) -> dict:
     Determine biological deltas from what Mina just expressed.
     Called after Mina's response, closing the loop.
     """
-    from .decoder import biological_report
+    from src.biology.subconscious.decoder import biological_report
     report = biological_report(state)
 
     prompt = f"""{report}
@@ -729,7 +729,7 @@ def evaluate_activity_deltas(state: BiologicalState, activity: str, description:
     Determine biological deltas from a do_action activity.
     Used by both cortex.py and freetime.py after a do_action tool call.
     """
-    from .decoder import biological_report
+    from src.biology.subconscious.decoder import biological_report
     report = biological_report(state)
 
     prompt = f"""{report}

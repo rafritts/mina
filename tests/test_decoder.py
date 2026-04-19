@@ -7,8 +7,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from src.bio.state import BiologicalState
-from src.bio.decoder import (
+from src.biology.brainstem.state import BiologicalState
+from src.biology.subconscious.decoder import (
     biological_report,
     needs_summary,
     _parse_decoder_output,
@@ -37,7 +37,7 @@ def test_biological_report_includes_all_chemicals():
 
 
 def test_biological_report_labels_cortisol_at_known_ranges():
-    from src.bio.chemicals import get_label
+    from src.biology.brainstem.chemicals import get_label
     state = make_state(cortisol=800.0)
     report = biological_report(state)
     label, _ = get_label("cortisol", 800.0)
@@ -112,9 +112,9 @@ def _mock_llm_response(content: str):
 _SAMPLE_RAW = "She is quiet and settled. Not reaching for anything right now."
 
 
-@patch("src.bio.decoder.chat_create")
-@patch("src.bio.decoder._load_personality_block", return_value="")
-@patch("src.bio.decoder._consume_injection", return_value="")
+@patch("src.biology.subconscious.decoder.chat_create")
+@patch("src.biology.subconscious.decoder._load_personality_block", return_value="")
+@patch("src.biology.subconscious.decoder._consume_injection", return_value="")
 def test_build_system_prompt_returns_internal_state(mock_inj, mock_pers, mock_chat):
     mock_chat.return_value = _mock_llm_response(_SAMPLE_RAW)
     prompt = build_system_prompt("bio report")
@@ -122,9 +122,9 @@ def test_build_system_prompt_returns_internal_state(mock_inj, mock_pers, mock_ch
     assert "quiet and settled" in prompt
 
 
-@patch("src.bio.decoder.chat_create")
-@patch("src.bio.decoder._load_personality_block", return_value="")
-@patch("src.bio.decoder._consume_injection", return_value="")
+@patch("src.biology.subconscious.decoder.chat_create")
+@patch("src.biology.subconscious.decoder._load_personality_block", return_value="")
+@patch("src.biology.subconscious.decoder._consume_injection", return_value="")
 def test_build_system_prompt_retries_on_bad_output(mock_inj, mock_pers, mock_chat):
     bad = _mock_llm_response("nope")   # too short → ValueError → retry
     good = _mock_llm_response(_SAMPLE_RAW)
@@ -133,9 +133,9 @@ def test_build_system_prompt_retries_on_bad_output(mock_inj, mock_pers, mock_cha
     assert "quiet and settled" in prompt
 
 
-@patch("src.bio.decoder.chat_create")
-@patch("src.bio.decoder._load_personality_block", return_value="")
-@patch("src.bio.decoder._consume_injection", return_value="")
+@patch("src.biology.subconscious.decoder.chat_create")
+@patch("src.biology.subconscious.decoder._load_personality_block", return_value="")
+@patch("src.biology.subconscious.decoder._consume_injection", return_value="")
 def test_build_system_prompt_returns_string_when_all_retries_fail(mock_inj, mock_pers, mock_chat):
     bad = _mock_llm_response("nope")
     mock_chat.return_value = bad

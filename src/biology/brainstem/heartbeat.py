@@ -15,9 +15,9 @@ import json
 import os
 import time
 
-from ..infra.config import PAUSED_FLAG, BIO_HISTORY_FILE
-from ..infra.log import log
-from ..bio.state import load_and_advance
+from src.config.config import PAUSED_FLAG, BIO_HISTORY_FILE
+from src.application.infra.log import log
+from src.biology.brainstem.state import load_and_advance
 
 # 7 days at 60-second ticks ≈ 10,080 entries
 _BIO_HISTORY_MAX_DAYS = 7
@@ -25,7 +25,7 @@ _BIO_HISTORY_MAX_DAYS = 7
 
 def _snapshot(state) -> dict:
     """Compact state snapshot for bio_history.jsonl."""
-    from ..bio.state import derived
+    from src.biology.brainstem.state import derived
     d = derived(state)
     return {
         "ts": time.time(),

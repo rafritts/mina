@@ -29,8 +29,8 @@ _DOTENV = find_dotenv(usecwd=True)
 load_dotenv(_DOTENV)
 _PROJECT_ROOT = os.path.dirname(_DOTENV)
 
-from ..runtime.cortex import run_turn, load_history, save_history, touch_last_active, HISTORY_MAX
-from ..runtime.heartbeat import bio_tick_loop
+from src.biology.cortex.cortex import run_turn, load_history, save_history, touch_last_active, HISTORY_MAX
+from src.biology.brainstem.heartbeat import bio_tick_loop
 from ..runtime.freetime import run_freetime as _run_freetime
 from ..infra.log import log
 from ..infra.text_filter import apply_word_filter, apply_replacements, llm_derive_replacements

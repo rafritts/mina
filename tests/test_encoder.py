@@ -7,8 +7,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from src.bio.state import BiologicalState
-from src.bio.encoder import (
+from src.biology.brainstem.state import BiologicalState
+from src.biology.amygdala.stimulus_encoder import (
     _apply_saturation,
     _apply_personality_scaling,
     _personality_multipliers,
@@ -29,7 +29,7 @@ def make_state(**chem_overrides) -> BiologicalState:
 # ---------------------------------------------------------------------------
 
 def test_saturation_drops_delta_to_zero_above_hard_ceiling():
-    from src.bio.chemicals import REGISTRY
+    from src.biology.brainstem.chemicals import REGISTRY
     hard = REGISTRY["dopamine"].hard_ceiling
     state = make_state(dopamine=hard)
     result = _apply_saturation({"dopamine": 50.0}, state)
@@ -37,7 +37,7 @@ def test_saturation_drops_delta_to_zero_above_hard_ceiling():
 
 
 def test_saturation_scales_quadratically_in_soft_to_hard_zone():
-    from src.bio.chemicals import REGISTRY
+    from src.biology.brainstem.chemicals import REGISTRY
     soft = REGISTRY["dopamine"].soft_ceiling
     hard = REGISTRY["dopamine"].hard_ceiling
     midpoint = soft + (hard - soft) * 0.5
@@ -50,7 +50,7 @@ def test_saturation_scales_quadratically_in_soft_to_hard_zone():
 
 
 def test_saturation_passes_delta_unchanged_below_soft_ceiling():
-    from src.bio.chemicals import REGISTRY
+    from src.biology.brainstem.chemicals import REGISTRY
     soft = REGISTRY["dopamine"].soft_ceiling
     state = make_state(dopamine=soft * 0.5)  # well below soft
     result = _apply_saturation({"dopamine": 20.0}, state)
@@ -103,15 +103,15 @@ def _mock_llm_response(content: str):
     return resp
 
 
-@patch("src.bio.encoder._get_embedding", return_value=None)  # skip Ollama in tests
-@patch("src.bio.encoder.chat_create")
-@patch("src.bio.encoder._load_personality", return_value={})
+@patch("src.biology.amygdala.stimulus_encoder._get_embedding", return_value=None)  # skip Ollama in tests
+@patch("src.biology.amygdala.stimulus_encoder.chat_create")
+@patch("src.biology.amygdala.stimulus_encoder._load_personality", return_value={})
 def test_encode_stimulus_queues_neurotransmitter_deltas(mock_personality, mock_chat, mock_embed):
     """Neurotransmitter deltas go to state.secretion_queue, not the return dict."""
     mock_chat.return_value = _mock_llm_response(
         '{"no_external_deltas": false, "reasoning": "test", "event_override": false, "dopamine": 15.0}'
     )
-    from src.infra import token_stats
+    from src.application.infra import token_stats
     state = BiologicalState()
     result = encode_stimulus(state, "hello world")
     # dopamine is a secretion-queue chemical — should NOT be in immediate return
@@ -121,9 +121,9 @@ def test_encode_stimulus_queues_neurotransmitter_deltas(mock_personality, mock_c
     assert "dopamine" in queued_chems
 
 
-@patch("src.bio.encoder._get_embedding", return_value=None)
-@patch("src.bio.encoder.chat_create")
-@patch("src.bio.encoder._load_personality", return_value={})
+@patch("src.biology.amygdala.stimulus_encoder._get_embedding", return_value=None)
+@patch("src.biology.amygdala.stimulus_encoder.chat_create")
+@patch("src.biology.amygdala.stimulus_encoder._load_personality", return_value={})
 def test_encode_stimulus_skips_apply_on_no_external_deltas(mock_personality, mock_chat, mock_embed):
     mock_chat.return_value = _mock_llm_response(
         '{"no_external_deltas": true, "reasoning": "nothing happened"}'
@@ -134,9 +134,9 @@ def test_encode_stimulus_skips_apply_on_no_external_deltas(mock_personality, moc
     assert state.secretion_queue == []
 
 
-@patch("src.bio.encoder._get_embedding", return_value=None)
-@patch("src.bio.encoder.chat_create")
-@patch("src.bio.encoder._load_personality", return_value={})
+@patch("src.biology.amygdala.stimulus_encoder._get_embedding", return_value=None)
+@patch("src.biology.amygdala.stimulus_encoder.chat_create")
+@patch("src.biology.amygdala.stimulus_encoder._load_personality", return_value={})
 def test_encode_stimulus_returns_empty_on_llm_error(mock_personality, mock_chat, mock_embed):
     mock_chat.side_effect = Exception("API down")
     state = BiologicalState()
@@ -144,9 +144,9 @@ def test_encode_stimulus_returns_empty_on_llm_error(mock_personality, mock_chat,
     assert result == {}  # must not crash
 
 
-@patch("src.bio.encoder._get_embedding", return_value=None)
-@patch("src.bio.encoder.chat_create")
-@patch("src.bio.encoder._load_personality", return_value={})
+@patch("src.biology.amygdala.stimulus_encoder._get_embedding", return_value=None)
+@patch("src.biology.amygdala.stimulus_encoder.chat_create")
+@patch("src.biology.amygdala.stimulus_encoder._load_personality", return_value={})
 def test_encode_response_queues_oxytocin(mock_personality, mock_chat, mock_embed):
     mock_chat.return_value = _mock_llm_response(
         '{"no_external_deltas": false, "reasoning": "spoke warmly", "event_override": false, "oxytocin": 3.0}'
@@ -157,9 +157,9 @@ def test_encode_response_queues_oxytocin(mock_personality, mock_chat, mock_embed
     assert "oxytocin" in queued_chems
 
 
-@patch("src.bio.encoder._get_embedding", return_value=None)
-@patch("src.bio.encoder.chat_create")
-@patch("src.bio.encoder._load_personality", return_value={})
+@patch("src.biology.amygdala.stimulus_encoder._get_embedding", return_value=None)
+@patch("src.biology.amygdala.stimulus_encoder.chat_create")
+@patch("src.biology.amygdala.stimulus_encoder._load_personality", return_value={})
 def test_evaluate_activity_deltas_passes_activity_and_description_to_llm(mock_personality, mock_chat, mock_embed):
     call_args_list = []
     def capture(*args, **kwargs):
@@ -176,9 +176,9 @@ def test_evaluate_activity_deltas_passes_activity_and_description_to_llm(mock_pe
     assert "glucose" in result
 
 
-@patch("src.bio.encoder._get_embedding", return_value=None)
-@patch("src.bio.encoder.chat_create")
-@patch("src.bio.encoder._load_personality", return_value={})
+@patch("src.biology.amygdala.stimulus_encoder._get_embedding", return_value=None)
+@patch("src.biology.amygdala.stimulus_encoder.chat_create")
+@patch("src.biology.amygdala.stimulus_encoder._load_personality", return_value={})
 def test_event_override_bypasses_queue(mock_personality, mock_chat, mock_embed):
     """EVENT_OVERRIDE deltas are returned immediately, not queued."""
     mock_chat.return_value = _mock_llm_response(

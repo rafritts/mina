@@ -13,16 +13,16 @@ import os
 import time
 from typing import Any
 
-from ..infra.config import FOLLOWUP_QUEUE_FILE, load_config
-from ..infra import discord_send as _discord_send
-from ..bio.state import BiologicalState, save_state
+from src.config.config import FOLLOWUP_QUEUE_FILE, load_config
+from src.application.infra import discord_send as _discord_send
+from src.biology.brainstem.state import BiologicalState, save_state
 
 _BASE_URL_SEARCH = os.getenv("BASE_URL", "https://api.x.ai/v1")
 _API_KEY_SEARCH  = os.getenv("XAI_API_KEY", os.getenv("OPENAI_API_KEY", ""))
 
 # Web/X search use the same model as the main conversation so the setting stays in sync.
 # The Responses API requires a model that supports server-side tools (web_search, x_search).
-from ..infra.config import MODEL as _MAIN_MODEL
+from src.config.config import MODEL as _MAIN_MODEL
 _SEARCH_MODEL = os.getenv("SEARCH_MODEL", _MAIN_MODEL)
 
 _search_client = None

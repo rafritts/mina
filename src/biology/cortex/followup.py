@@ -15,9 +15,9 @@ import json
 import os
 import time
 
-from ..infra.config import FOLLOWUP_QUEUE_FILE
-from ..infra import discord_send as _discord_send
-from ..infra.log import log
+from src.config.config import FOLLOWUP_QUEUE_FILE
+from src.application.infra import discord_send as _discord_send
+from src.application.infra.log import log
 
 
 def load_queue() -> list[dict]:

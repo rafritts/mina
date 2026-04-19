@@ -13,17 +13,17 @@ import os
 import re
 import time
 
-from ..infra.client import chat_create, MODEL
-from ..infra.config import (
+from src.application.infra.client import chat_create, MODEL
+from src.config.config import (
     HISTORY_FILE, DECODER_WINDOW_FILE, LAST_ACTIVE_FILE, ADMIN_FILE, PAUSED_FLAG,
     load_config, get_conversation_file,
 )
-from ..infra.log import log
-from ..infra.turn_log import log_context_window, log_conversation
-from ..bio.decoder import biological_report, biological_report_compact, adjudicate_emotion, build_window_context, build_rag_context, needs_summary
-from ..memory.hippocampus import build_kag_context, build_rag_context as _hpc_rag_context, build_rag_context_bucketed
-from ..bio.encoder import encode_stimulus, encode_response, evaluate_activity_deltas, compute_relationship_modifier
-from ..bio.state import apply_deltas, load_and_advance, load_state, save_state
+from src.application.infra.log import log
+from src.application.infra.turn_log import log_context_window, log_conversation
+from src.biology.subconscious.decoder import biological_report, biological_report_compact, adjudicate_emotion, build_window_context, build_rag_context, needs_summary
+from src.biology.hippocampus.hippocampus import build_kag_context, build_rag_context as _hpc_rag_context, build_rag_context_bucketed
+from src.biology.amygdala.stimulus_encoder import encode_stimulus, encode_response, evaluate_activity_deltas, compute_relationship_modifier
+from src.biology.brainstem.state import apply_deltas, load_and_advance, load_state, save_state
 from .tools import TOOLS, call_tool, handle_generate_image
 
 DECODER_WINDOW_SIZE   = 20  # sliding window depth (~10 exchanges)
@@ -152,7 +152,7 @@ def _migrate_history_if_needed() -> list[dict] | None:
 
     # Write all old entries to RAG in overlapping blocks
     if old_history:
-        from ..memory.hippocampus import rag_add as _rag_add
+        from src.biology.hippocampus.hippocampus import rag_add as _rag_add
         for i in range(0, len(old_history), DECODER_WINDOW_SIZE):
             chunk = old_history[i:i + DECODER_WINDOW_SIZE]
             block = _format_rag_block(chunk)
@@ -472,7 +472,7 @@ async def run_turn(
     _admin_name = load_config().get("admin_name", "")
     if _admin_name and username.lower() == _admin_name.lower():
         try:
-            from ..memory.hippocampus import _get_net_relationship_dimensions
+            from src.biology.hippocampus.hippocampus import _get_net_relationship_dimensions
             _net_dims = _get_net_relationship_dimensions(_admin_name)
             _rel_deltas = compute_relationship_modifier(_net_dims)
             if _rel_deltas:
@@ -488,7 +488,7 @@ async def run_turn(
     # [1b] Danger detection — every turn so overdose can trigger during active sessions
     try:
         from ..bio.vital_signs import vital_signs as _vs, process_danger as _pd
-        from ..infra.config import INJECT_FILE as _INJECT
+        from src.config.config import INJECT_FILE as _INJECT
         _danger = _pd(state, _vs(state))
         if _danger:
             log("DANGER", _danger[:120])

@@ -153,7 +153,7 @@ def _big5() -> dict[str, float]:
     now = _time.time()
     if now - _big5_cache_ts > 60.0:
         try:
-            from src.infra.config import load_config
+            from src.config.config import load_config
             b = load_config().get("big5", {})
             _big5_cache = {
                 "E": float(b.get("extraversion",      50)) / 100.0,
@@ -445,10 +445,10 @@ def derived(s) -> dict:
     # resentment makes social_hostility spike faster during isolation.
     _effective_sero_norm = _clamp(effective_serotonin)  # already 0-100
     try:
-        from src.infra.config import load_config as _lc
+        from src.config.config import load_config as _lc
         _owner = _lc().get("admin_name", "")
         if _owner:
-            from src.memory.hippocampus import _get_net_relationship_dimensions
+            from src.biology.hippocampus.hippocampus import _get_net_relationship_dimensions
             _rel_dims = _get_net_relationship_dimensions(_owner)
             _rel_tension = max(0.0, float(_rel_dims.get("tension", 0.0)))  # only positive (bad) tension
         else:

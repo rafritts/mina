@@ -8,11 +8,11 @@ import asyncio
 import os
 import sys
 
-from src.infra.config import PAUSED_FLAG, load_config
-from src.runtime.cortex import run_turn
-from src.runtime.heartbeat import bio_tick_loop
-from src.runtime.freetime import run_freetime
-from src.infra.log import log
+from src.config.config import PAUSED_FLAG, load_config
+from src.biology.cortex.cortex import run_turn
+from src.biology.brainstem.heartbeat import bio_tick_loop
+from src.biology.subconscious.freetime import run_freetime
+from src.application.infra.log import log
 
 
 async def _freetime_loop() -> None:
@@ -32,13 +32,13 @@ async def _freetime_loop() -> None:
 
 def _cli_run_command(cmd: str) -> bool:
     """Handle a CLI slash command. Returns True if handled."""
-    from src.bio.state import load_and_advance, log_state
+    from src.biology.brainstem.state import load_and_advance, log_state
 
     parts = cmd.strip().split()
     name  = parts[0].lower()
 
     if name == "/reset":
-        from src.gateway.discord_gateway import _wipe_user_data
+        from src.application.gateway.discord_gateway import _wipe_user_data
         wiped = _wipe_user_data()
         print(f"Reset complete. Wiped: {', '.join(wiped)}")
         return True
@@ -46,8 +46,8 @@ def _cli_run_command(cmd: str) -> bool:
     if name == "/factory-reset":
         confirm = input("Wipes everything including biomarkers. Type YES to confirm: ").strip()
         if confirm == "YES":
-            from src.gateway.discord_gateway import _wipe_user_data
-            from src.bio.state import BiologicalState, save_state
+            from src.application.gateway.discord_gateway import _wipe_user_data
+            from src.biology.brainstem.state import BiologicalState, save_state
             wiped = _wipe_user_data()
             save_state(BiologicalState())
             wiped.append("state.json (biomarkers reset to defaults)")

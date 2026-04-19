@@ -146,7 +146,7 @@ def _advance_isolation_pressure(s: BiologicalState, sim_hours: float, now: float
     rapidly during active contact. Extraversion amplifies accumulation rate.
     """
     try:
-        from src.infra.config import load_config
+        from src.config.config import load_config
         E = float(load_config().get("big5", {}).get("extraversion", 50)) / 100.0
     except Exception:
         E = 0.5
@@ -243,7 +243,7 @@ def _apply_isolation_stage_effects(
             _cfg = _json.load(_f)
         _owner = _cfg.get("admin_name", "")
         if _owner:
-            from src.memory.hippocampus import _get_net_relationship_dimensions
+            from src.biology.hippocampus.hippocampus import _get_net_relationship_dimensions
             _net_dims   = _get_net_relationship_dimensions(_owner)
             _net_bonding = _net_dims.get("bonding", 0.0)  # -2 to +2
             bonding_scale = max(0.3, 1.0 + _net_bonding * 0.2)  # 0.6 → 1.4, min 0.3

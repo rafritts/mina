@@ -48,7 +48,7 @@ def llm_derive_replacements(history: list[dict]) -> list[dict]:
     Returns a minimal list of {"find": str, "replace": str} pairs.
     These are then applied to history, KAG, and RAG by the caller.
     """
-    from .client import chat_create, MODEL
+    from src.application.infra.client import chat_create, MODEL
 
     # Flatten history to plain text for analysis, skipping non-text content
     lines = []

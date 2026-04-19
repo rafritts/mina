@@ -9,12 +9,12 @@ import json
 import os
 import threading
 
-from ..sim.bio.state import BiologicalState, apply_deltas, log_state
-from ..sim.engine import advance
-from ..sim.psych.derived import derived
-from ..sim.bio.defaults import CHEMICAL_DEFAULTS as _CHEMICAL_DEFAULTS
+from src.sim.bio.state import BiologicalState, apply_deltas, log_state
+from src.sim.engine import advance
+from src.sim.psych.derived import derived
+from src.sim.bio.defaults import CHEMICAL_DEFAULTS as _CHEMICAL_DEFAULTS
 
-from ..infra.config import STATE_FILE as _STATE_FILE
+from src.config.config import STATE_FILE as _STATE_FILE
 
 
 def load_state() -> BiologicalState:

@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from src.runtime.cortex import (
+from src.biology.cortex.cortex import (
     api_messages,
     apply_ts_label,
     _rel_time,
@@ -155,7 +155,7 @@ def test_api_messages_handles_multimodal_last_user_message():
 # ---------------------------------------------------------------------------
 
 def test_save_history_truncates_at_decoder_window_size(tmp_path, monkeypatch):
-    monkeypatch.setattr("src.runtime.cortex.DECODER_WINDOW_FILE", str(tmp_path / "decoder_window.json"))
+    monkeypatch.setattr("src.biology.cortex.cortex.DECODER_WINDOW_FILE", str(tmp_path / "decoder_window.json"))
     history = [{"role": "user", "content": f"msg {i}"} for i in range(DECODER_WINDOW_SIZE + 50)]
     save_history(history)
     with open(tmp_path / "decoder_window.json") as f:

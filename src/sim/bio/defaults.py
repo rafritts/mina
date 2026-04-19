@@ -6,7 +6,7 @@ All other defaults are fixed at canonical physiological resting values.
 """
 from __future__ import annotations
 
-from ...infra.config import load_config
+from src.config.config import load_config
 
 
 def chemical_defaults() -> dict[str, float]:

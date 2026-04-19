@@ -18,30 +18,30 @@ import time
 
 from openai import OpenAI
 
-from ..infra.config import (
+from src.config.config import (
     DECODER_WINDOW_FILE, PAUSED_FLAG, PROJECT_ROOT, LAST_ACTIVE_FILE,
     load_config, get_conversation_file,
 )
-from ..infra import discord_send as _discord_send
-from ..infra.client import chat_create, MODEL
-from .cortex import apply_ts_label
-from ..infra.log import log as _log_raw
-from ..bio.decoder import biological_report, adjudicate_emotion, build_memory_context, needs_summary
-from ..bio.encoder import encode_stimulus, encode_response, evaluate_activity_deltas
-from ..memory.hippocampus import (
+from src.application.infra import discord_send as _discord_send
+from src.application.infra.client import chat_create, MODEL
+from src.biology.cortex.cortex import apply_ts_label
+from src.application.infra.log import log as _log_raw
+from src.biology.subconscious.decoder import biological_report, adjudicate_emotion, build_memory_context, needs_summary
+from src.biology.amygdala.stimulus_encoder import encode_stimulus, encode_response, evaluate_activity_deltas
+from src.biology.hippocampus.hippocampus import (
     build_kag_context, build_rag_context, build_rag_context_dual,
     rag_add, rag_prune, write_kag, consolidate,
     get_relationship_bond_level, consolidate_relationship,
 )
-from .cortex import DECODER_WINDOW_SIZE, MINA_IMMEDIATE_WINDOW
-from ..bio.state import (
+from src.biology.cortex.cortex import DECODER_WINDOW_SIZE, MINA_IMMEDIATE_WINDOW
+from src.biology.brainstem.state import (
     BiologicalState,
     apply_deltas,
     derived,
     load_and_advance,
     save_state,
 )
-from .tools import HEARTBEAT_TOOLS, call_tool, handle_generate_image
+from src.biology.cortex.tools import HEARTBEAT_TOOLS, call_tool, handle_generate_image
 
 _LAST_ACTIVE_FILE       = LAST_ACTIVE_FILE
 _LAST_SEARCH_FILE       = os.path.join(PROJECT_ROOT, "run", "last_search.json")
@@ -115,7 +115,7 @@ async def _build_ambient_search_entries() -> list[dict]:
     Run all ambient searches in parallel and return a list of fake assistant
     tool-call + tool-result message dicts, as if Mina had called them herself.
     """
-    from .tools import handle_web_search, handle_x_search
+    from src.biology.cortex.tools import handle_web_search, handle_x_search
 
     handlers = {"web_search": handle_web_search, "x_search": handle_x_search}
 
@@ -635,7 +635,7 @@ async def run_freetime(force: bool = False) -> None:
     # Danger detection
     try:
         from ..bio.vital_signs import vital_signs, process_danger
-        from ..infra.config import INJECT_FILE as _INJECT_FILE
+        from src.config.config import INJECT_FILE as _INJECT_FILE
         vs = vital_signs(state)
         danger_text = process_danger(state, vs)
         if danger_text:
