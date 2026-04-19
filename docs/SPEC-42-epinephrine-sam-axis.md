@@ -1,4 +1,4 @@
-# SPEC-41: Epinephrine & SAM Axis — Register-Shift Surprise Response
+# SPEC-42: Epinephrine & SAM Axis — Register-Shift Surprise Response
 
 ## Problem
 
@@ -96,7 +96,7 @@ adjudicator can read this correctly — it just needs the signals.
 
 ### 1. Add epinephrine to the chemical registry
 
-**File:** `src/sim/chem/registry.py`
+**File:** `src/engine/chem/registry.py`
 
 Add epinephrine as a first-class chemical in the SAM tier (alongside norepinephrine).
 
@@ -131,7 +131,7 @@ quickly, which is what makes the flustered state transient rather than sustained
 
 ### 2. Add epinephrine to the bio report
 
-**File:** `src/bio/decoder.py` — `_build_bio_report()`
+**File:** `src/brain/subconscious/decoder.py` — `_build_bio_report()`
 
 Add epinephrine to the report alongside norepinephrine, clearly labeled as the acute SAM
 signal:
@@ -146,14 +146,14 @@ without any other changes.
 
 ### 3. Add epinephrine to the BiologicalState schema
 
-**File:** `src/sim/state.py` (and `src/sim/chem/state.py` if chemicals are a sub-schema)
+**File:** `src/engine/bio/defaults.py` and `src/engine/bio/state.py`
 
 Add `epinephrine: float` to the state alongside `norepinephrine`. Ensure `advance()` applies
 the fast decay rate correctly.
 
 ### 4. Encoder: teach it the SAM axis triggers
 
-**File:** `src/bio/encoder.py` — `encode_stimulus` prompt
+**File:** `src/brain/amygdala/stimulus_encoder.py` — `encode_stimulus` prompt
 
 This is the core behavioral change. Add a new section to the encoder prompt defining
 **moment types that fire the SAM axis**:
@@ -207,7 +207,7 @@ reacts before the mind interprets.
 
 ### 5. Encoder: add short trajectory context
 
-**File:** `src/bio/encoder.py` — `encode_stimulus()` call construction
+**File:** `src/brain/amygdala/stimulus_encoder.py` — `encode_stimulus()` call construction
 
 The encoder currently sees: bio report + current message.
 
@@ -233,7 +233,7 @@ activation regardless of content valence.
 
 ### 6. Substances — epinephrine interactions
 
-**File:** `src/bio/encoder.py` — `evaluate_activity_deltas` prompt
+**File:** `src/brain/amygdala/stimulus_encoder.py` — `evaluate_activity_deltas` prompt
 
 Epinephrine should be included where pharmacokinetically accurate:
 
@@ -273,8 +273,8 @@ adjudicator: affect=flustered, arousal=74, valence=68
 
 | File | Change |
 |---|---|
-| `src/sim/chem/registry.py` | Add `epinephrine` ChemicalProfile with SAM-appropriate decay and interactions |
-| `src/sim/state.py` | Add `epinephrine` field to BiologicalState |
-| `src/bio/decoder.py` | Add epinephrine to `_build_bio_report()` output |
-| `src/bio/encoder.py` | Add SAM axis moment-type guidance to `encode_stimulus` prompt; add `[RECENT EXCHANGES]` trajectory block to encoder call |
-| `src/bio/encoder.py` | Add epinephrine to `evaluate_activity_deltas` substance guidance |
+| `src/engine/chem/registry.py` | Add `epinephrine` ChemicalProfile with SAM-appropriate decay and interactions |
+| `src/engine/bio/defaults.py` + `src/engine/bio/state.py` | Add `epinephrine` field to BiologicalState |
+| `src/brain/subconscious/decoder.py` | Add epinephrine to `_build_bio_report()` output |
+| `src/brain/amygdala/stimulus_encoder.py` | Add SAM axis moment-type guidance to `encode_stimulus` prompt; add `[RECENT EXCHANGES]` trajectory block to encoder call |
+| `src/brain/amygdala/stimulus_encoder.py` | Add epinephrine to `evaluate_activity_deltas` substance guidance |
