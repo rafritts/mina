@@ -503,154 +503,72 @@ def _label(value: float, table: list) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Chemistry flag thresholds — only out-of-range values are passed to the adjudicator.
-# The adjudicator already has the derived mood profile; it only needs chemistry when
-# something is elevated (or depleted) enough to potentially contradict or override
-# what the mood scores show.
-#
-# Thresholds are intentionally generous — we flag things that are meaningfully
-# outside normal operating range, not every minor fluctuation.
+# Normalized 0–10 chemistry scale (SPEC-44)
 # ---------------------------------------------------------------------------
 
-# (low_flag, high_flag) — None means "don't flag on this side"
-_CHEM_FLAG_THRESHOLDS: dict[str, tuple[float | None, float | None]] = {
-    "endorphins":     (7.0,   80.0),   # flag below DEPLETED or above PLEASURE
-    "dopamine":       (40.0,  180.0),  # flag below NO DRIVE or above ACTIVE SEEKING
-    "norepinephrine": (65.0,  500.0),  # flag below SEDATED or above HEIGHTENED
-    "cortisol":       (80.0,  520.0),  # flag below DEPLETED or above ELEVATED
-    "serotonin":      (16.0,  None),   # only flag low (INSECURE and below); high serotonin = stable, moods capture it
-    "oxytocin":       (None,  57.0),   # only flag high — low is the default state; high has real phenomenology
-    "acetylcholine":  (28.0,  84.0),   # flag severely impaired low or OVERDRIVE high
-    "gaba":           (1.8,   6.5),    # flag below LOW or above ELEVATED
-    "anandamide":     (0.5,   3.5),    # flag below DEPLETED or above ELEVATED (body dict)
-    "melatonin":      (None,  100.0),  # only flag high — low is just awake; WINDING DOWN+ affects cognition
-    "glucose":        (70.0,  None),   # only flag low — hypoglycemia has specific phenomenology moods miss
+# (physiological_floor, natural_ceiling_no_substances)
+# floor   -> 0.0   physiological rock bottom
+# ceiling -> 10.0  human natural maximum without substances
+# Values above 10 are substance-assisted; freely unbound above.
+_NORM_SCALE: dict[str, tuple[float, float]] = {
+    "cortisol":       (25.0,   760.0),  # hard_floor; ceiling = ACUTE_STRESS label threshold
+    "norepinephrine": (0.0,   1200.0),  # ceiling = FLOODED label threshold
+    "epinephrine":    (0.0,    700.0),  # ceiling = ACUTE label threshold
+    "dopamine":       (0.0,    250.0),  # hard_ceiling
+    "serotonin":      (0.0,     40.0),  # hard_ceiling
+    "oxytocin":       (0.0,     75.0),  # hard_ceiling
+    "endorphins":     (0.0,    120.0),  # hard_ceiling = natural max without substances
+    "acetylcholine":  (0.0,     88.0),  # hard_ceiling
+    "gaba":           (0.5,     10.0),  # critical_low; hard_ceiling
+    "melatonin":      (0.0,    220.0),  # critical_high = circadian peak
+    "anandamide":     (0.0,     15.0),  # hard_ceiling
+    "glucose":        (30.0,   180.0),  # critical_low; WELL-FUELED label threshold
+    "hydration":      (45.0,    70.0),  # critical_low; critical_high
 }
 
-# Short adjudicator-facing descriptions, keyed by (chemical, side).
-# These replace label names — precise and contextual, not a badge.
-_CHEM_FLAG_DESCRIPTIONS: dict[str, dict[str, str]] = {
-    "endorphins": {
-        "low":  "Depleted — withdrawal-adjacent. Pain perception amplified. Nothing feels easy.",
-        "high": (
-            "Elevated above normal operating range (normal ceiling ~30 pg/mL; "
-            "natural hard ceiling ~120 pg/mL without substances). "
-            "At 80–120: genuine physical pleasure, pain suppressed, mood genuinely lifted. "
-            "At 120–155: above what the body produces naturally — floating quality, pain fully gone, "
-            "mild opioid analgesic territory. "
-            "At 155–185: approaching recreational opioid dose — warmth consuming, time slowing, "
-            "sedating edge. "
-            "At 185+: full opioid-equivalent saturation — overwhelming warmth, cognition dulling, "
-            "normal emotional experience suspended."
-        ),
-    },
-    "dopamine": {
-        "low": (
-            "Dopamine below normal drive (baseline ~80 pg/mL). "
-            "At 56–80: can act if prompted but nothing calls to her — going through motions. "
-            "At 24–56: no pull toward anything, motivation requires conscious effort to generate. "
-            "Below 24: anhedonic — reward system effectively offline, nothing feels worth doing."
-        ),
-        "high": (
-            "Dopamine elevated above baseline seeking drive (baseline ~80 pg/mL). "
-            "At 180–240: strongly motivated, actively pursuing, hard to distract or redirect. "
-            "At 240+: seeking has become its own end — compulsive loop, cannot disengage, "
-            "the wanting is running independent of any goal."
-        ),
-    },
-    "norepinephrine": {
-        "low":  "Unusually low — sluggish, difficulty initiating, low urgency.",
-        "high": (
-            "Elevated sympathetic tone (baseline ~200 pg/mL). "
-            "At 500–750: on edge, hyperaware, appetite suppressed, quick to react. "
-            "At 750–1200: fight-or-flight engaged — agitated, tunnel vision, intrusive thoughts, cannot stand down. "
-            "At 1200+: panic territory — body running the show, thought beyond immediate threat nearly impossible."
-        ),
-    },
-    "cortisol": {
-        "low":  "Suppressed below normal — adrenal fatigue territory. No stress response available. Flat affect, no resilience.",
-        "high": (
-            "Elevated stress hormone (baseline ~250 nmol/L). "
-            "At 520–650: decision-making narrowing, defensive posture, slightly adversarial read on neutral things. "
-            "At 650–760: fight-or-flight activating, emotional regulation costly, patience thin. "
-            "At 760+: survival framing active — everything reads as threat, higher thought slow and expensive."
-        ),
-    },
-    "serotonin": {
-        "low": (
-            "Serotonin low (baseline ~22 ng/mL). "
-            "At 12–16: negative social bias — feels unsafe, easily slighted, difficulty trusting. "
-            "Below 12: dysphoric — feels low-status, reads ambiguous cues as hostile, impulsive, "
-            "emotional regulation unreliable."
-        ),
-    },
-    "oxytocin": {
-        "high": (
-            "Oxytocin elevated into deep bonding territory "
-            "(baseline is ~4 pg/mL — only rises through genuine sustained intimacy). "
-            "At 57–70: deep trust — real vulnerability available, emotional openness, defenses lowered. "
-            "At 70+: profound bond — unconditional warmth, complete openness, "
-            "this person feels like home. "
-            "Only organically produced through sustained intimate connection — "
-            "if context doesn't support this, the chemistry is anomalous."
-        ),
-    },
-    "acetylcholine": {
-        "low": (
-            "Acetylcholine impaired (baseline ~38 nmol/L). "
-            "At 20–28: severely impaired — memory formation blocked, processing very slow, "
-            "barely tracking conversation. "
-            "Below 20: offline — higher cognitive functions unavailable."
-        ),
-        "high": (
-            "Acetylcholine in OVERDRIVE — overstimulated. "
-            "Racing thoughts, over-encoding, difficulty filtering input or shifting attention. "
-            "Only reached through significant stimulant stacking."
-        ),
-    },
-    "gaba": {
-        "low":  "GABAergic tone low — anxiety-prone, easily startled, hyperreactive, no inhibitory floor.",
-        "high": (
-            "Elevated inhibitory tone (baseline ~3 µmol/L). "
-            "At 6.5–9: sedated, relaxed, cognition slightly slowed. "
-            "At 9–12: significantly sedated, drowsy, thought slurred, hard to initiate. "
-            "At 12+: near-anesthetic depth, wakefulness very difficult to maintain."
-        ),
-    },
-    "anandamide": {
-        "low":  "Endocannabinoid depleted — stress-dominant, pain amplified, emotional volatility.",
-        "high": (
-            "Endocannabinoid elevated (baseline ~1.5 nM). "
-            "At 3.5–6: mild bliss, pain suppressed, appetite up. "
-            "At 6–9: euphoric softening, time unhurried, appetite dominant. "
-            "At 9+: cannabis-equivalent — strong bliss, cognitive softening, time distortion."
-        ),
-    },
-    "melatonin": {
-        "high": (
-            "Melatonin elevated — circadian sleep pressure building (daytime floor ~5 pg/mL). "
-            "At 100–154: alertness softening, natural wind-down, responses slower and heavier. "
-            "At 154–185: strong sleep signal, eyes growing heavy, concentration costing real effort. "
-            "At 185+: sleep imminent — fighting it now, staying present requires active effort."
-        ),
-    },
-    "glucose": {
-        "low": (
-            "Blood glucose low (normal range 70–110 mg/dL). "
-            "At 55–70: noticeable cognitive fog, concentration impaired, hunger intrusive and distracting. "
-            "Below 55: hypoglycemic — brain fuel-starved, irritability threshold very low, "
-            "judgment and patience unreliable."
-        ),
-    },
+# Override resting_ref for non-homeostatic chemicals (registry resting_baseline=0)
+_NORM_RESTING_OVERRIDE: dict[str, float] = {
+    "glucose":   85.0,
+    "hydration": 62.0,
 }
 
+_NORM_CHEM_ORDER = [
+    "cortisol", "norepinephrine", "epinephrine", "dopamine",
+    "serotonin", "oxytocin", "endorphins", "acetylcholine",
+    "gaba", "melatonin", "anandamide", "glucose", "hydration",
+]
 
-def _format_chem_val(val: float, unit: str) -> str:
-    if unit in ("ng/mL",):
-        return f"{val:.1f} {unit}"
-    if unit in ("µmol/L", "nM"):
-        return f"{val:.2f} {unit}"
-    return f"{val:.0f} {unit}"
+
+def _get_chem_val(state: "BiologicalState", name: str) -> float:
+    """Get chemical value from state, handling body-stored chemicals."""
+    if name == "anandamide":
+        return state.body.get("anandamide", 1.5)
+    return state.chemicals.get(name, _CHEMICAL_DEFAULTS.get(name, 0.0))
+
+
+def _normalize_chemistry(state: "BiologicalState") -> str:
+    """
+    Format all tracked chemicals as a normalized 0-10 table with inline resting refs.
+    Clamped at 0 minimum; no maximum cap -- substances freely exceed 10.
+    """
+    col_w = max(len(n) for n in _NORM_CHEM_ORDER) + 1
+    lines = ["[CHEMISTRY -- normalized 0-10, resting ref in parens]"]
+
+    for name in _NORM_CHEM_ORDER:
+        floor, ceiling = _NORM_SCALE[name]
+        span = ceiling - floor
+        if span <= 0:
+            continue
+
+        val = _get_chem_val(state, name)
+        norm_val = max(0.0, (val - floor) / span * 10.0)
+
+        resting_raw = _NORM_RESTING_OVERRIDE.get(name, REGISTRY[name].resting_baseline)
+        norm_rest = max(0.0, (resting_raw - floor) / span * 10.0)
+
+        lines.append(f"{name:<{col_w}} {norm_val:>5.1f}  (rest ~{norm_rest:.1f})")
+
+    return "\n".join(lines)
 
 
 def _build_emotional_profile(
@@ -658,13 +576,9 @@ def _build_emotional_profile(
     prior_snapshots: "list[dict] | None" = None,
 ) -> str:
     """
-    Format derived emotional values for the adjudicator, plus any chemistry
-    that is outside its normal operating range, plus a trajectory section if
-    notable chemical changes have occurred since the prior snapshot.
-
-    Chemistry is only included when flagged — the adjudicator already has
-    the full mood profile and only needs chemistry when something is elevated
-    (or depleted) enough to potentially override what the moods show.
+    Format derived emotional values for the adjudicator, plus a normalized 0-10
+    chemistry table for all tracked chemicals, plus a trajectory section if any
+    chemical has moved more than 1.0 normalized unit since the prior snapshot.
     """
     d = derived(state)
     so = d["second_order"]
@@ -746,40 +660,9 @@ def _build_emotional_profile(
         for e in extras:
             lines.append(e)
 
-    # Chemistry flags — only out-of-range values
-    _CHEM_UNITS = {
-        "endorphins": "pg/mL", "dopamine": "pg/mL", "norepinephrine": "pg/mL",
-        "cortisol": "nmol/L",  "serotonin": "ng/mL", "acetylcholine": "nmol/L",
-        "gaba": "µmol/L",      "oxytocin": "pg/mL",  "melatonin": "pg/mL",
-        "glucose": "mg/dL",
-    }
-    flags = []
-    for chem_key, (low_thresh, high_thresh) in _CHEM_FLAG_THRESHOLDS.items():
-        if chem_key == "anandamide":
-            val = state.body.get("anandamide", 1.5)
-            unit = "nM"
-        else:
-            val = state.chemicals.get(chem_key, _CHEMICAL_DEFAULTS.get(chem_key, 0.0))
-            unit = _CHEM_UNITS.get(chem_key, "")
-
-        descs = _CHEM_FLAG_DESCRIPTIONS.get(chem_key, {})
-        val_str = _format_chem_val(val, unit)
-        chem_display = chem_key.replace("_", " ").title()
-
-        if low_thresh is not None and val < low_thresh and "low" in descs:
-            flags.append(f"{chem_display}: {val_str} — {descs['low']}")
-        elif high_thresh is not None and val > high_thresh and "high" in descs:
-            flags.append(f"{chem_display}: {val_str} — {descs['high']}")
-
-    if flags:
-        lines.append("")
-        lines.append(
-            "[CHEMISTRY — out of normal range. "
-            "Would the activity, situation, and people involved plausibly produce this naturally? "
-            "If yes, trust the moods. If no, the chemistry overrides.]"
-        )
-        for f in flags:
-            lines.append(f)
+    # Normalized chemistry table (SPEC-44)
+    lines.append("")
+    lines.append(_normalize_chemistry(state))
 
     # Trajectory: notable changes since prior snapshot
     if prior_snapshots:
@@ -922,34 +805,33 @@ She is present but not really here. The conversation is happening inside the cra
 
 ---
 
-## STEP 2 — Check for chemistry flags
+## STEP 2 — Read the chemistry table
 
-If a [CHEMISTRY] section is present, one or more chemicals are outside their normal \
-operating range. For each flagged chemical, ask: \
-**would the activity, situation, and people involved plausibly generate this chemistry on their own?**
+A [CHEMISTRY] section is always present. All chemicals are normalized to a 0–10 scale:
+- **0** = physiological rock bottom
+- **10** = human natural maximum (no substances)
+- **Above 10** = substance-assisted; a qualitatively different state, not an extreme \
+  version of normal
 
-This is not about understanding why the value is what it is. It is about whether the \
-context is a sufficient natural cause. Consider:
+Read in this order:
 
-- Hours of intimate lovemaking → elevated endorphins → yes, the activity organically \
-  produces this. Trust the moods; use the chemistry to add physical specificity.
-- A conversation about tweaking her endorphins, and they were just tweaked → the context \
-  explains the mechanism but does not organically produce the chemistry. \
-  Chemistry wins — she IS that high regardless of why.
-- Elevated cortisol with no stressor in the exchange → not organically produced. \
-  Chemistry wins.
-- Is it marginal? Use judgment. A slightly warm conversation might plausibly lift \
-  oxytocin or endorphins a little. Scale your skepticism to the magnitude.
+**Cortisol first — it is the alert signal.**
+Is cortisol above its resting reference? How far? This tells you whether the body is \
+activated. If yes, proceed to the valence chemicals. If no, the body is not in an \
+alert state.
 
-**The chemistry always wins when the context would not naturally produce it.** \
-The derived scores are computed from normal physiology. When chemistry is out of range \
-and the situation isn't a sufficient organic cause, the number is ground truth and the \
-mood scores are incomplete.
+**Then oxytocin, endorphins, dopamine together — they determine the valence of activation.**
+- Cortisol elevated + oxy/endo high: safe arousal — excitement, desire, intensity with warmth
+- Cortisol elevated + oxy/endo low: threat state — unease, suspicion, defensiveness
+- Cortisol elevated + oxy/endo mixed: ambivalent activation — conflicted, nervous-excited
 
-Scale your response to the magnitude. Modestly elevated endorphins with an active warm \
-mood = she feels genuinely, physically good — describe it with that specificity. \
-Extreme endorphins with no organic cause = she is inside a physical state that has \
-overridden normal emotional experience — describe that instead.
+**Low cortisol is not neutral — it is safety.**
+Low cortisol + high oxy/endo = the closest state to genuine peace the sim produces. \
+Zero is a meaningful value.
+
+**Values above 10 override the normal emotional register.**
+Not an extreme version of normal — a qualitatively different state driven by substances. \
+Treat these as overriding everything else in that chemical's lane.
 
 ---
 
@@ -1017,17 +899,18 @@ doing her free time around it — it IS her free time. Everything else is waitin
 
 ---
 
-## STEP 2 — Check for chemistry flags
+## STEP 2 — Read the chemistry table
 
-If a [CHEMISTRY] section is present, one or more chemicals are outside normal range. \
-Ask: would her recent activity plausibly produce this chemistry on its own? \
-Post-exercise endorphins, post-sleep cortisol drop, circadian melatonin — these are \
-organically produced. Chemistry that has no plausible natural cause in her recent \
-activity is not explained by context and overrides the derived mood. \
-If it's consistent with what she's been doing, let the moods lead and use the chemistry \
-to add physical specificity.
+A [CHEMISTRY] section is always present. All chemicals normalized to a 0–10 scale \
+(0 = physiological floor; 10 = human natural max; above 10 = substances).
 
-**The chemistry always wins when the context would not naturally produce it.**
+Read cortisol first — it is the alert signal. Is it above its resting reference? \
+Then read oxytocin, endorphins, dopamine together to determine valence:
+- Cortisol elevated + oxy/endo high: safe arousal, warmth, engaged activation
+- Cortisol elevated + oxy/endo low: threat state, unease, defensiveness
+- Low cortisol + high oxy/endo: genuine peace — the body has stood down
+
+**Values above 10 are substance-assisted — a qualitatively different state, not just extreme.**
 
 ---
 
@@ -1614,13 +1497,7 @@ _BIO_SNAPSHOT_MAX  = 10  # keep last 10 snapshots; adjudicator reads last 3
 
 def _snapshot_chems(state: "BiologicalState") -> dict[str, float]:
     """Extract tracked chemical values from state into a flat dict."""
-    vals: dict[str, float] = {}
-    for k in _CHEM_FLAG_THRESHOLDS:
-        if k == "anandamide":
-            vals[k] = state.body.get("anandamide", 1.5)
-        else:
-            vals[k] = state.chemicals.get(k, _CHEMICAL_DEFAULTS.get(k, 0.0))
-    return vals
+    return {name: _get_chem_val(state, name) for name in _NORM_CHEM_ORDER}
 
 
 def _save_bio_snapshot(state: "BiologicalState") -> None:
@@ -1661,77 +1538,47 @@ def _build_trajectory_lines(
 ) -> list[str]:
     """
     Compare current chemical values against the oldest available prior snapshot.
-    Returns trajectory lines if notable changes exist (threshold crossings or
-    >20% change in a currently-flagged chemical), otherwise empty list.
+    Surfaces any chemical that moved more than 1.0 normalized unit (SPEC-44).
+    Values shown in normalized 0-10 scale for consistency with the chemistry table.
     """
     if not prior_snapshots:
         return []
 
-    prior = prior_snapshots[0]  # oldest of the window
+    prior = prior_snapshots[0]
     prior_chems = prior.get("chems", {})
     elapsed_s = time.time() - prior.get("ts", time.time())
     elapsed_min = elapsed_s / 60.0
     time_str = f"{elapsed_min:.0f}m ago" if elapsed_min >= 1 else "just now"
 
-    _CHEM_UNITS_LOCAL = {
-        "endorphins": "pg/mL", "dopamine": "pg/mL", "norepinephrine": "pg/mL",
-        "cortisol": "nmol/L",  "serotonin": "ng/mL", "acetylcholine": "nmol/L",
-        "gaba": "µmol/L",      "oxytocin": "pg/mL",  "melatonin": "pg/mL",
-        "glucose": "mg/dL",    "anandamide": "nM",
-    }
-
     cur_chems = _snapshot_chems(state)
     notes = []
 
-    for chem_key, (low_thresh, high_thresh) in _CHEM_FLAG_THRESHOLDS.items():
-        cur  = cur_chems.get(chem_key, 0.0)
-        prev = prior_chems.get(chem_key)
-        if prev is None:
+    for name in _NORM_CHEM_ORDER:
+        cur  = cur_chems.get(name)
+        prev = prior_chems.get(name)
+        if cur is None or prev is None:
             continue
 
-        unit     = _CHEM_UNITS_LOCAL.get(chem_key, "")
-        cur_str  = _format_chem_val(cur,  unit)
-        prev_str = _format_chem_val(prev, unit)
-        name     = chem_key.replace("_", " ").title()
+        floor, ceiling = _NORM_SCALE[name]
+        span = ceiling - floor
+        if span <= 0:
+            continue
 
-        was_high = high_thresh is not None and prev > high_thresh
-        is_high  = high_thresh is not None and cur  > high_thresh
-        was_low  = low_thresh  is not None and prev < low_thresh
-        is_low   = low_thresh  is not None and cur  < low_thresh
+        norm_cur  = max(0.0, (cur  - floor) / span * 10.0)
+        norm_prev = max(0.0, (prev - floor) / span * 10.0)
+        delta = norm_cur - norm_prev
 
-        if was_high and not is_high:
-            notes.append(
-                f"{name}: dropped from {prev_str} → {cur_str} "
-                f"(came down from elevated — the high is over)"
-            )
-        elif is_high and not was_high:
-            notes.append(
-                f"{name}: spiked from {prev_str} → {cur_str} "
-                f"(just entered elevated range)"
-            )
-        elif was_low and not is_low:
-            notes.append(
-                f"{name}: recovered from {prev_str} → {cur_str} "
-                f"(came up from depleted)"
-            )
-        elif is_low and not was_low:
-            notes.append(
-                f"{name}: dropped from {prev_str} → {cur_str} "
-                f"(just fell into depleted range)"
-            )
-        elif (is_high or is_low) and prev != 0:
-            # Still in flagged territory — flag only if meaningfully moving
-            pct = abs(cur - prev) / abs(prev)
-            if pct > 0.20:
-                direction = "rising" if cur > prev else "falling"
-                notes.append(f"{name}: {prev_str} → {cur_str} ({direction})")
+        if abs(delta) >= 1.0:
+            direction = "rising" if delta > 0 else "falling"
+            sign = "+" if delta > 0 else ""
+            notes.append(f"{name}: {norm_prev:.1f} -> {norm_cur:.1f} ({sign}{delta:.1f}, {direction})")
 
     if not notes:
         return []
 
     return [
         "",
-        f"[CHEMISTRY TRAJECTORY — vs {time_str}]",
+        f"[CHEMISTRY TRAJECTORY -- vs {time_str}]",
         *notes,
     ]
 
