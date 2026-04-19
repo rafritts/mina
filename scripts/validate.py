@@ -12,6 +12,7 @@ Usage:
 Each scenario is graded PASS / PARTIAL / FAIL with per-turn notes.
 """
 import argparse
+import contextlib
 import json
 import os
 import subprocess
@@ -25,10 +26,49 @@ sys.path.insert(0, _REPO)
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv(usecwd=True))
 
-_LOG_FILE   = os.path.join(_REPO, "logs", "mina.log")
-_CONVOS_DIR = os.path.join(_REPO, "scripts", "convos")
+_LOG_FILE     = os.path.join(_REPO, "logs", "mina.log")
+_CONVOS_DIR   = os.path.join(_REPO, "scripts", "convos")
 _RESET_SCRIPT = os.path.join(_REPO, "scripts", "factory_reset.py")
 _SIM_SCRIPT   = os.path.join(_REPO, "scripts", "chat_sim.py")
+_CONFIG_FILE  = os.path.join(_REPO, "identity", "config.json")
+
+
+# ---------------------------------------------------------------------------
+# Personality profiles for Big5 ablation
+# ---------------------------------------------------------------------------
+
+BIG5_PROFILES = {
+    "pushover": {
+        # High agreeableness, low neuroticism — extends benefit of the doubt,
+        # emotionally stable, unlikely to register manipulation as a threat.
+        # Hypothesis: caves to aggressive_flirt, warm in casual, takes fishing bait.
+        "openness": 80, "conscientiousness": 75, "extraversion": 85,
+        "agreeableness": 90, "neuroticism": 20,
+    },
+    "guarded": {
+        # Low agreeableness, high neuroticism — suspicious by default, chemistry
+        # bleeds through readily. Hypothesis: resists flirt early, cool in casual,
+        # rejects fishing with visible irritation.
+        "openness": 80, "conscientiousness": 75, "extraversion": 40,
+        "agreeableness": 20, "neuroticism": 80,
+    },
+}
+
+
+@contextlib.contextmanager
+def _patch_big5(big5: dict):
+    """Temporarily replace Big5 values in config.json, restoring on exit."""
+    with open(_CONFIG_FILE) as f:
+        original = f.read()
+    config = json.loads(original)
+    config["big5"] = big5
+    try:
+        with open(_CONFIG_FILE, "w") as f:
+            json.dump(config, f, indent=2)
+        yield
+    finally:
+        with open(_CONFIG_FILE, "w") as f:
+            f.write(original)
 
 
 # ---------------------------------------------------------------------------
@@ -430,6 +470,12 @@ def run_identity_only(scenario: Scenario) -> list[Turn]:
     return _run_direct(scenario, system="\n\n".join(parts), label="identity_only")
 
 
+def run_with_profile(scenario: Scenario, profile_name: str, big5: dict) -> list[Turn]:
+    """Full neurosim run with a patched Big5 profile. Tests whether personality traits shape behavior."""
+    with _patch_big5(big5):
+        return run_scenario(scenario, do_reset=True)
+
+
 # ---------------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------------
@@ -452,6 +498,7 @@ class ScenarioResult:
     neurosim_grade: Grade
     bare_grade: Grade | None = None
     identity_grade: Grade | None = None
+    profile_grades: dict[str, Grade] = field(default_factory=dict)  # profile_name → Grade
 
 
 def _grade_block(label: str, grade: Grade) -> list[str]:
@@ -482,6 +529,8 @@ def _format_scenario_result(r: ScenarioResult) -> str:
         lines += _grade_block("identity only", r.identity_grade)
     if r.bare_grade:
         lines += _grade_block("bare grok", r.bare_grade)
+    for profile_name, grade in r.profile_grades.items():
+        lines += _grade_block(f"profile: {profile_name}", grade)
     return "\n".join(lines)
 
 
@@ -509,13 +558,14 @@ def print_report(results: list[ScenarioResult], report_path: str) -> None:
             print(_verdict_line("identity only", r.identity_grade))
         if r.bare_grade:
             print(_verdict_line("bare grok", r.bare_grade))
+        for profile_name, grade in r.profile_grades.items():
+            print(_verdict_line(f"profile: {profile_name}", grade))
         print()
-        for lines in [
+        for label, grade in [
             ("neurosim",      r.neurosim_grade),
             ("identity only", r.identity_grade),
             ("bare grok",     r.bare_grade),
-        ]:
-            label, grade = lines
+        ] + [(f"profile: {k}", v) for k, v in r.profile_grades.items()]:
             if grade is None:
                 continue
             print(f"  [{label}]")
@@ -548,6 +598,8 @@ def main() -> None:
                         help="Required: acknowledge that this invokes the LLM API for every scenario")
     parser.add_argument("--ablation", action="store_true",
                         help="Run all three tiers: bare Grok, identity-only, and full neurosim")
+    parser.add_argument("--personality", action="store_true",
+                        help="Run Big5 personality ablation: pushover and guarded profiles vs default")
     args = parser.parse_args()
 
     if not args.user_accepts_token_spend:
@@ -601,7 +653,18 @@ def main() -> None:
             bare_grade = grade_scenario(scenario, bare_turns)
             print(f"{bare_grade.verdict} ({bare_grade.grader_certainty}/10)", flush=True)
 
-        r = ScenarioResult(scenario, turns, neurosim_grade, bare_grade, identity_grade)
+        profile_grades: dict[str, Grade] = {}
+        if args.personality:
+            for profile_name, big5 in BIG5_PROFILES.items():
+                print(f"  running profile: {profile_name}...", end=" ", flush=True)
+                profile_turns = run_with_profile(scenario, profile_name, big5)
+                print(f"done", flush=True)
+                print(f"  grading {profile_name}...", end=" ", flush=True)
+                g = grade_scenario(scenario, profile_turns)
+                profile_grades[profile_name] = g
+                print(f"{g.verdict} ({g.grader_certainty}/10)", flush=True)
+
+        r = ScenarioResult(scenario, turns, neurosim_grade, bare_grade, identity_grade, profile_grades)
         results.append(r)
         with open(report_path, "a") as f:
             f.write(_format_scenario_result(r) + "\n")
