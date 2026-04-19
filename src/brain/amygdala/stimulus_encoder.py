@@ -29,6 +29,7 @@ from src.brain.brainstem.state import BiologicalState
 
 _DELTA_FIELDS = {
     "cortisol", "dopamine", "serotonin", "norepinephrine",
+    "epinephrine",  # SPEC-42: SAM axis fast branch
     "oxytocin", "endorphins", "sleep_pressure", "glucose",
     "hydration", "acetylcholine",
     "anandamide",   # SPEC-30: exercise/relaxation; activity encoder only
@@ -59,6 +60,7 @@ If an external event occurred:
   "dopamine": <number>,       // pg/mL delta
   "serotonin": <number>,      // ng/mL delta — activity encoder only (eating, exercise, shower)
   "norepinephrine": <number>, // pg/mL delta
+  "epinephrine": <number>,    // pg/mL delta — SAM axis only (see moment types)
   "oxytocin": <number>,       // pg/mL delta
   "endorphins": <number>,     // pg/mL delta
   "sleep_pressure": <number>, // AU delta
@@ -100,6 +102,7 @@ _OLLAMA_EMBED_MODEL = "embeddinggemma:latest"
 # Habituation windows per chemical (hours). None = no per-trigger habituation.
 _HABITUATION_WINDOWS: dict[str, float | None] = {
     "dopamine":       1.0,    # 60 min novelty window
+    "epinephrine":    0.5,    # 30 min SAM window — discrete moments only
     "norepinephrine": 0.4,    # 25 min surprise window
     "endorphins":     1.0,    # 60 min trigger window
     "acetylcholine":  1.5,    # 90 min cognitive window
@@ -111,6 +114,7 @@ _HABITUATION_WINDOWS: dict[str, float | None] = {
 # Maximum sensitization multiplier per chemical. None = not sensitized.
 _SENSITIZATION_MAX: dict[str, float | None] = {
     "dopamine":       2.0,
+    "epinephrine":    1.3,    # mild sensitization — same as NE
     "oxytocin":       2.5,
     "endorphins":     1.5,
     "norepinephrine": 1.3,
@@ -122,8 +126,9 @@ _SENSITIZATION_MAX: dict[str, float | None] = {
 # Secretion rates (units/sim_hour) — controls rise time in advance() drip loop.
 # Chemicals not listed here are applied immediately by the caller.
 _SECRETION_RATES: dict[str, float] = {
-    "dopamine":       450.0,  # ~2 min rise time
-    "norepinephrine": 900.0,  # ~1 min rise time
+    "dopamine":       450.0,   # ~2 min rise time
+    "epinephrine":    1200.0,  # ~45 sec rise time — adrenal medulla, fast
+    "norepinephrine": 900.0,   # ~1 min rise time
     "endorphins":     180.0,  # ~5 min rise time
     "oxytocin":       90.0,   # ~10 min rise time
     "acetylcholine":  180.0,  # ~5 min rise time
@@ -437,6 +442,7 @@ def _personality_multipliers(personality: dict) -> dict[str, float]:
 
     return {
         "cortisol":       n_factor,
+        "epinephrine":    n_factor,
         "norepinephrine": n_factor,
         "dopamine":       dopamine_factor * ds,
         "oxytocin":       a_factor,

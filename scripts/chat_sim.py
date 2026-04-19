@@ -20,6 +20,7 @@ them so the sim state updates properly.
 """
 import asyncio
 import argparse
+import datetime
 import os
 import sys
 import time
@@ -44,7 +45,19 @@ _ENCODER_PREFIXES = (
     "[ADJUDICATOR]",
 )
 
-_LOG_FILE = os.path.join(_REPO, "logs", "mina.log")
+_LOG_FILE     = os.path.join(_REPO, "logs", "mina.log")
+_OUTPUT_DIR   = os.path.join(_REPO, "run", "script_output")
+
+
+def _open_output(label: str):
+    """Return an open file handle for this run's output, or None on failure."""
+    try:
+        os.makedirs(_OUTPUT_DIR, exist_ok=True)
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        name = f"{ts}_{label}.txt"
+        return open(os.path.join(_OUTPUT_DIR, name), "w", buffering=1)
+    except Exception:
+        return None
 
 
 def _tail_encoder_lines(since_pos: int) -> tuple[list[str], int]:
@@ -67,22 +80,31 @@ def _log_pos() -> int:
         return 0
 
 
-async def send(message: str, username: str) -> str:
+async def send(message: str, username: str, out=None) -> str:
     before = _log_pos()
+    header = f"\n{username}: {message}"
     print(f"\n\033[94m{username}:\033[0m {message}")
+    if out:
+        out.write(header + "\n")
     reply, _ = await run_turn(message, username=username)
     # Give log a moment to flush
     await asyncio.sleep(0.3)
     enc_lines, _ = _tail_encoder_lines(before)
     for line in enc_lines:
         print(f"  \033[90m{line.strip()}\033[0m")
+        if out:
+            out.write(f"  {line.strip()}\n")
+    mina_line = f"Mina: {reply}"
     print(f"\033[95mMina:\033[0m {reply}")
+    if out:
+        out.write(mina_line + "\n")
     return reply
 
 
 async def interactive(username: str) -> None:
     print(f"\033[1mMina chat sim — interactive mode\033[0m  (username: {username})")
     print("Type a message and press Enter. Ctrl-C to quit.\n")
+    out = _open_output(f"interactive_{username}")
     while True:
         try:
             msg = input(f"\033[94m{username}>\033[0m ").strip()
@@ -91,17 +113,28 @@ async def interactive(username: str) -> None:
             break
         if not msg:
             continue
-        await send(msg, username)
+        await send(msg, username, out)
+    if out:
+        out.close()
 
 
 async def run_script(path: str, username: str, delay: float) -> None:
     with open(path) as f:
         lines = [l.rstrip() for l in f if l.strip() and not l.startswith("#")]
-    print(f"\033[1mMina chat sim — script: {path}\033[0m  ({len(lines)} lines)\n")
+    script_name = os.path.splitext(os.path.basename(path))[0]
+    header = f"Mina chat sim — script: {path}  ({len(lines)} lines)"
+    print(f"\033[1m{header}\033[0m\n")
+    out = _open_output(script_name)
+    if out:
+        out.write(header + "\n\n")
     for msg in lines:
-        await send(msg, username)
+        await send(msg, username, out)
         await asyncio.sleep(delay)
     print("\n\033[1mScript complete.\033[0m")
+    if out:
+        out.write("\nScript complete.\n")
+        out.close()
+        print(f"Output saved to {_OUTPUT_DIR}/")
 
 
 def main() -> None:
