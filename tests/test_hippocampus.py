@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from src.biology.hippocampus.hippocampus import (
+from src.brain.hippocampus.hippocampus import (
     _parse_json_robust,
     _extract_tag,
     _parse_consolidation_output,
@@ -54,7 +54,7 @@ def test_customization_md_readable():
 def test_relationship_md_readable():
     # SPEC-39: legacy RELATIONSHIP.md removed — SPEC-33 relationship/ryan.md is canonical.
     # This test now verifies the new path works via read_relationship().
-    from src.biology.hippocampus.hippocampus import read_relationship
+    from src.brain.hippocampus.hippocampus import read_relationship
     from src.config.config import load_config
     owner = load_config().get("admin_name", "ryan")
     content = read_relationship(owner)

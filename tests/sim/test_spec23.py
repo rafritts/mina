@@ -19,12 +19,12 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from tests.sim.conftest import make_state
-from src.sim.events import EventBus
-from src.sim.physio.immune import (
+from src.engine.events import EventBus
+from src.engine.physio.immune import (
     advance_immune,
     compute_inflammation_index,
 )
-from src.sim.physio.pain import (
+from src.engine.physio.pain import (
     advance_pain,
     compute_pain_intensity,
     _apply_pain_effects,
@@ -32,7 +32,7 @@ from src.sim.physio.pain import (
     _pge2_baseline_fn,
     _advance_central_sensitization,
 )
-from src.sim.physio.autonomic import advance_autonomic, compute_vagal_tone
+from src.engine.physio.autonomic import advance_autonomic, compute_vagal_tone
 
 
 # ===========================================================================
@@ -447,7 +447,7 @@ def test_advance_autonomic_stores_vagal_tone():
 
 def test_engine_advance_with_spec23_subsystems():
     """engine.advance() runs without error with SPEC-23 hooks in place."""
-    from src.sim.engine import advance
+    from src.engine.engine import advance
     import time
     s = make_state()
     now = time.time()
@@ -462,7 +462,7 @@ def test_engine_advance_with_spec23_subsystems():
 
 def test_high_il1b_suppresses_serotonin_through_engine():
     """With elevated IL-1β, engine.advance() produces lower serotonin."""
-    from src.sim.engine import advance
+    from src.engine.engine import advance
     import time
     now = time.time()
 

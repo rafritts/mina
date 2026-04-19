@@ -19,22 +19,22 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 import pytest
 from tests.sim.conftest import make_state
 
-from src.sim.psych.allostatic import (
+from src.engine.psych.allostatic import (
     _bdnf_baseline_fn,
     _make_allostatic_ctx,
     _compute_synaptic_potentiation_delta,
     advance_allostatic,
 )
-from src.sim.physio.circadian import (
+from src.engine.physio.circadian import (
     _orexin_baseline_fn,
     _advance_orexin,
     compute_sleep_propensity,
     _advance_core_temp,
 )
-from src.sim.psych.derived import derived
-from src.sim.behavioral_drives import compute_behavioral_drives
-from src.sim.psych.personality import apply_personality_drift
-from src.sim.events import EventBus
+from src.engine.psych.derived import derived
+from src.engine.behavioral_drives import compute_behavioral_drives
+from src.engine.psych.personality import apply_personality_drift
+from src.engine.events import EventBus
 
 
 # ===========================================================================
@@ -519,7 +519,7 @@ class TestPersonalityDrift:
 class TestEngineIntegration:
     def test_advance_updates_allostatic_load(self):
         """Engine advance updates allostatic_load in neuroplasticity tier."""
-        from src.sim.engine import advance
+        from src.engine.engine import advance
         s = make_state(cortisol=700.0)
         s.body["adenosine"] = 70.0
         s.immune["inflammation_index"] = 50.0
@@ -531,7 +531,7 @@ class TestEngineIntegration:
 
     def test_advance_updates_orexin(self):
         """Engine advance updates orexin in neuroendocrine tier."""
-        from src.sim.engine import advance
+        from src.engine.engine import advance
         s = make_state()
         s.neuroendocrine["orexin"] = 50.0   # artificially low
         now = time.time()
@@ -541,7 +541,7 @@ class TestEngineIntegration:
 
     def test_advance_updates_core_temp(self):
         """Engine advance updates core_temp in body tier."""
-        from src.sim.engine import advance
+        from src.engine.engine import advance
         s = make_state()
         s.body["core_temp"] = 36.0   # set below circadian target
         now = time.time()
@@ -550,7 +550,7 @@ class TestEngineIntegration:
 
     def test_advance_updates_bdnf(self):
         """Engine advance updates BDNF."""
-        from src.sim.engine import advance
+        from src.engine.engine import advance
         s = make_state(cortisol=800.0)
         initial_bdnf = s.neuroplasticity["bdnf"]
         now = time.time()
@@ -559,7 +559,7 @@ class TestEngineIntegration:
 
     def test_engine_context_includes_bdnf(self):
         """_make_context includes bdnf so serotonin baseline_fn can use it."""
-        from src.sim.engine import _make_context, _hour_of_day
+        from src.engine.engine import _make_context, _hour_of_day
         s = make_state()
         s.neuroplasticity["bdnf"] = 3000.0
         ctx = _make_context(s, 12.0)
@@ -567,7 +567,7 @@ class TestEngineIntegration:
 
     def test_serotonin_baseline_reduced_by_low_bdnf(self):
         """Low BDNF → lower serotonin target from baseline_fn."""
-        from src.sim.chem.registry import REGISTRY
+        from src.engine.chem.registry import REGISTRY
         ctx_low_bdnf  = {"t3": 120.0, "estradiol": 100.0, "bdnf": 2000.0}
         ctx_high_bdnf = {"t3": 120.0, "estradiol": 100.0, "bdnf": 12000.0}
         fn = REGISTRY["serotonin"].baseline_fn

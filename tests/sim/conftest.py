@@ -1,4 +1,4 @@
-"""Shared fixtures for src.sim subsystem tests."""
+"""Shared fixtures for src.engine subsystem tests."""
 import sys
 import os
 
@@ -6,8 +6,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from src.sim.bio.state import BiologicalState
-from src.sim.bio.defaults import chemical_defaults, neuroendocrine_defaults
+from src.engine.bio.state import BiologicalState
+from src.engine.bio.defaults import chemical_defaults, neuroendocrine_defaults
 
 
 def make_state(**overrides) -> BiologicalState:

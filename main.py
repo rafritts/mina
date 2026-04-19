@@ -9,9 +9,9 @@ import os
 import sys
 
 from src.config.config import PAUSED_FLAG, load_config
-from src.biology.cortex.cortex import run_turn
-from src.biology.brainstem.heartbeat import bio_tick_loop
-from src.biology.subconscious.freetime import run_freetime
+from src.brain.cortex.cortex import run_turn
+from src.brain.brainstem.heartbeat import bio_tick_loop
+from src.brain.subconscious.freetime import run_freetime
 from src.application.infra.log import log
 
 
@@ -32,7 +32,7 @@ async def _freetime_loop() -> None:
 
 def _cli_run_command(cmd: str) -> bool:
     """Handle a CLI slash command. Returns True if handled."""
-    from src.biology.brainstem.state import load_and_advance, log_state
+    from src.brain.brainstem.state import load_and_advance, log_state
 
     parts = cmd.strip().split()
     name  = parts[0].lower()
@@ -47,7 +47,7 @@ def _cli_run_command(cmd: str) -> bool:
         confirm = input("Wipes everything including biomarkers. Type YES to confirm: ").strip()
         if confirm == "YES":
             from src.application.gateway.discord_gateway import _wipe_user_data
-            from src.biology.brainstem.state import BiologicalState, save_state
+            from src.brain.brainstem.state import BiologicalState, save_state
             wiped = _wipe_user_data()
             save_state(BiologicalState())
             wiped.append("state.json (biomarkers reset to defaults)")

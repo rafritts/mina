@@ -120,8 +120,8 @@ def _flatten_receptors(rs: dict) -> dict:
 
 def _build_state_response(s) -> dict:
     """Build the full v3 state response dict from a BiologicalState."""
-    from src.biology.brainstem.chemicals import REGISTRY, normalize, get_label
-    from src.sim.psych.derived import derived
+    from src.brain.brainstem.chemicals import REGISTRY, normalize, get_label
+    from src.engine.psych.derived import derived
 
     d = derived(s)
 
@@ -140,7 +140,7 @@ def _build_state_response(s) -> dict:
     # Vital signs
     vs_out = {}
     try:
-        from src.biology.brainstem.vital_signs import vital_signs as _vitals
+        from src.brain.brainstem.vital_signs import vital_signs as _vitals
         vs_out = _vitals(s)
     except Exception:
         pass
@@ -262,7 +262,7 @@ def _build_state_response(s) -> dict:
 @app.get("/api/state")
 def get_state(request: Request):
     _check_auth(request)
-    from src.biology.brainstem.state import load_state
+    from src.brain.brainstem.state import load_state
     s = load_state()
     return _build_state_response(s)
 
@@ -274,8 +274,8 @@ class StatePatch(BaseModel):
 @app.patch("/api/state")
 def patch_state(body: StatePatch, request: Request):
     _check_auth(request)
-    from src.biology.brainstem.state import load_state, save_state, advance
-    from src.biology.brainstem.chemicals import REGISTRY, clamp_chemical
+    from src.brain.brainstem.state import load_state, save_state, advance
+    from src.brain.brainstem.chemicals import REGISTRY, clamp_chemical
 
     s = advance(load_state())
     updates = {k: v for k, v in body.model_dump(exclude_none=True).items()
@@ -301,7 +301,7 @@ class AdvanceBody(BaseModel):
 @app.post("/api/state/advance")
 def post_advance_state(body: AdvanceBody, request: Request):
     _check_auth(request)
-    from src.biology.brainstem.state import load_state, save_state
+    from src.brain.brainstem.state import load_state, save_state
 
     hours = max(0.0, min(24.0, body.hours))
     if hours == 0:
@@ -318,7 +318,7 @@ def post_advance_state(body: AdvanceBody, request: Request):
     # Backdate last_updated so advance() computes sim_hours = requested hours
     s.last_updated = time.time() - (hours * 3600.0 / compression)
 
-    from src.sim.engine import advance as bio_advance
+    from src.engine.engine import advance as bio_advance
     s = bio_advance(s)
     save_state(s)
     return _build_state_response(s)
@@ -339,7 +339,7 @@ async def trigger_heartbeat(request: Request):
         raise HTTPException(status_code=409, detail="Heartbeat already running")
     _heartbeat_running = True
     try:
-        from src.biology.subconscious.freetime import run_freetime
+        from src.brain.subconscious.freetime import run_freetime
         await run_freetime(force=True)
         return {"ok": True}
     except Exception as e:
@@ -403,8 +403,8 @@ def get_tokens(request: Request):
 @app.get("/api/substance")
 def get_substances(request: Request):
     _check_auth(request)
-    from src.sim.neuro.substances import SUBSTANCE_DEFS
-    from src.biology.brainstem.state import load_state
+    from src.engine.neuro.substances import SUBSTANCE_DEFS
+    from src.brain.brainstem.state import load_state
     s = load_state()
     result = {}
     for name, sub in SUBSTANCE_DEFS.items():
@@ -421,8 +421,8 @@ def get_substances(request: Request):
 @app.post("/api/substance/{name}/dose")
 def dose_substance(name: str, request: Request):
     _check_auth(request)
-    from src.sim.neuro.substances import SUBSTANCE_DEFS
-    from src.biology.brainstem.state import load_state, save_state, advance
+    from src.engine.neuro.substances import SUBSTANCE_DEFS
+    from src.brain.brainstem.state import load_state, save_state, advance
 
     sub = SUBSTANCE_DEFS.get(name)
     if not sub:
@@ -444,7 +444,7 @@ def dose_substance(name: str, request: Request):
 @app.delete("/api/substance/{name}")
 def clear_substance(name: str, request: Request):
     _check_auth(request)
-    from src.biology.brainstem.state import load_state, save_state
+    from src.brain.brainstem.state import load_state, save_state
     s = load_state()
     s.substances.pop(name, None)
     save_state(s)

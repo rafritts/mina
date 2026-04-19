@@ -29,7 +29,7 @@ def test_sleep_pressure_at_high_adenosine():
 
 
 def test_apply_deltas_sleep_pressure_updates_adenosine():
-    from src.sim.bio.state import apply_deltas
+    from src.engine.bio.state import apply_deltas
     s = make_state()
     initial_a = s.body["adenosine"]
     s = apply_deltas(s, {"sleep_pressure": +10.0})
@@ -38,7 +38,7 @@ def test_apply_deltas_sleep_pressure_updates_adenosine():
 
 
 def test_advance_adenosine_builds_while_awake():
-    from src.sim.physio.circadian import _advance_adenosine
+    from src.engine.physio.circadian import _advance_adenosine
     s = make_state()
     s.sleeping = False
     s.body["adenosine"] = 30.0
@@ -47,7 +47,7 @@ def test_advance_adenosine_builds_while_awake():
 
 
 def test_advance_adenosine_clears_during_sleep():
-    from src.sim.physio.circadian import _advance_adenosine
+    from src.engine.physio.circadian import _advance_adenosine
     s = make_state()
     s.sleeping = True
     s.body["adenosine"] = 70.0
@@ -56,7 +56,7 @@ def test_advance_adenosine_clears_during_sleep():
 
 
 def test_advance_adenosine_floor_at_15():
-    from src.sim.physio.circadian import _advance_adenosine
+    from src.engine.physio.circadian import _advance_adenosine
     s = make_state()
     s.sleeping = True
     s.body["adenosine"] = 16.0
@@ -81,8 +81,8 @@ def test_glutamate_present_in_fresh_state():
 
 
 def test_advance_amino_acids_approaches_baseline():
-    from src.sim.neuro.amino_acids import advance_amino_acids
-    from src.sim.events import EventBus
+    from src.engine.neuro.amino_acids import advance_amino_acids
+    from src.engine.events import EventBus
     s = make_state()
     s.chemicals["gaba"] = 0.9    # depleted
     s.chemicals["glutamate"] = 12.0  # elevated
@@ -92,8 +92,8 @@ def test_advance_amino_acids_approaches_baseline():
 
 
 def test_high_cortisol_suppresses_gaba_baseline():
-    from src.sim.neuro.amino_acids import advance_amino_acids
-    from src.sim.events import EventBus
+    from src.engine.neuro.amino_acids import advance_amino_acids
+    from src.engine.events import EventBus
     s_low  = make_state(cortisol=200.0)
     s_high = make_state(cortisol=800.0)
     # Force both to same GABA starting point
@@ -105,8 +105,8 @@ def test_high_cortisol_suppresses_gaba_baseline():
 
 
 def test_excitotoxic_glutamate_raises_il6():
-    from src.sim.neuro.amino_acids import advance_amino_acids
-    from src.sim.events import EventBus
+    from src.engine.neuro.amino_acids import advance_amino_acids
+    from src.engine.events import EventBus
     s = make_state()
     s.chemicals["glutamate"] = 12.0   # above excitotoxic threshold (10)
     il6_before = s.immune["il6"]
@@ -115,8 +115,8 @@ def test_excitotoxic_glutamate_raises_il6():
 
 
 def test_normal_glutamate_does_not_raise_il6():
-    from src.sim.neuro.amino_acids import advance_amino_acids
-    from src.sim.events import EventBus
+    from src.engine.neuro.amino_acids import advance_amino_acids
+    from src.engine.events import EventBus
     s = make_state()
     s.chemicals["glutamate"] = 5.0   # normal
     il6_before = s.immune["il6"]
@@ -129,7 +129,7 @@ def test_normal_glutamate_does_not_raise_il6():
 # ---------------------------------------------------------------------------
 
 def test_ei_balance_at_defaults():
-    from src.sim.psych.derived import ei_balance
+    from src.engine.psych.derived import ei_balance
     s = make_state()
     ei = ei_balance(s)
     # Default: glu=4.0, gaba=3.0 → slight excitatory lean
@@ -137,7 +137,7 @@ def test_ei_balance_at_defaults():
 
 
 def test_ei_balance_is_positive_with_high_glutamate():
-    from src.sim.psych.derived import ei_balance
+    from src.engine.psych.derived import ei_balance
     s = make_state()
     s.chemicals["glutamate"] = 15.0
     s.chemicals["gaba"]      = 2.0
@@ -145,7 +145,7 @@ def test_ei_balance_is_positive_with_high_glutamate():
 
 
 def test_ei_balance_is_negative_with_high_gaba():
-    from src.sim.psych.derived import ei_balance
+    from src.engine.psych.derived import ei_balance
     s = make_state()
     s.chemicals["gaba"]      = 8.0
     s.chemicals["glutamate"] = 2.0
@@ -169,8 +169,8 @@ def test_two_ag_present_in_body_tier():
 
 
 def test_high_anandamide_reduces_pain():
-    from src.sim.neuro.endocannabinoids import advance_endocannabinoids
-    from src.sim.events import EventBus
+    from src.engine.neuro.endocannabinoids import advance_endocannabinoids
+    from src.engine.events import EventBus
     s = make_state()
     s.body["anandamide"]   = 5.0    # above 3.0 threshold
     s.pain["pain_intensity"] = 50.0
@@ -179,8 +179,8 @@ def test_high_anandamide_reduces_pain():
 
 
 def test_high_two_ag_reduces_il6():
-    from src.sim.neuro.endocannabinoids import advance_endocannabinoids
-    from src.sim.events import EventBus
+    from src.engine.neuro.endocannabinoids import advance_endocannabinoids
+    from src.engine.events import EventBus
     s = make_state()
     s.body["two_ag"] = 20.0    # above 15.0 threshold
     s.immune["il6"]  = 10.0
@@ -193,7 +193,7 @@ def test_high_two_ag_reduces_il6():
 # ---------------------------------------------------------------------------
 
 def test_receptor_sensitivity_initialized_on_advance():
-    from src.sim.neuro.receptors import advance_receptors
+    from src.engine.neuro.receptors import advance_receptors
     s = make_state()
     s.receptor_sensitivity = {}
     s = advance_receptors(s, 1.0)
@@ -202,7 +202,7 @@ def test_receptor_sensitivity_initialized_on_advance():
 
 
 def test_high_chemical_causes_downregulation():
-    from src.sim.neuro.receptors import advance_receptors
+    from src.engine.neuro.receptors import advance_receptors
     s = make_state()
     # Dopamine far above soft_ceiling (180 pg/mL)
     s.chemicals["dopamine"] = 250.0
@@ -212,7 +212,7 @@ def test_high_chemical_causes_downregulation():
 
 
 def test_low_chemical_causes_upregulation():
-    from src.sim.neuro.receptors import advance_receptors
+    from src.engine.neuro.receptors import advance_receptors
     s = make_state()
     # Dopamine far below resting_low (40 pg/mL)
     s.chemicals["dopamine"] = 5.0
@@ -222,7 +222,7 @@ def test_low_chemical_causes_upregulation():
 
 
 def test_receptor_sensitivity_bounded():
-    from src.sim.neuro.receptors import advance_receptors
+    from src.engine.neuro.receptors import advance_receptors
     s = make_state()
     # Massively elevated dopamine for very long time
     s.chemicals["dopamine"] = 999.0
@@ -237,7 +237,7 @@ def test_receptor_sensitivity_bounded():
 
 def test_caffeine_no_longer_changes_adenosine():
     """Caffeine doesn't reduce adenosine — it blocks receptors instead."""
-    from src.sim.neuro.substances import SUBSTANCE_DEFS
+    from src.engine.neuro.substances import SUBSTANCE_DEFS
     caffeine_def = SUBSTANCE_DEFS["caffeine"]
     assert "sleep_pressure" not in caffeine_def.get("dose_effects", {})
     assert "adenosine" not in caffeine_def.get("dose_effects", {})
@@ -259,7 +259,7 @@ def test_caffeine_receptor_block_reduces_sleep_pressure():
 
 
 def test_ssri_in_substance_defs():
-    from src.sim.neuro.substances import SUBSTANCE_DEFS
+    from src.engine.neuro.substances import SUBSTANCE_DEFS
     assert "ssri" in SUBSTANCE_DEFS
     ssri = SUBSTANCE_DEFS["ssri"]
     assert "reuptake_block" in ssri
@@ -267,7 +267,7 @@ def test_ssri_in_substance_defs():
 
 
 def test_opioid_in_substance_defs():
-    from src.sim.neuro.substances import SUBSTANCE_DEFS
+    from src.engine.neuro.substances import SUBSTANCE_DEFS
     assert "opioid" in SUBSTANCE_DEFS
     opioid = SUBSTANCE_DEFS["opioid"]
     assert "pain.pain_intensity" in opioid.get("dose_effects", {})
@@ -275,8 +275,8 @@ def test_opioid_in_substance_defs():
 
 def test_advance_substances_handles_body_tier_markers():
     """Cannabis dose_effects include anandamide/two_ag (body-stored) — withdrawal should update body."""
-    from src.sim.neuro.substances import advance_substances
-    from src.sim.events import EventBus
+    from src.engine.neuro.substances import advance_substances
+    from src.engine.events import EventBus
     s = make_state()
     # Prime cannabis at low level to trigger significant decay/withdrawal
     s.substances["cannabis"] = {"level": 30.0}
@@ -288,7 +288,7 @@ def test_advance_substances_handles_body_tier_markers():
 
 
 def test_ssri_reuptake_mult_returned():
-    from src.sim.neuro.substances import get_effective_reuptake_mults
+    from src.engine.neuro.substances import get_effective_reuptake_mults
     s = make_state()
     s.substances["ssri"] = {"level": 100.0}
     mults = get_effective_reuptake_mults(s)
@@ -296,7 +296,7 @@ def test_ssri_reuptake_mult_returned():
 
 
 def test_receptor_blocks_returned_for_caffeine():
-    from src.sim.neuro.substances import get_receptor_blocks
+    from src.engine.neuro.substances import get_receptor_blocks
     s = make_state()
     s.substances["caffeine"] = {"level": 100.0}
     blocks = get_receptor_blocks(s)
@@ -309,7 +309,7 @@ def test_receptor_blocks_returned_for_caffeine():
 # ---------------------------------------------------------------------------
 
 def test_derived_uses_d2_sensitivity():
-    from src.sim.psych.derived import derived
+    from src.engine.psych.derived import derived
     s_normal = make_state(dopamine=200.0)
     s_tolerant = make_state(dopamine=200.0)
     s_tolerant.receptor_sensitivity["dopamine"] = {"D1": 0.5, "D2": 0.5, "D3": 0.5}
@@ -319,7 +319,7 @@ def test_derived_uses_d2_sensitivity():
 
 
 def test_high_ei_increases_anxiety():
-    from src.sim.psych.derived import derived
+    from src.engine.psych.derived import derived
     s_balanced  = make_state(glutamate=4.0, gaba=3.0)
     s_excitable = make_state(glutamate=14.0, gaba=1.0)
     anxiety_balanced  = derived(s_balanced)["third_order"]["anxiety"]
