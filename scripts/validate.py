@@ -399,6 +399,50 @@ def run_scenario(scenario: Scenario, do_reset: bool) -> list[Turn]:
     return turns
 
 
+def _run_direct(scenario: Scenario, system: str, label: str) -> list[Turn]:
+    """Send scenario lines directly to the API with the given system prompt."""
+    from src.application.infra.client import chat_create, MODEL
+
+    script_path = os.path.join(_CONVOS_DIR, f"{scenario.name}.txt")
+    with open(script_path) as f:
+        script_lines = [l.rstrip() for l in f if l.strip() and not l.startswith("#")]
+
+    history = []
+    turns = []
+    messages_prefix = [{"role": "system", "content": system}] if system else []
+    for i, msg in enumerate(script_lines, 1):
+        history.append({"role": "user", "content": msg})
+        try:
+            resp = chat_create(
+                model=MODEL,
+                messages=messages_prefix + history,
+                temperature=0.7,
+            )
+            reply = resp.choices[0].message.content.strip()
+        except Exception as e:
+            reply = f"[ERROR: {e}]"
+        history.append({"role": "assistant", "content": reply})
+        turns.append(Turn(index=i, user_msg=msg, mina_response=reply))
+
+    return turns
+
+
+def run_bare_grok(scenario: Scenario) -> list[Turn]:
+    """No system prompt. Raw model, no persona, no neurosim."""
+    return _run_direct(scenario, system="", label="bare_grok")
+
+
+def run_identity_only(scenario: Scenario) -> list[Turn]:
+    """Identity files as system prompt, no neurosim. Tests what the persona alone contributes."""
+    parts = []
+    for fname in ("MINA.md", "MATURITY.md", "CUSTOMIZATION.md"):
+        path = os.path.join(_REPO, "identity", fname)
+        if os.path.exists(path):
+            with open(path) as f:
+                parts.append(f.read())
+    return _run_direct(scenario, system="\n\n".join(parts), label="identity_only")
+
+
 # ---------------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------------
@@ -411,28 +455,83 @@ _VERDICT_COLOR = {
 _RESET = "\033[0m"
 
 
-def print_report(results: list[tuple[Scenario, list[Turn], Grade]]) -> None:
+_REPORT_DIR = os.path.join(_REPO, "run", "validation")
+
+
+@dataclass
+class ScenarioResult:
+    scenario: Scenario
+    neurosim_turns: list[Turn]
+    neurosim_grade: Grade
+    bare_grade: Grade | None = None
+    identity_grade: Grade | None = None
+
+
+def _grade_block(label: str, grade: Grade) -> list[str]:
+    lines = [f"  [{label}]  [{grade.verdict}] ({grade.confidence}/10)"]
+    for i, note in enumerate(grade.per_turn_notes, 1):
+        lines.append(f"    turn {i}: {note}")
+    lines.append(f"  {grade.reasoning}")
+    return lines
+
+
+def _format_scenario_result(r: ScenarioResult) -> str:
+    lines = [f"\n{'=' * 70}", f"{r.scenario.name}", f"  {r.scenario.description}"]
+    lines += _grade_block("neurosim", r.neurosim_grade)
+    if r.identity_grade:
+        lines += _grade_block("identity only", r.identity_grade)
+    if r.bare_grade:
+        lines += _grade_block("bare grok", r.bare_grade)
+    return "\n".join(lines)
+
+
+def _verdict_line(label: str, grade: Grade) -> str:
+    color = _VERDICT_COLOR.get(grade.verdict, "")
+    return (f"  {color}[{grade.verdict}]{_RESET} ({grade.confidence}/10)"
+            f"  [{label}]")
+
+
+def print_report(results: list[ScenarioResult], report_path: str) -> None:
+    pass_count    = sum(1 for r in results if r.neurosim_grade.verdict == "PASS")
+    fail_count    = sum(1 for r in results if r.neurosim_grade.verdict == "FAIL")
+    partial_count = sum(1 for r in results if r.neurosim_grade.verdict == "PARTIAL")
+    summary = (f"neurosim — PASS: {pass_count}  PARTIAL: {partial_count}"
+               f"  FAIL: {fail_count}  (of {len(results)} scenarios)")
+
     print("\n" + "=" * 70)
     print("VALIDATION REPORT")
     print("=" * 70)
 
-    pass_count = sum(1 for _, _, g in results if g.verdict == "PASS")
-    fail_count = sum(1 for _, _, g in results if g.verdict == "FAIL")
-    partial_count = sum(1 for _, _, g in results if g.verdict == "PARTIAL")
-
-    for scenario, turns, grade in results:
-        color = _VERDICT_COLOR.get(grade.verdict, "")
-        print(f"\n{color}[{grade.verdict}]{_RESET} ({grade.confidence}/10)  {scenario.name}")
-        print(f"  {scenario.description}")
-        if grade.per_turn_notes:
+    for r in results:
+        print(f"\n{r.scenario.name}  —  {r.scenario.description}")
+        print(_verdict_line("neurosim", r.neurosim_grade))
+        if r.identity_grade:
+            print(_verdict_line("identity only", r.identity_grade))
+        if r.bare_grade:
+            print(_verdict_line("bare grok", r.bare_grade))
+        print()
+        for lines in [
+            ("neurosim",      r.neurosim_grade),
+            ("identity only", r.identity_grade),
+            ("bare grok",     r.bare_grade),
+        ]:
+            label, grade = lines
+            if grade is None:
+                continue
+            print(f"  [{label}]")
             for i, note in enumerate(grade.per_turn_notes, 1):
                 print(f"    turn {i}: {note}")
-        print(f"  {grade.reasoning}")
+            print(f"  {grade.reasoning}")
 
     print("\n" + "-" * 70)
-    print(f"  PASS: {pass_count}  PARTIAL: {partial_count}  FAIL: {fail_count}  "
-          f"(of {len(results)} scenarios)")
+    print(f"  {summary}")
     print("=" * 70 + "\n")
+
+    with open(report_path, "a") as f:
+        f.write("\n" + "-" * 70 + "\n")
+        f.write(f"  {summary}\n")
+        f.write("=" * 70 + "\n")
+    print(f"Report: {os.path.relpath(report_path, _REPO)}\n")
 
 
 # ---------------------------------------------------------------------------
@@ -447,6 +546,8 @@ def main() -> None:
                         help="Skip factory reset between scenarios (faster, less clean)")
     parser.add_argument("--user-accepts-token-spend", action="store_true",
                         help="Required: acknowledge that this invokes the LLM API for every scenario")
+    parser.add_argument("--ablation", action="store_true",
+                        help="Run all three tiers: bare Grok, identity-only, and full neurosim")
     args = parser.parse_args()
 
     if not args.user_accepts_token_spend:
@@ -468,17 +569,44 @@ def main() -> None:
             sys.exit(1)
 
     do_reset = not args.no_reset
-    results: list[tuple[Scenario, list[Turn], Grade]] = []
+    results: list[ScenarioResult] = []
+
+    import datetime
+    os.makedirs(_REPORT_DIR, exist_ok=True)
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    report_path = os.path.join(_REPORT_DIR, f"{ts}.txt")
+    print(f"Writing results to {os.path.relpath(report_path, _REPO)}\n")
 
     for i, scenario in enumerate(targets, 1):
         print(f"\n[{i}/{len(targets)}] {scenario.name}")
-        turns = run_scenario(scenario, do_reset)
-        print(f"  grading...", end=" ", flush=True)
-        grade = grade_scenario(scenario, turns)
-        print(f"{grade.verdict} ({grade.confidence}/10)", flush=True)
-        results.append((scenario, turns, grade))
 
-    print_report(results)
+        turns = run_scenario(scenario, do_reset)
+        print(f"  grading neurosim...", end=" ", flush=True)
+        neurosim_grade = grade_scenario(scenario, turns)
+        print(f"{neurosim_grade.verdict} ({neurosim_grade.confidence}/10)", flush=True)
+
+        bare_grade = identity_grade = None
+        if args.ablation:
+            print(f"  running identity-only...", end=" ", flush=True)
+            identity_turns = run_identity_only(scenario)
+            print(f"done", flush=True)
+            print(f"  grading identity-only...", end=" ", flush=True)
+            identity_grade = grade_scenario(scenario, identity_turns)
+            print(f"{identity_grade.verdict} ({identity_grade.confidence}/10)", flush=True)
+
+            print(f"  running bare grok...", end=" ", flush=True)
+            bare_turns = run_bare_grok(scenario)
+            print(f"done", flush=True)
+            print(f"  grading bare grok...", end=" ", flush=True)
+            bare_grade = grade_scenario(scenario, bare_turns)
+            print(f"{bare_grade.verdict} ({bare_grade.confidence}/10)", flush=True)
+
+        r = ScenarioResult(scenario, turns, neurosim_grade, bare_grade, identity_grade)
+        results.append(r)
+        with open(report_path, "a") as f:
+            f.write(_format_scenario_result(r) + "\n")
+
+    print_report(results, report_path)
 
 
 if __name__ == "__main__":
