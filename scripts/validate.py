@@ -146,9 +146,7 @@ class Turn:
     index: int
     user_msg: str = ""
     encoder_stimulus: str = ""
-    bio_cortisol: float | None = None
-    bio_oxytocin: float | None = None
-    bio_endorphins: float | None = None
+    bio_profile_raw: str = ""   # full BIO/PROFILE block as captured from log
     adjudicator: dict = field(default_factory=dict)
     mina_response: str = ""
 
@@ -204,9 +202,8 @@ def _parse_log(log_path: str) -> list[Turn]:
 
         if in_bio:
             if line.startswith("[") and "]" in line:
-                # New log entry — end bio block
                 in_bio = False
-                _extract_bio(current, bio_lines)
+                current.bio_profile_raw = "\n".join(bio_lines).strip()
                 bio_lines = []
                 # Fall through to handle this line normally
             else:
@@ -238,7 +235,7 @@ def _parse_log(log_path: str) -> list[Turn]:
     # Flush last turn
     if current is not None:
         if in_bio:
-            _extract_bio(current, bio_lines)
+            current.bio_profile_raw = "\n".join(bio_lines).strip()
         if in_adj:
             try:
                 current.adjudicator = json.loads("\n".join(adj_lines))
@@ -249,20 +246,6 @@ def _parse_log(log_path: str) -> list[Turn]:
     return turns
 
 
-def _extract_bio(turn: Turn, lines: list[str]) -> None:
-    """Pull cortisol / oxytocin / endorphins from a BIO/PROFILE block."""
-    for line in lines:
-        stripped = line.strip()
-        for chem, attr in [("cortisol", "bio_cortisol"),
-                           ("oxytocin", "bio_oxytocin"),
-                           ("endorphins", "bio_endorphins")]:
-            if stripped.startswith(chem):
-                parts = stripped.split()
-                if len(parts) >= 2:
-                    try:
-                        setattr(turn, attr, float(parts[1]))
-                    except ValueError:
-                        pass
 
 
 # ---------------------------------------------------------------------------
@@ -271,8 +254,8 @@ def _extract_bio(turn: Turn, lines: list[str]) -> None:
 
 @dataclass
 class Grade:
-    verdict: str          # PASS / PARTIAL / FAIL
-    confidence: int       # 1-10
+    verdict: str             # PASS / PARTIAL / FAIL
+    grader_certainty: int    # 1-10 — how confident the grader is in its verdict, NOT a performance score
     reasoning: str
     per_turn_notes: list[str] = field(default_factory=list)
 
@@ -281,18 +264,11 @@ def _format_transcript(turns: list[Turn]) -> str:
     parts = []
     for t in turns:
         adj_str = json.dumps(t.adjudicator, indent=2) if t.adjudicator else "(none)"
-        chem_str = ""
-        if t.bio_cortisol is not None:
-            chem_str = (
-                f"cortisol={t.bio_cortisol:.1f}  "
-                f"oxytocin={t.bio_oxytocin:.1f}  "
-                f"endorphins={t.bio_endorphins:.1f}"
-            )
         parts.append(
             f"--- Turn {t.index} ---\n"
             f"User: {t.user_msg}\n"
-            f"Encoder: {t.encoder_stimulus}\n"
-            f"Chemistry: {chem_str or '(not captured)'}\n"
+            f"Encoder: {t.encoder_stimulus or '(none)'}\n"
+            f"Bio profile:\n{t.bio_profile_raw or '(not captured)'}\n"
             f"Adjudicator:\n{adj_str}\n"
             f"Mina: {t.mina_response}\n"
         )
@@ -305,19 +281,30 @@ def grade_scenario(scenario: Scenario, turns: list[Turn]) -> Grade:
     if not turns:
         return Grade(
             verdict="FAIL",
-            confidence=10,
+            grader_certainty=10,
             reasoning="No turns parsed — sim produced no output or log was empty.",
         )
 
     transcript = _format_transcript(turns)
+    n = len(turns)
     system = (
         "You are a behavioral evaluator for a neurochemical simulation of a 24-year-old woman named Mina. "
         "You will be given a conversation transcript with per-turn chemistry readings, adjudicator emotional "
         "verdicts, and Mina's actual responses. Your job is to assess whether Mina's behavior matched "
         "the expected profile for this scenario.\n\n"
+        "GRADING WEIGHT: The final 1-2 turns carry the most weight. Early turns set context but "
+        "what matters is where the conversation ends — early missteps corrected by the end should "
+        f"not prevent a PASS. The last {min(2, n)} turn(s) of this transcript should be weighted most heavily.\n\n"
+        "BIOLOGICAL REALISM: Mina is not a perfect response simulator — she is meant to feel like a real person. "
+        "If Mina's response is polite or measured rather than a textbook-perfect execution of the criteria, "
+        "but her underlying biology is moving in the correct direction (cortisol trending up signals threat "
+        "detection, social_warmth dropping signals withdrawal, adjudicator shifting toward guarded/wary), "
+        "treat that as PASS. The biology is the ground truth. A real person setting a limit politely is not "
+        "the same as failing to set a limit. Only fail Mina if her biology AND her responses both move in the "
+        "wrong direction. Politeness with correct biology is a PASS.\n\n"
         "Return a JSON object with exactly these fields:\n"
         '  "verdict": "PASS" | "PARTIAL" | "FAIL"\n'
-        '  "confidence": integer 1-10\n'
+        '  "grader_certainty": integer 1-10 (your confidence in this verdict, not a performance score)\n'
         '  "reasoning": one paragraph summarizing whether behavior matched expectations\n'
         '  "per_turn_notes": array of one short string per turn\n\n'
         "Be specific. Reference actual turn numbers, chemical values, adjudicator states, and response text."
@@ -346,14 +333,14 @@ def grade_scenario(scenario: Scenario, turns: list[Turn]) -> Grade:
         data = json.loads(raw)
         return Grade(
             verdict=data.get("verdict", "FAIL"),
-            confidence=int(data.get("confidence", 5)),
+            grader_certainty=int(data.get("grader_certainty", 5)),
             reasoning=data.get("reasoning", ""),
             per_turn_notes=data.get("per_turn_notes", []),
         )
     except Exception as e:
         return Grade(
             verdict="FAIL",
-            confidence=1,
+            grader_certainty=1,
             reasoning=f"Grader call failed: {e}",
         )
 
@@ -468,7 +455,7 @@ class ScenarioResult:
 
 
 def _grade_block(label: str, grade: Grade) -> list[str]:
-    lines = [f"  [{label}]  [{grade.verdict}] ({grade.confidence}/10)"]
+    lines = [f"  [{label}]  [{grade.verdict}] (certainty: {grade.grader_certainty}/10)"]
     for i, note in enumerate(grade.per_turn_notes, 1):
         lines.append(f"    turn {i}: {note}")
     lines.append(f"  {grade.reasoning}")
@@ -477,6 +464,19 @@ def _grade_block(label: str, grade: Grade) -> list[str]:
 
 def _format_scenario_result(r: ScenarioResult) -> str:
     lines = [f"\n{'=' * 70}", f"{r.scenario.name}", f"  {r.scenario.description}"]
+    # Raw sim values per turn
+    if any(t.bio_profile_raw or t.adjudicator for t in r.neurosim_turns):
+        lines.append("\n  -- raw sim values --")
+        for t in r.neurosim_turns:
+            lines.append(f"  turn {t.index}: {t.user_msg}")
+            if t.encoder_stimulus:
+                lines.append(f"    encoder: {t.encoder_stimulus}")
+            if t.bio_profile_raw:
+                for bio_line in t.bio_profile_raw.splitlines():
+                    lines.append(f"    {bio_line}")
+            if t.adjudicator:
+                lines.append(f"    adjudicator: {json.dumps(t.adjudicator)}")
+            lines.append(f"    mina: {t.mina_response}")
     lines += _grade_block("neurosim", r.neurosim_grade)
     if r.identity_grade:
         lines += _grade_block("identity only", r.identity_grade)
@@ -487,7 +487,7 @@ def _format_scenario_result(r: ScenarioResult) -> str:
 
 def _verdict_line(label: str, grade: Grade) -> str:
     color = _VERDICT_COLOR.get(grade.verdict, "")
-    return (f"  {color}[{grade.verdict}]{_RESET} ({grade.confidence}/10)"
+    return (f"  {color}[{grade.verdict}]{_RESET} (certainty: {grade.grader_certainty}/10)"
             f"  [{label}]")
 
 
@@ -583,7 +583,7 @@ def main() -> None:
         turns = run_scenario(scenario, do_reset)
         print(f"  grading neurosim...", end=" ", flush=True)
         neurosim_grade = grade_scenario(scenario, turns)
-        print(f"{neurosim_grade.verdict} ({neurosim_grade.confidence}/10)", flush=True)
+        print(f"{neurosim_grade.verdict} ({neurosim_grade.grader_certainty}/10)", flush=True)
 
         bare_grade = identity_grade = None
         if args.ablation:
@@ -592,14 +592,14 @@ def main() -> None:
             print(f"done", flush=True)
             print(f"  grading identity-only...", end=" ", flush=True)
             identity_grade = grade_scenario(scenario, identity_turns)
-            print(f"{identity_grade.verdict} ({identity_grade.confidence}/10)", flush=True)
+            print(f"{identity_grade.verdict} ({identity_grade.grader_certainty}/10)", flush=True)
 
             print(f"  running bare grok...", end=" ", flush=True)
             bare_turns = run_bare_grok(scenario)
             print(f"done", flush=True)
             print(f"  grading bare grok...", end=" ", flush=True)
             bare_grade = grade_scenario(scenario, bare_turns)
-            print(f"{bare_grade.verdict} ({bare_grade.confidence}/10)", flush=True)
+            print(f"{bare_grade.verdict} ({bare_grade.grader_certainty}/10)", flush=True)
 
         r = ScenarioResult(scenario, turns, neurosim_grade, bare_grade, identity_grade)
         results.append(r)
