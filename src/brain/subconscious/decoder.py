@@ -429,77 +429,6 @@ def needs_summary(state: BiologicalState, elapsed_minutes: float = 0) -> str:
 # Emotion adjudicator
 # ---------------------------------------------------------------------------
 
-# Per-field clinical label tables for second-order values.
-# Breakpoints are calibrated so that the normal resting baseline (30–50 range for most
-# fields) resolves to a neutral label, not a negative one. Generic LOW/HIGH labels were
-# causing the adjudicator to interpret normal baseline as impairment or elevation.
-_SECOND_ORDER_RANGES = {
-    "cognitive_clarity": [
-        (8,   "OFFLINE"),     # asleep or severely impaired
-        (25,  "FOGGY"),       # slow, unreliable, thoughts incomplete
-        (50,  "FUNCTIONAL"),  # normal cognition — baseline
-        (72,  "CLEAR"),       # full cognition, nothing impaired
-        (101, "SHARP"),       # heightened focus
-    ],
-    "energy": [
-        (15,  "DEPLETED"),    # running on empty
-        (30,  "DRAINED"),     # fatigued, getting through it
-        (50,  "RESTING"),     # normal baseline energy — no fatigue, no drive to exert
-        (65,  "ACTIVE"),      # capable and ready, engagement feels natural
-        (80,  "ENERGIZED"),   # noticeably high energy
-        (101, "CHARGED"),     # peak / stimulant-level activation
-    ],
-    "hedonic_tone": [
-        (15,  "ANHEDONIC"),   # no pleasure response, reward system offline
-        (30,  "FLAT"),        # below baseline, things feel muted
-        (50,  "NEUTRAL"),     # normal resting state — no active pleasure or absence
-        (65,  "PLEASANT"),    # mild positive glow, things feel okay
-        (80,  "ELEVATED"),    # genuinely good, things feel rewarding
-        (101, "HIGH"),        # strong pleasure signal, euphoric quality
-    ],
-    "social_warmth": [
-        (15,  "WITHDRAWN"),   # no interest in others, closed off
-        (30,  "GUARDED"),     # default distance, not unfriendly, not open
-        (50,  "NEUTRAL"),     # baseline social state — open to contact, not seeking it
-        (65,  "WARM"),        # genuine warmth, interest in others feels natural
-        (80,  "VERY WARM"),   # strong warmth, affectionate, bonded feeling
-        (101, "BONDED"),      # deep connection quality, full openness
-    ],
-    "arousal": [
-        (15,  "SEDATED"),     # very low activation, drowsy or chemically suppressed
-        (30,  "CALM"),        # relaxed, low urgency
-        (55,  "ALERT"),       # normal resting alertness — present and responsive
-        (70,  "ACTIVATED"),   # heightened attention, mind engaged and quick
-        (85,  "KEYED UP"),    # high arousal, reactive, hard to settle
-        (101, "FLOODED"),     # overwhelming activation, sympathetic system dominant
-    ],
-    "mood_valence": [
-        (15,  "DYSPHORIC"),   # actively negative mood
-        (30,  "LOW"),         # below baseline, slight negative cast
-        (50,  "NEUTRAL"),     # baseline — neither positive nor negative
-        (65,  "POSITIVE"),    # mild positive affect, things feel okay to good
-        (80,  "ELEVATED"),    # notably good mood, optimistic
-        (101, "HIGH"),        # strongly positive, elated quality
-    ],
-}
-
-_THIRD_ORDER_RANGES = {
-    "anxiety":          [(35, "NONE"), (52, "MILD"), (68, "MODERATE"), (84, "HIGH"), (101, "SEVERE")],
-    "depression":       [(35, "NONE"), (52, "LOW MOOD"), (68, "MODERATE"), (84, "SIGNIFICANT"), (101, "SEVERE")],
-    "boredom":          [(45, "NONE"), (60, "MILD"), (74, "MODERATE"), (88, "HIGH"), (101, "SEVERE")],
-    "loneliness":       [(20, "QUIET"), (38, "MILD"), (58, "LONELY"), (76, "ACHING"), (101, "ISOLATED")],
-    "flow":             [(20, "NONE"), (40, "LOW"), (60, "MODERATE"), (80, "HIGH"), (101, "VERY HIGH")],
-    "physical_distress":[(15, "NONE"), (35, "MILD"), (55, "MODERATE"), (75, "HIGH"), (101, "SEVERE")],
-    "craving":          [(10, "NONE"), (25, "BACKGROUND"), (45, "PRESENT"), (65, "STRONG"), (80, "CONSUMING"), (101, "OVERWHELMING")],
-    "social_hostility": [(15, "NONE"), (30, "IRRITABLE"), (50, "HOSTILE"), (70, "AGGRESSIVE"), (101, "VOLATILE")],
-}
-
-
-def _label(value: float, table: list) -> str:
-    for upper, name in table:
-        if value < upper:
-            return name
-    return table[-1][1]
 
 
 # ---------------------------------------------------------------------------
@@ -571,89 +500,86 @@ def _normalize_chemistry(state: "BiologicalState") -> str:
     return "\n".join(lines)
 
 
+# Lazy cache: resting refs for derived values, computed once from default BiologicalState.
+_DERIVED_RESTING: "dict[str, float] | None" = None
+
+
+def _get_derived_resting() -> "dict[str, float]":
+    global _DERIVED_RESTING
+    if _DERIVED_RESTING is None:
+        s = BiologicalState()
+        d = derived(s)
+        so = d["second_order"]
+        to = d["third_order"]
+        _DERIVED_RESTING = {
+            "hedonic_tone":      so["hedonic_tone"]      / 10.0,
+            "mood_valence":      so["mood_valence"]      / 10.0,
+            "arousal":           so["arousal"]           / 10.0,
+            "social_warmth":     so["social_warmth"]     / 10.0,
+            "energy":            so["energy"]            / 10.0,
+            "cognitive_clarity": so["cognitive_clarity"] / 10.0,
+            "anxiety":           to["anxiety"]           / 10.0,
+            "depression":        to["depression"]        / 10.0,
+            "loneliness":        to["loneliness"]        / 10.0,
+            "boredom":           to["boredom"]           / 10.0,
+            "flow":              to["flow"]              / 10.0,
+            "physical_distress": to["physical_distress"] / 10.0,
+            "craving":           to["craving"]           / 10.0,
+            "social_hostility":  to["social_hostility"]  / 10.0,
+        }
+    return _DERIVED_RESTING
+
+
 def _build_emotional_profile(
     state: "BiologicalState",
     prior_snapshots: "list[dict] | None" = None,
 ) -> str:
     """
-    Format derived emotional values for the adjudicator, plus a normalized 0-10
-    chemistry table for all tracked chemicals, plus a trajectory section if any
-    chemical has moved more than 1.0 normalized unit since the prior snapshot.
+    Format all state values for the adjudicator as normalized 0-10 numbers.
+    Resting reference inline for every value. No labels anywhere.
+    0 = floor, 10 = ceiling, resting baseline in parens.
     """
     d = derived(state)
     so = d["second_order"]
     to = d["third_order"]
+    rest = _get_derived_resting()
 
-    lines = []
-    for key, label in [
-        ("hedonic_tone",      "Hedonic tone"),
-        ("mood_valence",      "Mood valence"),
-        ("arousal",           "Arousal"),
-        ("social_warmth",     "Social warmth"),
-        ("energy",            "Energy"),
-        ("cognitive_clarity", "Clarity"),
-    ]:
-        val = so[key]
-        lbl = _label(val, _SECOND_ORDER_RANGES[key])
-        lines.append(f"{label}: {val:.0f}/100 ({lbl})")
+    col_w = 20
+    lines = ["[EMOTIONAL STATE -- normalized 0-10, resting ref in parens]"]
+
+    for key in ["hedonic_tone", "mood_valence", "arousal", "social_warmth", "energy", "cognitive_clarity"]:
+        val = so[key] / 10.0
+        r   = rest[key]
+        lines.append(f"{key:<{col_w}} {val:>4.1f}  (rest ~{r:.1f})")
 
     lines.append("")
 
-    for key, label in [
-        ("anxiety",           "Anxiety"),
-        ("depression",        "Depression"),
-        ("loneliness",        "Loneliness"),
-        ("boredom",           "Boredom"),
-        ("flow",              "Flow"),
-        ("physical_distress", "Physical distress"),
-        ("craving",           "Craving"),
-    ]:
-        val = to[key]
-        lbl = _label(val, _THIRD_ORDER_RANGES[key])
-        lines.append(f"{label}: {val:.0f}/100 ({lbl})")
+    for key in ["anxiety", "depression", "loneliness", "boredom",
+                "flow", "physical_distress", "craving", "social_hostility"]:
+        val = to.get(key, 0.0) / 10.0
+        r   = rest[key]
+        lines.append(f"{key:<{col_w}} {val:>4.1f}  (rest ~{r:.1f})")
 
-    # SPEC-31: social hostility — only surface when meaningfully elevated
-    social_hostility = to.get("social_hostility", 0.0)
-    if social_hostility > 15:
-        lbl = _label(social_hostility, _THIRD_ORDER_RANGES["social_hostility"])
-        lines.append(f"Social hostility: {social_hostility:.0f}/100 ({lbl}) — amygdala hyperreactivity, directed hurt")
-
-    # SPEC-28: net social state
-    warmth = so["social_warmth"]
-    loneliness = to["loneliness"]
-    net = warmth - loneliness
-    if net >= 20:
-        net_label = "WARM"
-    elif net >= 5:
-        net_label = "LEANING WARM"
-    elif net >= -5:
-        net_label = "CONFLICTED"
-    elif net >= -20:
-        net_label = "LEANING LONELY"
-    else:
-        net_label = "LONELY"
-    lines.append(f"Net social state: {net_label} (warmth {warmth:.0f} − loneliness {loneliness:.0f} = {net:.0f})")
-
-    # Notable modifiers
+    # Contextual modifiers — normalized where possible, factual otherwise
     extras = []
     al = state.neuroplasticity.get("allostatic_load", 0.0)
-    if al > 30:
-        extras.append(f"Allostatic load: {al:.0f}/100 (accumulated stress)")
+    if al > 0:
+        extras.append(f"allostatic_load:     {al/10:>4.1f}  (rest ~0.0)")
     infl = state.immune.get("inflammation_index", 0.0)
-    if infl > 15:
-        extras.append(f"Inflammation: {infl:.0f}/100 (sickness drag)")
+    if infl > 5:
+        extras.append(f"inflammation:        {infl/10:>4.1f}  (rest ~0.0)")
     pain = state.pain.get("pain_intensity", 0.0)
-    if pain > 15:
-        extras.append(f"Pain: {pain:.0f}/100")
+    if pain > 5:
+        extras.append(f"pain:                {pain/10:>4.1f}  (rest ~0.0)")
     if state.substances:
         from src.engine.neuro.substances import SUBSTANCE_DEFS
         for name, dose in state.substances.items():
             level = dose.get("level", 0)
-            if level > 15:
+            if level > 10:
                 display = SUBSTANCE_DEFS.get(name, {}).get("display_name", name)
-                extras.append(f"{display} active ({level:.0f}/100)")
+                extras.append(f"{display} active: {level/10:>4.1f}  (rest ~0.0)")
     if state.sleeping:
-        extras.append("Currently sleeping")
+        extras.append("sleeping: true")
 
     if extras:
         lines.append("")
@@ -789,77 +715,58 @@ this specific stimulus lands.
 
 ---
 
-## STEP 1 — Read the derived emotional profile
+## STEP 1 — Read the emotional state
 
-This is your primary source. Take it at face value.
+All values are normalized 0–10 with a resting reference in parens. \
+The resting ref is what a default resting body produces — your anchor for "normal." \
+Values significantly above or below the resting ref are live signals.
 
-- Third-order states are the actual emotional diagnosis.
-  - Depression NONE = she is not depressed. Do not describe her as flat or hollow.
-  - Boredom STIMULATED = she is engaged. Do not describe her as checked out.
-  - Anxiety CALM or MILD = she is not on edge.
-  - Craving CONSUMING or OVERWHELMING = this is not background noise — it is the \
-dominant cognitive frame. Everything she engages with is filtered through the want. \
-She is present but not really here. The conversation is happening inside the craving.
-- Second-order values set the texture. Low energy without depression = tired, not shut \
-  down. A tired person is still present and engaged.
+Read second-order values (hedonic_tone, mood_valence, energy, arousal, social_warmth, \
+cognitive_clarity) for texture. Read third-order values (anxiety, depression, loneliness, \
+boredom, craving) for the actual emotional diagnosis.
+
+The numbers are ground truth. Do not attribute states the numbers don't support. \
+A craving value near resting is background noise. A craving value above 6.5 is the \
+dominant cognitive frame — she is present but everything is filtered through the want. \
+A depression value near resting means she is not depressed. Do not describe her as flat.
 
 ---
 
-## STEP 2 — Read the chemistry table
+## STEP 2 — Read the chemistry
 
-A [CHEMISTRY] section is always present. All chemicals are normalized to a 0–10 scale:
-- **0** = physiological rock bottom
-- **10** = human natural maximum (no substances)
-- **Above 10** = substance-assisted; a qualitatively different state, not an extreme \
-  version of normal
+All chemicals are also normalized 0–10, resting ref in parens. Above 10 = substance-assisted \
+(a qualitatively different state, not just an extreme version of normal).
 
-Read in this order:
+**Read cortisol first — it is the alert signal.**
+Is it above its resting ref? How far? This tells you whether the body is activated.
 
-**Cortisol first — it is the alert signal.**
-Is cortisol above its resting reference? How far? This tells you whether the body is \
-activated. If yes, proceed to the valence chemicals. If no, the body is not in an \
-alert state.
+**Then oxytocin, endorphins, dopamine together — they determine the valence of that activation.**
+- Cortisol above resting + oxy/endo above resting: safe arousal — excitement, warmth, intensity
+- Cortisol above resting + oxy/endo at or below resting: threat state — unease, suspicion, \
+  defensiveness
+- Cortisol at or below resting: the body is not in an alert state. Low cortisol is safety, \
+  not absence of signal. Low cortisol + high oxy/endo = genuine peace.
 
-**Then oxytocin, endorphins, dopamine together — they determine the valence of activation.**
-- Cortisol elevated + oxy/endo high: safe arousal — excitement, desire, intensity with warmth
-- Cortisol elevated + oxy/endo low: threat state — unease, suspicion, defensiveness
-- Cortisol elevated + oxy/endo mixed: ambivalent activation — conflicted, nervous-excited
-
-**Low cortisol is not neutral — it is safety.**
-Low cortisol + high oxy/endo = the closest state to genuine peace the sim produces. \
-Zero is a meaningful value.
-
-**Values above 10 override the normal emotional register.**
-Not an extreme version of normal — a qualitatively different state driven by substances. \
-Treat these as overriding everything else in that chemical's lane.
+Values above 10 override the normal emotional register entirely.
 
 ---
 
 ## CHEMISTRY TRAJECTORY
 
-If a [CHEMISTRY TRAJECTORY] section is present, one or more chemicals crossed a \
-threshold or moved significantly since the last snapshot. This tells you about \
-direction and recency — a spike that just happened is different from a sustained level. \
-A crash from elevated to normal means the high is over; she may be in an afterglow or \
-comedown, even though the current value looks unremarkable. Use this to describe the \
-felt arc, not just the current snapshot.
+If a [CHEMISTRY TRAJECTORY] section is present, one or more chemicals moved more than \
+1.0 normalized unit since the last snapshot. Direction and recency matter — a spike that \
+just happened is different from a sustained level. A value dropping back toward resting \
+means the high is over; she may be in an afterglow or comedown.
 
 ---
 
 ## RECENT EXCHANGE
 
-If provided: this tells you what was happening before. It is **not** a description of \
-her current state. The emotional profile is her current state.
+If provided: this tells you what was happening before. It is not a description of \
+her current state. The numbers are her current state.
 
-If the recent exchange and the current profile contradict each other, that means her \
-state has shifted. The profile reflects where she is now. Name the departure — don't \
-perpetuate the prior state.
-
-Critical: you must not attribute to her anything the profile directly contradicts. \
-If the profile shows Clarity FUNCTIONAL, do not describe her as muddled or foggy. \
-If Depression is NONE, do not describe her as flat or off. \
-If no chemistry flags are present and moods are normal, she is simply at baseline — \
-describe that honestly. Do not import emotional states from conversation history.
+If the exchange and the profile contradict each other, the profile wins — her state has \
+shifted. Name the departure. Do not perpetuate the prior tone.
 
 ---
 
@@ -888,29 +795,25 @@ her body and mind right now.
 
 ---
 
-## STEP 1 — Read the derived emotional profile
+## STEP 1 — Read the emotional state and chemistry
 
-This is your primary source. Third-order states (depression, anxiety, loneliness, \
-boredom) are the actual diagnosis. Second-order values (hedonic tone, energy, arousal) \
-describe the texture. In free time these numbers speak plainly.
+All values are normalized 0–10 with a resting reference in parens. \
+The resting ref is your anchor for "normal." Values significantly above or below \
+resting are live signals. In free time these numbers speak plainly — \
+nothing is softened by social context.
 
-- Craving CONSUMING or OVERWHELMING = the want is the entire experience. She is not \
-doing her free time around it — it IS her free time. Everything else is waiting.
+Third-order values (anxiety, depression, loneliness, boredom, craving) are the \
+primary diagnosis. Second-order values (hedonic_tone, energy, arousal) describe the \
+texture of the experience.
 
----
+The chemistry block follows. Read cortisol first — it is the alert signal. \
+Then oxytocin, endorphins, dopamine together for valence:
+- Cortisol above resting + oxy/endo above resting: safe arousal, warmth, activation
+- Cortisol above resting + oxy/endo at or below resting: threat state, unease, vigilance
+- Cortisol at or below resting: the body has stood down. Low cortisol + high oxy/endo \
+  is the closest state to genuine peace the sim produces.
 
-## STEP 2 — Read the chemistry table
-
-A [CHEMISTRY] section is always present. All chemicals normalized to a 0–10 scale \
-(0 = physiological floor; 10 = human natural max; above 10 = substances).
-
-Read cortisol first — it is the alert signal. Is it above its resting reference? \
-Then read oxytocin, endorphins, dopamine together to determine valence:
-- Cortisol elevated + oxy/endo high: safe arousal, warmth, engaged activation
-- Cortisol elevated + oxy/endo low: threat state, unease, defensiveness
-- Low cortisol + high oxy/endo: genuine peace — the body has stood down
-
-**Values above 10 are substance-assisted — a qualitatively different state, not just extreme.**
+Values above 10 are substance-assisted — a qualitatively different state, not just extreme.
 
 ---
 
