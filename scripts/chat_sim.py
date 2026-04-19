@@ -55,7 +55,7 @@ _ENCODER_PREFIXES = (
     "[ENCODER/RESPONSE]",
     "[ENCODER/ACTIVITY]",
     "[DANGER",
-    "[BIO/REPORT]",
+    "[BIO/PROFILE]",
     "[ADJUDICATOR]",
 )
 

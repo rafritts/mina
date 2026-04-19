@@ -868,6 +868,7 @@ def adjudicate_emotion(
     _save_bio_snapshot(state)
 
     profile = _build_emotional_profile(state, prior_snapshots=prior_snapshots)
+    log("BIO/PROFILE", profile)
     system = _ADJUDICATOR_SYSTEM_FREETIME if mode == "freetime" else _ADJUDICATOR_SYSTEM_ACTIVE
 
     if mode == "freetime":

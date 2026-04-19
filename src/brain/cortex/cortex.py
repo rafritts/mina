@@ -20,7 +20,7 @@ from src.config.config import (
 )
 from src.application.infra.log import log
 from src.application.infra.turn_log import log_context_window, log_conversation
-from src.brain.subconscious.decoder import biological_report, biological_report_compact, adjudicate_emotion, build_window_context, build_rag_context, needs_summary
+from src.brain.subconscious.decoder import biological_report, adjudicate_emotion, build_window_context, build_rag_context, needs_summary
 from src.brain.hippocampus.hippocampus import build_kag_context, build_rag_context as _hpc_rag_context, build_rag_context_bucketed
 from src.brain.amygdala.stimulus_encoder import encode_stimulus, encode_response, evaluate_activity_deltas, compute_relationship_modifier
 from src.brain.brainstem.state import apply_deltas, load_and_advance, load_state, save_state
@@ -503,8 +503,7 @@ async def run_turn(
     except Exception as _e:
         log("DANGER/ERROR", str(_e))
 
-    # [2] biological_report — deterministic, logged only (not injected into prompts)
-    log("BIO/REPORT", biological_report_compact(state))
+    # [2] profile logged inside adjudicate_emotion as [BIO/PROFILE]
 
     decoder_window = _window_for_encoder
     cfg = load_config()
