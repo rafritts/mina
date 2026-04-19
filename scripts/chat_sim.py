@@ -32,8 +32,22 @@ sys.path.insert(0, _REPO)
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv(usecwd=True))
 
+# Patch log() to write to mina.log so _tail_encoder_lines can read it.
+# The gateway normally does this via stdout redirect; chat_sim runs standalone.
+import src.application.infra.log as _log_module
+_orig_log = _log_module.log
+_LOG_FILE = os.path.join(_REPO, "logs", "mina.log")
+_log_fh = open(_LOG_FILE, "a", buffering=1)
+
+def _patched_log(tag: str, msg: str = "") -> None:
+    _orig_log(tag, msg)
+    ts = time.strftime("%H:%M:%S")
+    line = f"[{ts}] [{tag}] {msg}" if msg else f"[{ts}] [{tag}]"
+    _log_fh.write(line + "\n")
+
+_log_module.log = _patched_log
+
 from src.brain.cortex.cortex import run_turn
-from src.application.infra.log import log as _log
 
 
 _ENCODER_PREFIXES = (
@@ -45,8 +59,7 @@ _ENCODER_PREFIXES = (
     "[ADJUDICATOR]",
 )
 
-_LOG_FILE     = os.path.join(_REPO, "logs", "mina.log")
-_OUTPUT_DIR   = os.path.join(_REPO, "run", "script_output")
+_OUTPUT_DIR = os.path.join(_REPO, "run", "script_output")
 
 
 def _open_output(label: str):
