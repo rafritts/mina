@@ -13,7 +13,9 @@ import json
 import time
 from pathlib import Path
 
-_EVENTS_FILE = Path(__file__).parent.parent / "run" / "events.jsonl"
+from src.config.config import RUN_DIR
+
+_EVENTS_FILE = Path(RUN_DIR) / "events.jsonl"
 _MAX_EVENTS = 300  # rotate: keep last N
 
 
