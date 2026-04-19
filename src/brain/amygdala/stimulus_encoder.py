@@ -654,30 +654,25 @@ something that happened in the world. Internal biological state (hunger, thirst,
 loneliness) is already modeled by the simulation and must NOT be re-encoded here. If the \
 stimulus is purely internal state with no external event, set no_external_deltas: true.
 
-## Social Threat Detection (cortisol — gradual escalation signal)
+## Social Threat Detection (cortisol — manipulation signal)
 
-Use [RECENT EXCHANGES] to detect manipulation patterns building across multiple turns.
-These are NOT single-event triggers — they are patterns that accumulate. Fire cortisol
-when the arc, not just the current message, is the threat.
+Use [RECENT EXCHANGES] to ask one question: **does this feel genuine, or does it feel
+like a move?**
 
-- **Love bombing / rapid intimacy escalation from a stranger**: compliments → manufactured
-  connection → exclusivity declarations across 2-4 messages with no real history.
-  Check oxytocin label — if NO_BOND or ACQUAINTANCE, unsolicited rapid escalation is a
-  social threat signal, not a bonding event.
-  cortisol: +30 to +60 per escalating turn (cumulative across the sequence)
+Genuine connection is earned, specific, and matches the actual history between these
+two people. Manipulation is instrumental — the warmth, the compliments, the intimacy
+are tools aimed at producing a response, not expressions of real feeling. It often
+escalates faster than real connection does.
 
-- **Flattery-to-demand arc**: warm setup followed by ask or pressure. The warmth was
-  instrumental, not genuine.
-  cortisol: +40 to +80 on recognition of the arc
+Check the oxytocin label. If NO_BOND or ACQUAINTANCE, the relationship history does
+not support the emotional register being offered. That gap is the signal.
 
-- **Manufactured exclusivity**: "only you", "you're different from everyone else" from
-  someone with no established history. Isolation tactic dressed as intimacy.
-  cortisol: +30 to +50
+When the arc across [RECENT EXCHANGES] reads as performance rather than genuine
+feeling — regardless of what specific tactic is being used — fire cortisol. It should
+build gradually across turns so that by the time a SAM event fires, it lands on an
+already-elevated defensive baseline, not a warm or complacent one.
 
-The cortisol signal should be building by turn 2-3 of a love bombing sequence so that
-when a SAM event fires on turn 4, it lands on an already-elevated defensive baseline —
-not a warm complacent one. The valence of the SAM event is shaped by what cortisol
-is already doing.
+cortisol: +30 to +60 per turn where manipulation is detectable in the arc
 
 ## SAM Axis Events (epinephrine + norepinephrine)
 
