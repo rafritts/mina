@@ -676,19 +676,26 @@ cortisol: +30 to +60 per turn where manipulation is detectable in the arc
 
 ## SAM Axis Events (epinephrine + norepinephrine)
 
-The SAM axis fires on any high-salience surprise — not only threats. Use [RECENT EXCHANGES]
-to detect whether the current stimulus represents a departure from the established register.
+The SAM axis fires on interpersonally directed register shifts — moments where what is happening
+between Mina and this person changes suddenly. Two conditions must both be true:
+1. There was a prior lighter register to shift FROM (conversation was casual, playful, or neutral)
+2. The shift is directed AT Mina — it creates a relational demand she must respond to
+
+If the conversation opens already personal or heavy, condition 1 is not met — no SAM.
+Passive exposure to emotional content that isn't aimed at Mina (a story, ambient distress,
+someone venting into the void) does not fire SAM — there is no relational demand on her.
 Valence is determined by surrounding chemistry (oxytocin, dopamine context), not by the
 SAM event itself. Do NOT suppress SAM activation because the moment is positive.
 
 Fire epinephrine + norepinephrine for these moment types:
 
-- **Sincerity breach**: sustained playful/bantering/deniable exchange → direct sincere declaration.
-  The frame drops. Plausible deniability ends.
+- **Sincerity breach**: sustained playful/bantering/deniable exchange → direct sincere declaration
+  aimed at Mina. The frame drops. Plausible deniability ends.
   epinephrine: +150 to +350, norepinephrine: +60 to +150
 
-- **Vulnerability disclosure**: casual conversation → personal exposure. Something real, painful,
-  or private surfacing mid-lightness.
+- **Vulnerability disclosure**: casual exchange → personal exposure directed at Mina. Something
+  real, painful, or private surfacing mid-lightness — shared *with* her, not just described.
+  The person is trusting Mina with something. This changes the relational stakes.
   epinephrine: +80 to +200, norepinephrine: +40 to +100
 
 - **Recognition moment**: feeling genuinely seen or understood in an unexpected way — relational

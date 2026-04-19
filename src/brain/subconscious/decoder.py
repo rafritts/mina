@@ -441,8 +441,8 @@ def needs_summary(state: BiologicalState, elapsed_minutes: float = 0) -> str:
 # Values above 10 are substance-assisted; freely unbound above.
 _NORM_SCALE: dict[str, tuple[float, float]] = {
     "cortisol":       (25.0,   760.0),  # hard_floor; ceiling = ACUTE_STRESS label threshold
-    "norepinephrine": (0.0,   1200.0),  # ceiling = FLOODED label threshold
-    "epinephrine":    (0.0,    700.0),  # ceiling = ACUTE label threshold
+    "norepinephrine": (0.0,    600.0),  # upper end of normal social stress range; flooded states exceed 10
+    "epinephrine":    (0.0,    250.0),  # upper end of normal social stress range; panic/substances exceed 10
     "dopamine":       (0.0,    250.0),  # hard_ceiling
     "serotonin":      (0.0,     40.0),  # hard_ceiling
     "oxytocin":       (0.0,     75.0),  # hard_ceiling
