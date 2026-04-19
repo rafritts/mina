@@ -409,7 +409,7 @@ def rag_prune(ttl_days: int = 180) -> int:
         return len(ids)
     except Exception as e:
         # ChromaDB may not support $lt on all versions — fail silently
-        from ..infra.log import log
+        from src.application.infra.log import log
         log("RAG/PRUNE/ERR", str(e))
         return 0
 
@@ -799,7 +799,7 @@ def consolidate(
         ],
         temperature=0.5,
     )
-    from ..infra import token_stats
+    from src.application.infra import token_stats
     token_stats.record_response("hippocampus", response)
 
     raw = response.choices[0].message.content or ""
@@ -1044,7 +1044,7 @@ def _run_relationship_llm(system_prompt: str, user_content: str) -> tuple[str, d
     Run an LLM call for a relationship layer write or compaction.
     Returns (prose, scores_dict). Falls back to ("", {}) on failure.
     """
-    from ..infra.log import log
+    from src.application.infra.log import log
     try:
         response = chat_create(
             model=MODEL,
@@ -1054,7 +1054,7 @@ def _run_relationship_llm(system_prompt: str, user_content: str) -> tuple[str, d
             ],
             temperature=0.6,
         )
-        from ..infra import token_stats
+        from src.application.infra import token_stats
         token_stats.record_response("relationship", response)
         raw = response.choices[0].message.content or ""
         prose, scores = _parse_relationship_output(raw)
@@ -1171,7 +1171,7 @@ def consolidate_relationship(state: BiologicalState, owner_name: str) -> Biologi
     Returns state (potentially with updated receptor_sensitivity).
     """
     import time as _time
-    from ..infra.log import log
+    from src.application.infra.log import log
     from src.brain.subconscious.decoder import format_state_block
 
     rel_state = _load_relationship_state()
@@ -1250,7 +1250,7 @@ def _compact_relationship_layer(
     Updates layers dict and rel_state in place. Recursively cascades if target fills.
     """
     import time as _time
-    from ..infra.log import log
+    from src.application.infra.log import log
 
     history_key = f"{source_key}_history"
     count_key   = f"{target_key}_count"

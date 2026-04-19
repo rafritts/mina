@@ -523,7 +523,7 @@ async def _run_mina_free_time(
                 else:
                     tool_result = "[Image was blocked or generation produced no output.]"
                 try:
-                    from ..infra.events import emit_tool
+                    from src.application.infra.events import emit_tool
                     emit_tool(name, args, tool_result, source="freetime")
                 except Exception:
                     pass
@@ -534,7 +534,7 @@ async def _run_mina_free_time(
                     # do_action deltas emitted in Phase 3 once we have them
                 else:
                     try:
-                        from ..infra.events import emit_tool
+                        from src.application.infra.events import emit_tool
                         emit_tool(name, args, tool_result, source="freetime")
                     except Exception:
                         pass
@@ -634,7 +634,7 @@ async def run_freetime(force: bool = False) -> None:
 
     # Danger detection
     try:
-        from ..bio.vital_signs import vital_signs, process_danger
+        from src.brain.brainstem.vital_signs import vital_signs, process_danger
         from src.config.config import INJECT_FILE as _INJECT_FILE
         vs = vital_signs(state)
         danger_text = process_danger(state, vs)
@@ -722,7 +722,7 @@ async def run_freetime(force: bool = False) -> None:
             state = apply_deltas(state, do_deltas)
             save_state(state)  # persist eating/drinking/activity deltas immediately
         try:
-            from ..infra.events import emit_tool
+            from src.application.infra.events import emit_tool
             emit_tool(
                 "do_action",
                 {"activity": activity, "description": description},

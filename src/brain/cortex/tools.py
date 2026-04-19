@@ -465,7 +465,7 @@ async def handle_generate_image(args: dict) -> str:
     negative_prompt = args.get("negative_prompt", None)
     seed            = args.get("seed", None)
 
-    from ..infra.log import log
+    from src.application.infra.log import log
     log("COMFY", f"dimensions={dimensions} seed={seed}")
     log("COMFY", f"prompt={prompt[:200]}")
     if negative_prompt:

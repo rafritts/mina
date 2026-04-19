@@ -401,7 +401,7 @@ def _execute_state_wipe(reason: str) -> None:
     """
     import json as _json
     from .state import BiologicalState, save_state
-    from ..memory.hippocampus import write_kag
+    from src.brain.hippocampus.hippocampus import write_kag
 
     # Reset state to defaults
     save_state(BiologicalState())
@@ -414,7 +414,7 @@ def _execute_state_wipe(reason: str) -> None:
     except Exception:
         pass
 
-    from ..infra.log import log
+    from src.application.infra.log import log
     log("WIPE", f"Overdose — cause: {reason}")
     # RAG embeddings are not cleared here — that requires memory.py's clear function
     # which may not be available in all deployments. Log to let operator handle.

@@ -47,14 +47,14 @@ async def fire_followup(entry: dict) -> None:
     Fire a single deferred followup. Runs a fresh Mina turn against the stored
     context with no conversation history — only emotion adjudication + KAG/RAG.
     """
-    from ..bio.state import load_and_advance, save_state
-    from ..bio.decoder import adjudicate_emotion
-    from ..memory.hippocampus import build_kag_context, build_rag_context
-    from ..infra import token_stats
-    from ..infra.client import chat_create, MODEL
-    from ..bio.encoder import encode_response
-    from ..bio.state import apply_deltas
-    from ..bio.decoder import build_memory_context
+    from src.brain.brainstem.state import load_and_advance, save_state
+    from src.brain.subconscious.decoder import adjudicate_emotion
+    from src.brain.hippocampus.hippocampus import build_kag_context, build_rag_context
+    from src.application.infra import token_stats
+    from src.application.infra.client import chat_create, MODEL
+    from src.brain.amygdala.stimulus_encoder import encode_response
+    from src.brain.brainstem.state import apply_deltas
+    from src.brain.subconscious.decoder import build_memory_context
 
     context = entry.get("context", "")
     scheduled_at = entry.get("scheduled_at", time.time())

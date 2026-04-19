@@ -299,7 +299,7 @@ async def _mina_turn(
     log_context_window(messages)
     new_entries: list[dict] = []
     image_paths: list[str] = []
-    from ..infra import token_stats as _ts
+    from src.application.infra import token_stats as _ts
 
     max_tool_rounds = 5
     for round_num in range(max_tool_rounds):
@@ -371,7 +371,7 @@ async def _mina_turn(
                     )
                     # Inject a synthetic message so Mina can see what she generated next turn.
                     try:
-                        from ..infra.image_utils import normalise_image
+                        from src.application.infra.image_utils import normalise_image
                         with open(result, "rb") as _f:
                             _b64, _mime = normalise_image(_f.read())
                         new_entries.append({
@@ -407,7 +407,7 @@ async def _mina_turn(
                         log("DO/DELTA", str(do_deltas))
 
             try:
-                from ..infra.events import emit_tool
+                from src.application.infra.events import emit_tool
                 emit_tool(name, args, tool_content or str(result), source="cortex", deltas=tool_deltas)
             except Exception:
                 pass
@@ -487,7 +487,7 @@ async def run_turn(
 
     # [1b] Danger detection — every turn so overdose can trigger during active sessions
     try:
-        from ..bio.vital_signs import vital_signs as _vs, process_danger as _pd
+        from src.brain.brainstem.vital_signs import vital_signs as _vs, process_danger as _pd
         from src.config.config import INJECT_FILE as _INJECT
         _danger = _pd(state, _vs(state))
         if _danger:
@@ -657,7 +657,7 @@ async def run_turn(
         {"role": "assistant", "ts": conv_ts, "content": reply,      "source": "discord"},
     ])
 
-    from ..infra import token_stats as _ts
+    from src.application.infra import token_stats as _ts
     _ts.increment_turns()
 
     log_conversation(username, user_input, reply)
