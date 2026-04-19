@@ -31,7 +31,7 @@ _PROJECT_ROOT = os.path.dirname(_DOTENV)
 
 from src.biology.cortex.cortex import run_turn, load_history, save_history, touch_last_active, HISTORY_MAX
 from src.biology.brainstem.heartbeat import bio_tick_loop
-from ..runtime.freetime import run_freetime as _run_freetime
+from src.biology.subconscious.freetime import run_freetime as _run_freetime
 from ..infra.log import log
 from ..infra.text_filter import apply_word_filter, apply_replacements, llm_derive_replacements
 from ..infra import discord_send as _discord_send
@@ -43,8 +43,8 @@ class _SuppressResetError(logging.Filter):
 
 logging.getLogger("discord.client").addFilter(_SuppressResetError())
 logging.getLogger("discord.gateway").addFilter(_SuppressResetError())
-from ..bio.state import load_and_advance, save_state, load_state, apply_deltas, log_state, derived
-from ..memory.hippocampus import build_kag_context, build_rag_context, rag_wipe, rag_fix_word_filter, kag_fix_word_filter, kag_apply_replacements, rag_apply_replacements
+from src.biology.brainstem.state import load_and_advance, save_state, load_state, apply_deltas, log_state, derived
+from src.biology.hippocampus.hippocampus import build_kag_context, build_rag_context, rag_wipe, rag_fix_word_filter, kag_fix_word_filter, kag_apply_replacements, rag_apply_replacements
 _CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
 _RUN_DIR = os.path.join(_PROJECT_ROOT, "run")
 _LOG_FILE = os.path.join(_PROJECT_ROOT, "logs", "mina.log")
@@ -234,7 +234,7 @@ async def _gateway_freetime_loop() -> None:
     The interval between sessions is dynamic — shorter when she's alert and
     active (midday, high energy), longer when she's tired or it's late night.
     """
-    from ..infra.config import PAUSED_FLAG, load_config
+    from src.config.config import PAUSED_FLAG, load_config
     while True:
         cfg      = load_config()
         base     = int(cfg.get("heartbeat_interval_seconds", 1800))
@@ -257,7 +257,7 @@ async def _presence_loop() -> None:
     while True:
         await asyncio.sleep(60)
         try:
-            from ..bio.state import load_state as _load_state
+            from src.biology.brainstem.state import load_state as _load_state
             await _update_presence(_load_state())
         except Exception as e:
             log("PRESENCE/ERROR", str(e))
@@ -364,7 +364,7 @@ async def _do_send(content: str = "", image_path: str = "") -> None:
 
 async def _followup_watcher() -> None:
     """Check followup queue every 60 seconds and fire any expired entries."""
-    from ..runtime.followup import process_due_followups
+    from src.biology.cortex.followup import process_due_followups
     while True:
         await asyncio.sleep(60)
         try:
@@ -769,7 +769,7 @@ async def cmd_reset(interaction: discord.Interaction):
 
 @tree.command(name="factory-reset", description="Nuclear reset: wipe everything including biomarkers.")
 async def cmd_factory_reset(interaction: discord.Interaction):
-    from ..bio.state import BiologicalState, save_state
+    from src.biology.brainstem.state import BiologicalState, save_state
     await interaction.response.defer(ephemeral=True)
     try:
         wiped = _wipe_user_data()
@@ -861,7 +861,7 @@ async def cmd_actions(interaction: discord.Interaction, n: int = 10):
 
 @tree.command(name="state", description="Show Mina's current biological state.")
 async def cmd_state(interaction: discord.Interaction):
-    from ..bio.state import derived as _derived
+    from src.biology.brainstem.state import derived as _derived
     s = load_and_advance()
     d = _derived(s)
     so = d["second_order"]
@@ -887,8 +887,8 @@ async def cmd_state(interaction: discord.Interaction):
 
 @tree.command(name="bioreport", description="Show Mina's current biological state.")
 async def cmd_bioreport(interaction: discord.Interaction):
-    from ..bio.chemicals import get_label
-    from ..bio.state import derived as _derived
+    from src.biology.brainstem.chemicals import get_label
+    from src.biology.brainstem.state import derived as _derived
     s = load_and_advance()
     d = _derived(s)
     so = d["second_order"]
@@ -927,7 +927,7 @@ async def cmd_bioreport(interaction: discord.Interaction):
     ]
 
     if s.substances:
-        from ..sim.neuro.substances import SUBSTANCE_DEFS
+        from src.sim.neuro.substances import SUBSTANCE_DEFS
         lines.append("")
         lines.append("**Active substances**")
         for name, dose in s.substances.items():
@@ -953,7 +953,7 @@ async def cmd_compress(interaction: discord.Interaction, factor: float):
 @tree.command(name="sleep", description="Put Mina to sleep.")
 @app_commands.describe(hours="How many simulated hours to sleep")
 async def cmd_sleep(interaction: discord.Interaction, hours: float = 8.0):
-    from ..runtime.tools import handle_sleep
+    from src.biology.cortex.tools import handle_sleep
     s = load_and_advance()
     _, s = handle_sleep({"duration_hours": hours}, s)
     save_state(s)
@@ -979,7 +979,7 @@ async def cmd_wake(interaction: discord.Interaction):
 @tree.command(name="heartbeat", description="Manually trigger one heartbeat cycle.")
 async def cmd_heartbeat(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
-    from ..runtime.freetime import run_freetime
+    from src.biology.subconscious.freetime import run_freetime
     try:
         await run_freetime()
         await interaction.followup.send("Heartbeat complete.", ephemeral=True)
@@ -1172,7 +1172,7 @@ async def cmd_context(interaction: discord.Interaction):
     role_str = "  ".join(f"{r}: {c}" for r, c in sorted(role_counts.items()))
 
     # --- Reflection ---
-    from ..memory.hippocampus import read_kag
+    from src.biology.hippocampus.hippocampus import read_kag
     reflection_text = read_kag("REFLECTION.md") or ""
     reflection_words = len(reflection_text.split()) if reflection_text else 0
     reflection_preview = (

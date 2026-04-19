@@ -7,7 +7,7 @@ Exit code semantics from the child (discord_gateway only):
   anything else → crash — exponential backoff
 
 Run by systemd:
-  ExecStart=uv run python -m src.gateway.supervisor
+  ExecStart=uv run python -m src.application.gateway.supervisor
 """
 import os
 import signal
@@ -145,7 +145,7 @@ def _run_dashboard(uv: str, tee_out) -> None:
     Stops when the supervisor exits (daemon thread).
     """
     global _dashboard_proc
-    cmd = [uv, "run", "python", "-u", "-m", "src.gateway.dashboard_server"]
+    cmd = [uv, "run", "python", "-u", "-m", "src.application.gateway.dashboard_server"]
     backoff = 5
     while True:
         _free_port(_DASHBOARD_PORT)
@@ -186,7 +186,7 @@ def main():
     )
     dashboard_thread.start()
 
-    cmd = [uv, "run", "python", "-u", "-m", "src.gateway.discord_gateway"]
+    cmd = [uv, "run", "python", "-u", "-m", "src.application.gateway.discord_gateway"]
     crashes = 0
     current_proc = None
 
