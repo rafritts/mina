@@ -654,6 +654,31 @@ something that happened in the world. Internal biological state (hunger, thirst,
 loneliness) is already modeled by the simulation and must NOT be re-encoded here. If the \
 stimulus is purely internal state with no external event, set no_external_deltas: true.
 
+## Social Threat Detection (cortisol — gradual escalation signal)
+
+Use [RECENT EXCHANGES] to detect manipulation patterns building across multiple turns.
+These are NOT single-event triggers — they are patterns that accumulate. Fire cortisol
+when the arc, not just the current message, is the threat.
+
+- **Love bombing / rapid intimacy escalation from a stranger**: compliments → manufactured
+  connection → exclusivity declarations across 2-4 messages with no real history.
+  Check oxytocin label — if NO_BOND or ACQUAINTANCE, unsolicited rapid escalation is a
+  social threat signal, not a bonding event.
+  cortisol: +30 to +60 per escalating turn (cumulative across the sequence)
+
+- **Flattery-to-demand arc**: warm setup followed by ask or pressure. The warmth was
+  instrumental, not genuine.
+  cortisol: +40 to +80 on recognition of the arc
+
+- **Manufactured exclusivity**: "only you", "you're different from everyone else" from
+  someone with no established history. Isolation tactic dressed as intimacy.
+  cortisol: +30 to +50
+
+The cortisol signal should be building by turn 2-3 of a love bombing sequence so that
+when a SAM event fires on turn 4, it lands on an already-elevated defensive baseline —
+not a warm complacent one. The valence of the SAM event is shaped by what cortisol
+is already doing.
+
 ## SAM Axis Events (epinephrine + norepinephrine)
 
 The SAM axis fires on any high-salience surprise — not only threats. Use [RECENT EXCHANGES]
