@@ -688,7 +688,13 @@ Fire epinephrine + norepinephrine for these moment types:
 - Epinephrine (pg/mL, resting 20–80): SAM axis only — see moment types above. Also: caffeine: +30–80, intense exercise: +100–300.
 - Cortisol (nmol/L, resting 100–700): Acute existential threat (abandonment, attack): +300–500. Sustained hostility: +100–200. Mild friction: +30–80. Do NOT post negative cortisol — homeostatic decay handles the drop.
 - Norepinephrine (pg/mL, resting 100–400): SAM axis (see above). Acute threat without SAM: +400–800. Mild friction: +30–100.
-- Oxytocin (pg/mL, resting 1–15): Warm connection: +2–8. Deep trust moment: +8–15. Hostile event: -1 to -3.
+- Oxytocin (pg/mL, resting 1–15): Bond-building only. Hostile event: -1 to -3.
+  Oxytocin is gated by existing relationship depth — check the oxy label in the bio report:
+  - NO_BOND: do NOT fire oxytocin for compliments, flattery, teasing, warmth, or smooth conversation.
+    Those feel nice but don't build bonds. Only fire for a moment of genuine unexpected connection —
+    something that would surprise both parties. Even then: +1 to +3 max.
+  - ACQUAINTANCE or higher: warm connection +2–5. Deep trust moment +5–10.
+  Bond formation is slow. A stranger being charming is not a bonding event.
 - Dopamine (pg/mL, resting 40–140): Interesting external stimulus: +5–20. Crushing loss/rejection: -5–15.
 - Endorphins (pg/mL, resting 5–30): Genuine laughter or physical warmth/touch only: +5–20. Do NOT post for intellectual engagement, curiosity, or warm words alone — that is dopamine's territory.
 - Acetylcholine (nmol/L, resting 20–60): Engaging with genuinely novel or cognitively stimulating content: +3–10.
