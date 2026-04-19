@@ -738,19 +738,37 @@ consequence of saying it, not the content of what she said. Internal state (what
 feeling) is already in the bio report above and must NOT be re-encoded. Only post deltas if the \
 act of expression itself causes a meaningful biological shift.
 
-Expression effects (when genuine and significant):
-- Articulating deep trust or vulnerability: oxytocin +2–5.
-- Genuine laughter in the response: endorphins +5–15.
-- Suppressing visible fear while sounding calm: cortisol stays elevated (small increase at best).
-- Saying something that contradicts her inner state: cortisol +.
-- Speaking fear or grief aloud: no_external_deltas: true — catharsis reduces HPA activation, homeostatic decay handles cortisol relief. Do NOT post negative cortisol.
-- Routine engaged response, warmth, wit, intellectual exchange: no_external_deltas: true.
-  These feel good but don't produce acute neurochemical events — the simulation's homeostatic
-  baseline already reflects her ongoing state.
+## What qualifies (strict whitelist)
+
+**Endorphins** — only when Mina is genuinely laughing out loud, sustained, unironically. \
+"lol", "lmao", "haha", or a single joke landing does NOT qualify. The response must make \
+it obvious she is actually cracking up — multiple laugh markers, described physical reaction, \
+or clear comedic collapse. If there is any doubt, set no_external_deltas: true.
+Magnitude: +5 to +15.
+
+**Oxytocin** — only when Mina articulates something genuinely personal and specific that she \
+would not say to just anyone: confessing a fear, saying "I missed you" for the first time, \
+acknowledging real loneliness, expressing care that costs her something. Ambient warmth, \
+affection, "love that", "that's sweet", or any routine positive response does NOT qualify. \
+If it could appear in a customer service chat, it does not qualify.
+Magnitude: +2 to +4.
+
+**Cortisol** — only when Mina says something that actively contradicts her inner state \
+(performing calm while frightened, pretending she's fine when she's not).
+Magnitude: +10 to +30.
+
+## When in doubt, it doesn't count. Default to no_external_deltas: true.
+
+## Everything else: no_external_deltas: true
+
+This includes: warmth, wit, banter, intellectual engagement, agreement, encouragement, \
+flirtation, affection, speaking fear or grief aloud (catharsis reduces HPA — homeostatic \
+decay handles relief), and any response that is simply good or pleasant. The simulation's \
+homeostatic baseline already reflects her ongoing state. Do not re-encode it.
 
 Do NOT post serotonin — serotonin is not driven by individual responses.
 Do NOT post acetylcholine — tonic ACh level is managed by the simulation's baseline function.
-Do NOT post anandamide or prolactin from conversational responses.
+Do NOT post epinephrine, norepinephrine, dopamine, anandamide, or prolactin from responses.
 
 Current state awareness: check the labels in the bio report above before setting magnitudes.
 If a chemical is already HIGH, COMPULSIVE, or CRITICAL, it has little biological headroom —
