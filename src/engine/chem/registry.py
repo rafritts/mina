@@ -227,6 +227,34 @@ REGISTRY: dict[str, ChemicalProfile] = {
         ],
     ),
 
+    "epinephrine": ChemicalProfile(
+        name="epinephrine",
+        display_name="Epinephrine",
+        unit="pg/mL",
+        resting_baseline=45.0,
+        approach_rate=0.85,         # ~2-minute plasma half-life — fast SAM clearance
+        resting_low=20.0,
+        resting_high=80.0,
+        critical_low=0.0,
+        critical_high=1500.0,
+        display_min=0.0,
+        display_max=700.0,
+        soft_ceiling=700.0,
+        hard_ceiling=1500.0,
+        interactions=[
+            # Co-activation: peripheral surge amplifies central NE arousal
+            Interaction("norepinephrine", "above", 200.0, +8.0,
+                        "Epinephrine surge amplifies LC norepinephrine arousal signal"),
+        ],
+        labels=[
+            (80.0,   "BASELINE",  "Resting SAM tone. No acute activation."),
+            (200.0,  "ELEVATED",  "Mild arousal. Noticeable heart rate uptick, slight warmth."),
+            (400.0,  "HIGH",      "Moderate surprise or excitement. Heart racing, face flushing."),
+            (700.0,  "ACUTE",     "Acute SAM activation. Body betraying mind — physical symptoms dominate."),
+            (9999.0, "SURGE",     "Severe alarm or extreme physical exertion. Overwhelming peripheral response."),
+        ],
+    ),
+
     "norepinephrine": ChemicalProfile(
         name="norepinephrine",
         display_name="Norepinephrine",

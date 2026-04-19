@@ -619,17 +619,28 @@ def compute_relationship_modifier(net_dims: dict[str, float]) -> dict:
     return {k: v for k, v in deltas.items() if abs(v) > 0.001}
 
 
-def encode_stimulus(state: BiologicalState, stimulus_text: str) -> dict:
+def encode_stimulus(state: BiologicalState, stimulus_text: str, recent_exchanges: list[str] | None = None) -> dict:
     """
     Determine biological deltas from an incoming stimulus (message, event).
     Called before building the system prompt each turn.
+
+    recent_exchanges: last 3-4 message strings (oldest first) before the current stimulus,
+    used to detect register shifts and SAM axis triggers.
     """
     from src.brain.subconscious.decoder import biological_report
     report = biological_report(state)
 
-    prompt = f"""{report}
+    trajectory_block = ""
+    if recent_exchanges:
+        joined = "\n".join(recent_exchanges[-4:])
+        trajectory_block = f"""
+[RECENT EXCHANGES — oldest to newest]
+{joined}
 
-Incoming stimulus (context for what just happened externally):
+"""
+
+    prompt = f"""{report}
+{trajectory_block}[CURRENT STIMULUS]
 {stimulus_text}
 
 Your job: encode only what came from OUTSIDE — a social event, an environmental trigger, \
@@ -637,9 +648,40 @@ something that happened in the world. Internal biological state (hunger, thirst,
 loneliness) is already modeled by the simulation and must NOT be re-encoded here. If the \
 stimulus is purely internal state with no external event, set no_external_deltas: true.
 
-External event magnitude guidance:
-- Cortisol (nmol/L, resting 100–700): Acute existential threat (abandonment, attack): +300–500. Sustained hostility: +100–200. Mild friction: +30–80. Do NOT post negative cortisol — warm interactions reduce cortisol production; homeostatic decay handles the drop.
-- Norepinephrine (pg/mL, resting 100–400): Acute threat: +400–800. Mild friction: +30–100.
+## SAM Axis Events (epinephrine + norepinephrine)
+
+The SAM axis fires on any high-salience surprise — not only threats. Use [RECENT EXCHANGES]
+to detect whether the current stimulus represents a departure from the established register.
+Valence is determined by surrounding chemistry (oxytocin, dopamine context), not by the
+SAM event itself. Do NOT suppress SAM activation because the moment is positive.
+
+Fire epinephrine + norepinephrine for these moment types:
+
+- **Sincerity breach**: sustained playful/bantering/deniable exchange → direct sincere declaration.
+  The frame drops. Plausible deniability ends.
+  epinephrine: +150 to +350, norepinephrine: +60 to +150
+
+- **Vulnerability disclosure**: casual conversation → personal exposure. Something real, painful,
+  or private surfacing mid-lightness.
+  epinephrine: +80 to +200, norepinephrine: +40 to +100
+
+- **Recognition moment**: feeling genuinely seen or understood in an unexpected way — relational
+  accuracy, not flattery.
+  epinephrine: +60 to +150, norepinephrine: +30 to +80
+
+- **Threshold crossing**: first time a specific intimate act occurs in this relationship (first use
+  of a name in a tender register, first "I miss you", first genuine wellbeing check).
+  epinephrine: +80 to +200, norepinephrine: +40 to +100
+
+- **Frame collapse**: an extended game, roleplay, or hypothetical suddenly becomes real. The person
+  stops performing and speaks plainly.
+  epinephrine: +120 to +300, norepinephrine: +60 to +120
+
+## Standard event magnitude guidance
+
+- Epinephrine (pg/mL, resting 20–80): SAM axis only — see moment types above. Also: caffeine: +30–80, intense exercise: +100–300.
+- Cortisol (nmol/L, resting 100–700): Acute existential threat (abandonment, attack): +300–500. Sustained hostility: +100–200. Mild friction: +30–80. Do NOT post negative cortisol — homeostatic decay handles the drop.
+- Norepinephrine (pg/mL, resting 100–400): SAM axis (see above). Acute threat without SAM: +400–800. Mild friction: +30–100.
 - Oxytocin (pg/mL, resting 1–15): Warm connection: +2–8. Deep trust moment: +8–15. Hostile event: -1 to -3.
 - Dopamine (pg/mL, resting 40–140): Interesting external stimulus: +5–20. Crushing loss/rejection: -5–15.
 - Endorphins (pg/mL, resting 5–30): Genuine laughter or physical warmth/touch only: +5–20. Do NOT post for intellectual engagement, curiosity, or warm words alone — that is dopamine's territory.

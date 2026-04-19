@@ -463,7 +463,12 @@ async def run_turn(
 
     # [1] encode_stimulus — biological response to incoming message
     stimulus = f"{username}: {user_input}" + (f" [sent {img_count} image(s)]" if img_count else "")
-    stimulus_deltas = await asyncio.to_thread(encode_stimulus, state, stimulus)
+    _window_for_encoder = load_decoder_window()
+    _recent_exchanges = [
+        m["content"] for m in _window_for_encoder[-8:]
+        if isinstance(m.get("content"), str)
+    ]
+    stimulus_deltas = await asyncio.to_thread(encode_stimulus, state, stimulus, _recent_exchanges)
     if stimulus_deltas:
         state = apply_deltas(state, stimulus_deltas)
 
@@ -501,7 +506,7 @@ async def run_turn(
     # [2] biological_report — deterministic, logged only (not injected into prompts)
     log("BIO/REPORT", biological_report_compact(state))
 
-    decoder_window = load_decoder_window()
+    decoder_window = _window_for_encoder
     cfg = load_config()
     mina_immediate = cfg.get("mina_immediate_window", MINA_IMMEDIATE_WINDOW)
 

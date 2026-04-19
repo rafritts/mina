@@ -347,7 +347,7 @@ def biological_report_compact(state: BiologicalState) -> str:
 
     sleep_tag = "SLEEPING" if state.sleeping else "AWAKE"
     chems = (
-        f"cort={c('cortisol')} oxy={c('oxytocin')} norepi={c('norepinephrine')} "
+        f"cort={c('cortisol')} oxy={c('oxytocin')} epi={c('epinephrine')} norepi={c('norepinephrine')} "
         f"dopa={c('dopamine')} sero={c('serotonin')} ach={c('acetylcholine')} "
         f"gluc={c('glucose')} mela={c('melatonin')} sp={c('sleep_pressure')}"
     )

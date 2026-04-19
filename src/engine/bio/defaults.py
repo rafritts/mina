@@ -13,6 +13,7 @@ def chemical_defaults() -> dict[str, float]:
     """Base defaults, overrideable by config.json neurochemical_baselines."""
     defaults = {
         "cortisol":        250.0,   # nmol/L — circadian midpoint
+        "epinephrine":      45.0,   # pg/mL — SAM resting baseline
         "norepinephrine":  200.0,   # pg/mL
         "dopamine":         80.0,   # pg/mL
         "serotonin":        22.0,   # ng/mL
