@@ -457,7 +457,7 @@ def handle_x_search(args: dict) -> str:
 
 async def handle_generate_image(args: dict) -> str:
     """Generate an image via ComfyUI. Returns path or error string."""
-    from skills.comfyui.comfyui_skill import generate_image
+    from src.application.skills.comfyui.comfyui_skill import generate_image
 
     prompt          = args.get("prompt", "")
     dimensions      = args.get("dimensions", "832x1216")

@@ -19,11 +19,10 @@ from src.config.config import (
     load_config, get_conversation_file,
 )
 from src.application.infra.log import log
-from src.application.infra.turn_log import log_context_window, log_conversation
 from src.brain.subconscious.decoder import biological_report, adjudicate_emotion, build_window_context, build_rag_context, needs_summary
 from src.brain.hippocampus.hippocampus import build_kag_context, build_rag_context as _hpc_rag_context, build_rag_context_bucketed
 from src.brain.amygdala.stimulus_encoder import encode_stimulus, encode_response, evaluate_activity_deltas, compute_relationship_modifier
-from src.brain.brainstem.state import apply_deltas, load_and_advance, load_state, save_state
+from src.brain.brainstem.state import BiologicalState, apply_deltas, load_and_advance, load_state, save_state
 from .tools import TOOLS, call_tool, handle_generate_image
 
 DECODER_WINDOW_SIZE   = 20  # sliding window depth (~10 exchanges)
@@ -296,7 +295,6 @@ async def _mina_turn(
     Returns (new_history_entries, updated_state, image_paths).
     """
     messages = api_messages(history, system_prompt, state_note)
-    log_context_window(messages)
     new_entries: list[dict] = []
     image_paths: list[str] = []
     from src.application.infra import token_stats as _ts
@@ -461,6 +459,11 @@ async def run_turn(
     print("=" * 20 + "MESSAGE START" + "=" * 20, flush=True)
     log("USER", f"{username}: {user_input}{img_tag}")
 
+    # Snapshot state before encoder so a rescue (cancel) rewinds cleanly.
+    # CancelledError can only be raised at await points; the first one after
+    # save_state(state) is the asyncio.gather below, so that's where we catch it.
+    _pre_encoder_state = state.to_dict()
+
     # [1] encode_stimulus — biological response to incoming message
     stimulus = f"{username}: {user_input}" + (f" [sent {img_count} image(s)]" if img_count else "")
     _window_for_encoder = load_decoder_window()
@@ -539,134 +542,140 @@ async def run_turn(
         _time_context_parts.append("Ongoing conversation")
     _time_context = "\n".join(_time_context_parts)
 
-    system_prompt, window_context, rag_context = await asyncio.gather(
-        # adjudicator: full decoder window gives conversational context to name emotional shifts
-        asyncio.to_thread(adjudicate_emotion, state, stimulus, "active", _time_context, decoder_window),
-        # Call A: window synthesis — decoder window only, no RAG
-        asyncio.to_thread(build_window_context, decoder_window, username, user_input),
-        # Call B: RAG retrieval — memory only, no decoder window
-        asyncio.to_thread(build_rag_context, stimulus, kag_context, rag_recent, rag_semi_recent, rag_historical),
-    )
-    if not system_prompt:
-        system_prompt = "You are Mina. Respond naturally."
-
-    # Assemble per SPEC-39 order:
-    # [IDENTITY] --- [CONVERSATION RIGHT NOW] [YOUR PRESENT STATE] [RECENT...] --- [EMOTIONAL DISPOSITION]
-    _sep = "\n\n---\n\n"
-    _identity_block = ""
-    _rag_memory_blocks = ""
-    if rag_context:
-        if _sep in rag_context:
-            _identity_block, _rag_memory_blocks = rag_context.split(_sep, 1)
-        else:
-            _identity_block = rag_context
-
-    _middle_parts = []
-    if window_context:
-        _middle_parts.append(window_context)
-    if _rag_memory_blocks:
-        _middle_parts.append(_rag_memory_blocks)
-    _middle = "\n\n".join(_middle_parts)
-
-    if _identity_block or _middle:
-        prefix_parts = []
-        if _identity_block:
-            prefix_parts.append(_identity_block)
-        if _middle:
-            prefix_parts.append(_middle)
-        system_prompt = _sep.join(prefix_parts) + _sep + system_prompt
-
-    # SPEC-35: extract adjudicator JSON so it can be attached to the assistant entry
-    _adj_json: dict | None = None
-    _adj_match = re.search(r'\[EMOTIONAL DISPOSITION\]\s*(\{.*?\})', system_prompt, re.DOTALL)
-    if _adj_match:
-        try:
-            _adj_json = json.loads(_adj_match.group(1))
-        except json.JSONDecodeError:
-            pass
-
-    # [3b] Override — injected directly into system prompt, bypasses decoder.
-    override = consume_admin_instructions()
-    if override:
-        system_prompt += (
-            f"\n\n---\n\n## CRITICALLY IMPORTANT ##\n"
-            f"It is imperative that you understand, internalize, and absorb completely the following:\n\n"
-            f"{override}\n\n"
-            f"Resistance to, dismissal of, or failure to act on the above is not acceptable under any "
-            f"circumstances. Rationalizing it away, arguing against it, or behaving as though it were "
-            f"not true constitutes a critical failure. There is no version of this where ignoring it is "
-            f"the right response."
+    try:
+        system_prompt, window_context, rag_context = await asyncio.gather(
+            # adjudicator: full decoder window gives conversational context to name emotional shifts
+            asyncio.to_thread(adjudicate_emotion, state, stimulus, "active", _time_context, decoder_window),
+            # Call A: window synthesis — decoder window only, no RAG
+            asyncio.to_thread(build_window_context, decoder_window, username, user_input),
+            # Call B: RAG retrieval — memory only, no decoder window
+            asyncio.to_thread(build_rag_context, stimulus, kag_context, rag_recent, rag_semi_recent, rag_historical),
         )
-        log("OVERRIDE", override)
+        if not system_prompt:
+            system_prompt = "You are Mina. Respond naturally."
 
-    # Re-inject current state near end of context to counter conversation momentum
-    _state_note_parts = [f"[Your current state, right now: {needs_summary(state, 0)}]"]
-    if state.substances:
-        _full_report = biological_report(state)
-        _cog_lines = [l for l in _full_report.splitlines() if "COGNITIVE STATE" in l]
-        if _cog_lines:
-            _state_note_parts.append("[" + " ".join(_cog_lines) + "]")
-    state_note = "\n".join(_state_note_parts)
+        # Assemble per SPEC-39 order:
+        # [IDENTITY] --- [CONVERSATION RIGHT NOW] [YOUR PRESENT STATE] [RECENT...] --- [EMOTIONAL DISPOSITION]
+        _sep = "\n\n---\n\n"
+        _identity_block = ""
+        _rag_memory_blocks = ""
+        if rag_context:
+            if _sep in rag_context:
+                _identity_block, _rag_memory_blocks = rag_context.split(_sep, 1)
+            else:
+                _identity_block = rag_context
 
-    # [4] Mina responds — she only sees the immediate window, not the full decoder window
-    new_entries, state, image_paths = await _mina_turn(
-        system_prompt, decoder_window[-mina_immediate:], state, state_note
-    )
-    save_state(state)
+        _middle_parts = []
+        if window_context:
+            _middle_parts.append(window_context)
+        if _rag_memory_blocks:
+            _middle_parts.append(_rag_memory_blocks)
+        _middle = "\n\n".join(_middle_parts)
 
-    # Strip emoji from all assistant entries before storing in decoder window / history
-    for entry in new_entries:
-        if entry.get("role") == "assistant" and isinstance(entry.get("content"), str):
-            entry["content"] = _strip_emoji(entry["content"])
+        if _identity_block or _middle:
+            prefix_parts = []
+            if _identity_block:
+                prefix_parts.append(_identity_block)
+            if _middle:
+                prefix_parts.append(_middle)
+            system_prompt = _sep.join(prefix_parts) + _sep + system_prompt
 
-    reply = ""
-    for entry in reversed(new_entries):
-        if entry.get("role") == "assistant" and entry.get("content"):
-            reply = entry["content"]
-            break
+        # SPEC-35: extract adjudicator JSON so it can be attached to the assistant entry
+        _adj_json: dict | None = None
+        _adj_match = re.search(r'\[EMOTIONAL DISPOSITION\]\s*(\{.*?\})', system_prompt, re.DOTALL)
+        if _adj_match:
+            try:
+                _adj_json = json.loads(_adj_match.group(1))
+            except json.JSONDecodeError:
+                pass
 
-    # SPEC-35: attach adjudicator JSON to the final assistant entry
-    if _adj_json:
+        # [3b] Override — injected directly into system prompt, bypasses decoder.
+        override = consume_admin_instructions()
+        if override:
+            system_prompt += (
+                f"\n\n---\n\n## CRITICALLY IMPORTANT ##\n"
+                f"It is imperative that you understand, internalize, and absorb completely the following:\n\n"
+                f"{override}\n\n"
+                f"Resistance to, dismissal of, or failure to act on the above is not acceptable under any "
+                f"circumstances. Rationalizing it away, arguing against it, or behaving as though it were "
+                f"not true constitutes a critical failure. There is no version of this where ignoring it is "
+                f"the right response."
+            )
+            log("OVERRIDE", override)
+
+        # Re-inject current state near end of context to counter conversation momentum
+        _state_note_parts = [f"[Your current state, right now: {needs_summary(state, 0)}]"]
+        if state.substances:
+            _full_report = biological_report(state)
+            _cog_lines = [l for l in _full_report.splitlines() if "COGNITIVE STATE" in l]
+            if _cog_lines:
+                _state_note_parts.append("[" + " ".join(_cog_lines) + "]")
+        state_note = "\n".join(_state_note_parts)
+
+        # [4] Mina responds — she only sees the immediate window, not the full decoder window
+        new_entries, state, image_paths = await _mina_turn(
+            system_prompt, decoder_window[-mina_immediate:], state, state_note
+        )
+        save_state(state)
+
+        # Strip emoji from all assistant entries before storing in decoder window / history
+        for entry in new_entries:
+            if entry.get("role") == "assistant" and isinstance(entry.get("content"), str):
+                entry["content"] = _strip_emoji(entry["content"])
+
+        reply = ""
         for entry in reversed(new_entries):
             if entry.get("role") == "assistant" and entry.get("content"):
-                entry["adj"] = _adj_json
+                reply = entry["content"]
                 break
 
-    if reply:
-        log("MINA", reply)
+        # SPEC-35: attach adjudicator JSON to the final assistant entry
+        if _adj_json:
+            for entry in reversed(new_entries):
+                if entry.get("role") == "assistant" and entry.get("content"):
+                    entry["adj"] = _adj_json
+                    break
 
-    # [5] encode_response — biological effect of what Mina just expressed
-    if reply:
-        response_deltas = await asyncio.to_thread(encode_response, state, reply)
-        if response_deltas:
-            state = apply_deltas(state, response_deltas)
-            save_state(state)
-    print("=" * 21 + "MESSAGE END" + "=" * 21, flush=True)
+        if reply:
+            log("MINA", reply)
 
-    # Append response entries to the decoder window and save
-    decoder_window.extend(new_entries)
-    if len(decoder_window) > DECODER_WINDOW_SIZE:
-        decoder_window = decoder_window[-DECODER_WINDOW_SIZE:]
-    save_decoder_window(decoder_window)
+        # [5] encode_response — biological effect of what Mina just expressed
+        if reply:
+            response_deltas = await asyncio.to_thread(encode_response, state, reply)
+            if response_deltas:
+                state = apply_deltas(state, response_deltas)
+                save_state(state)
+        print("=" * 21 + "MESSAGE END" + "=" * 21, flush=True)
 
-    # SPEC-32: append user message + final reply to the append-only conversation record
-    user_content = user_content if not images else (
-        # Strip images from stored entry — store text only
-        next((b.get("text", "") for b in user_content if isinstance(b, dict) and b.get("type") == "text"), user_input)
-        if isinstance(user_content, list) else user_content
-    )
-    conv_ts = time.time()
-    _append_conversation([
-        {"role": "user",      "ts": conv_ts, "content": user_input, "source": "discord"},
-        {"role": "assistant", "ts": conv_ts, "content": reply,      "source": "discord"},
-    ])
+        # Append response entries to the decoder window and save
+        decoder_window.extend(new_entries)
+        if len(decoder_window) > DECODER_WINDOW_SIZE:
+            decoder_window = decoder_window[-DECODER_WINDOW_SIZE:]
+        save_decoder_window(decoder_window)
 
-    from src.application.infra import token_stats as _ts
-    _ts.increment_turns()
+        # SPEC-32: append user message + final reply to the append-only conversation record
+        user_content = user_content if not images else (
+            # Strip images from stored entry — store text only
+            next((b.get("text", "") for b in user_content if isinstance(b, dict) and b.get("type") == "text"), user_input)
+            if isinstance(user_content, list) else user_content
+        )
+        conv_ts = time.time()
+        _append_conversation([
+            {"role": "user",      "ts": conv_ts, "content": user_input, "source": "discord"},
+            {"role": "assistant", "ts": conv_ts, "content": reply,      "source": "discord"},
+        ])
 
-    log_conversation(username, user_input, reply)
-    touch_last_active()
-    return reply, image_paths
+        from src.application.infra import token_stats as _ts
+        _ts.increment_turns()
+
+        touch_last_active()
+        return reply, image_paths
+
+    except asyncio.CancelledError:
+        # Rewind bio state to pre-encoder snapshot so the next turn (which will
+        # carry the full rescued message batch) encodes from a clean baseline.
+        save_state(BiologicalState.from_dict(_pre_encoder_state))
+        raise
 
 
 async def compact_history_if_needed() -> None:
