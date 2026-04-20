@@ -263,6 +263,8 @@ def rag_add(text: str, metadata: Optional[dict] = None) -> None:
 _RAG_HALF_LIFE_RECENT_HOURS  = 0.33   # 20 min; entries from 20min ago score ~50%
 # Historical pool: half-life of 48 hours — gentle decay, keeps multi-day coherence.
 _RAG_HALF_LIFE_HISTORY_HOURS = 48.0   # 2 days; yesterday scores ~50%, last week ~1%
+# Relational pool: half-life of 30 days — cosine-dominant, keeps old in-jokes/dynamics accessible.
+_RAG_HALF_LIFE_RELATIONAL_HOURS = 720.0  # 30 days; a week ago scores ~86%, a month ago ~50%
 
 
 def _rag_query_with_half_life(query: str, n_results: int, half_life_hours: float) -> list[str]:
@@ -309,6 +311,19 @@ def _rag_query_with_half_life(query: str, n_results: int, half_life_hours: float
 def rag_query(query: str, n_results: int = 5) -> list[str]:
     """Retrieve memories using the recent half-life (default behaviour)."""
     return _rag_query_with_half_life(query, n_results, _RAG_HALF_LIFE_RECENT_HOURS)
+
+
+def build_rag_context_relational(query: str, n_results: int = 3) -> str:
+    """
+    Retrieve relationship-context memories for encoder/adjudicator injection.
+    Uses a 30-day half-life so old in-jokes, established dynamics, and shared
+    history remain accessible by semantic similarity regardless of age.
+    Returns a plain text block, or "" if nothing retrieved.
+    """
+    docs = _rag_query_with_half_life(query, n_results, _RAG_HALF_LIFE_RELATIONAL_HOURS)
+    if not docs:
+        return ""
+    return "\n".join(f"- {d}" for d in docs)
 
 
 def build_rag_context(query: str, n_results: int = 5) -> str:

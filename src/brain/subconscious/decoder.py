@@ -849,6 +849,7 @@ def adjudicate_emotion(
     mode: str = "active",
     time_context: str = "",
     recent_messages: "list[dict] | None" = None,
+    context_hint: str | None = None,
 ) -> str:
     """
     Adjudicate Mina's emotional disposition given her neurochemical state and the
@@ -859,6 +860,7 @@ def adjudicate_emotion(
     time_context: optional clock + idle time string.
     recent_messages: decoder window — lets adjudicator name chemistry departures from
                      recent exchange tone. Only used in "active" mode.
+    context_hint: relevant memories from RAG giving relationship history context.
     """
     from src.application.infra.log import log
     from src.application.infra import token_stats
@@ -883,6 +885,10 @@ def adjudicate_emotion(
     isolation_context = _build_isolation_context(state)
     if isolation_context:
         user_content += f"\n\n[ISOLATION CONTEXT]\n{isolation_context}"
+
+    # Inject relationship context so adjudicator can interpret stimulus against shared history.
+    if context_hint:
+        user_content += f"\n\n[RELATIONSHIP CONTEXT — relevant memories]\n{context_hint}"
 
     # Append recent exchange log so adjudicator can name departures from the prior pattern.
     if mode == "active" and recent_messages:

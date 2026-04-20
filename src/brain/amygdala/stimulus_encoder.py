@@ -625,13 +625,20 @@ def compute_relationship_modifier(net_dims: dict[str, float]) -> dict:
     return {k: v for k, v in deltas.items() if abs(v) > 0.001}
 
 
-def encode_stimulus(state: BiologicalState, stimulus_text: str, recent_exchanges: list[str] | None = None) -> dict:
+def encode_stimulus(
+    state: BiologicalState,
+    stimulus_text: str,
+    recent_exchanges: list[str] | None = None,
+    context_hint: str | None = None,
+) -> dict:
     """
     Determine biological deltas from an incoming stimulus (message, event).
     Called before building the system prompt each turn.
 
     recent_exchanges: last 3-4 message strings (oldest first) before the current stimulus,
     used to detect register shifts and SAM axis triggers.
+    context_hint: relevant memories retrieved from RAG, giving the encoder relationship
+    history (in-jokes, established dynamics) that may reframe how the stimulus reads.
     """
     from src.brain.subconscious.decoder import biological_report
     report = biological_report(state)
@@ -645,8 +652,15 @@ def encode_stimulus(state: BiologicalState, stimulus_text: str, recent_exchanges
 
 """
 
+    context_block = ""
+    if context_hint:
+        context_block = f"""[RELATIONSHIP CONTEXT — relevant memories]
+{context_hint}
+
+"""
+
     prompt = f"""{report}
-{trajectory_block}[CURRENT STIMULUS]
+{trajectory_block}{context_block}[CURRENT STIMULUS]
 {stimulus_text}
 
 Your job: encode only what came from OUTSIDE — a social event, an environmental trigger, \

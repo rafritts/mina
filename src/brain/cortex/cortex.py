@@ -20,7 +20,7 @@ from src.config.config import (
 )
 from src.application.infra.log import log
 from src.brain.subconscious.decoder import biological_report, adjudicate_emotion, build_window_context, build_rag_context, needs_summary
-from src.brain.hippocampus.hippocampus import build_kag_context, build_rag_context as _hpc_rag_context, build_rag_context_bucketed
+from src.brain.hippocampus.hippocampus import build_kag_context, build_rag_context as _hpc_rag_context, build_rag_context_bucketed, build_rag_context_relational
 from src.brain.amygdala.stimulus_encoder import encode_stimulus, encode_response, evaluate_activity_deltas, compute_relationship_modifier
 from src.brain.brainstem.state import BiologicalState, apply_deltas, load_and_advance, load_state, save_state
 from .tools import TOOLS, call_tool, handle_generate_image
@@ -471,7 +471,18 @@ async def run_turn(
         m["content"] for m in _window_for_encoder[-8:]
         if isinstance(m.get("content"), str)
     ]
-    stimulus_deltas = await asyncio.to_thread(encode_stimulus, state, stimulus, _recent_exchanges)
+
+    # Two RAG pulls in parallel before the encoder so both encoder and adjudicator
+    # have relationship context. Lite uses a 30-day half-life (semantic-dominant) so
+    # old in-jokes and established dynamics are retrievable. Rich is time-bucketed
+    # for Mina's full response context.
+    kag_context, _relational_rag, (rag_recent, rag_semi_recent, rag_historical) = await asyncio.gather(
+        asyncio.to_thread(build_kag_context),
+        asyncio.to_thread(build_rag_context_relational, stimulus),
+        asyncio.to_thread(build_rag_context_bucketed, user_input),
+    )
+
+    stimulus_deltas = await asyncio.to_thread(encode_stimulus, state, stimulus, _recent_exchanges, _relational_rag or None)
     if stimulus_deltas:
         state = apply_deltas(state, stimulus_deltas)
 
@@ -522,9 +533,8 @@ async def run_turn(
         user_content = f"{username}: {user_input}"
     decoder_window.append({"role": "user", "content": user_content, "ts": time.time()})
 
-    # [3] Three-way parallel: window synthesis, RAG retrieval, emotion adjudication
-    kag_context = build_kag_context()
-    rag_recent, rag_semi_recent, rag_historical = build_rag_context_bucketed(user_input)
+    # [3] Three-way parallel: window synthesis, RAG assembly, emotion adjudication
+    # kag_context, rag_recent/semi/historical already retrieved above alongside relational RAG.
     stimulus = f"{username}: {user_input}"
 
     # Build time context: clock time + how long since the previous message
@@ -544,11 +554,11 @@ async def run_turn(
 
     try:
         system_prompt, window_context, rag_context = await asyncio.gather(
-            # adjudicator: full decoder window gives conversational context to name emotional shifts
-            asyncio.to_thread(adjudicate_emotion, state, stimulus, "active", _time_context, decoder_window),
+            # adjudicator: full decoder window + relationship context hint
+            asyncio.to_thread(adjudicate_emotion, state, stimulus, "active", _time_context, decoder_window, _relational_rag or None),
             # Call A: window synthesis — decoder window only, no RAG
             asyncio.to_thread(build_window_context, decoder_window, username, user_input),
-            # Call B: RAG retrieval — memory only, no decoder window
+            # Call B: RAG assembly — uses already-retrieved bucketed memories
             asyncio.to_thread(build_rag_context, stimulus, kag_context, rag_recent, rag_semi_recent, rag_historical),
         )
         if not system_prompt:
