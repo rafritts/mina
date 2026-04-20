@@ -49,7 +49,7 @@ async def fire_followup(entry: dict) -> None:
     """
     from src.brain.brainstem.state import load_and_advance, save_state
     from src.brain.subconscious.decoder import adjudicate_emotion
-    from src.brain.hippocampus.hippocampus import build_kag_context, build_rag_context
+    from src.brain.hippocampus.hippocampus import build_kag_context, build_rag_context_bucketed
     from src.application.infra import token_stats
     from src.application.infra.client import chat_create, MODEL
     from src.brain.amygdala.stimulus_encoder import encode_response
@@ -75,12 +75,16 @@ async def fire_followup(entry: dict) -> None:
     # Adjudicate emotion against the deferred context, not current conversation
     stimulus = f"[DEFERRED — {elapsed_label} ago] {context}"
 
+    kag_context = build_kag_context()
+    rag_recent, rag_semi_recent, rag_historical = build_rag_context_bucketed(context)
+
     emotional_disposition, memory_context = await asyncio.gather(
         asyncio.to_thread(adjudicate_emotion, state, stimulus, "active"),
         asyncio.to_thread(build_memory_context,
-                          context,  # query against the original topic, not elapsed label
-                          build_kag_context(),
-                          build_rag_context(context)),
+                          context,
+                          kag_context,
+                          rag_recent,
+                          rag_historical),
     )
 
     # Assemble system prompt — NO conversation history
