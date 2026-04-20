@@ -644,6 +644,12 @@ long-term memory.
   "KNOWLEDGE/<filename>.md": "[new knowledge file content, or null]"
 }
 </kag_updates>
+<followups>
+[
+  {"context": "I told Ryan I'd share that song when I found it.", "delay_minutes": 60},
+  ...
+]
+</followups>
 
 ## Rules
 
@@ -657,6 +663,10 @@ Do not invent emotional labels when the adjudicator already provided them.
 (omit affect/valence/arousal if no ADJ annotation is present for that moment).
 - KAG updates: only update if something genuinely changed. Return null for unchanged files.
 - PENDING.md should reflect recommendations made, books mentioned, things deferred.
+- followups: explicit commitments Mina made that require a future action — "I'll message you when I'm ready", \
+"I'll share that later", "remind me to tell you X". Each entry needs a `context` (what she committed to, \
+written in first person from her perspective) and `delay_minutes` (how long to wait before sending). \
+If no commitments were made, return an empty array. Do NOT invent commitments that weren't in the conversation.
 - KNOWLEDGE/ entries are for things Mina learned that are worth retaining (facts, preferences \
 the user revealed, etc.)
 - REFLECTION.md is Mina's private diary — her own space, written in first person. It is NOT \
@@ -736,6 +746,7 @@ def _parse_consolidation_output(raw: str) -> dict:
         "reflection_summary": "",
         "rag_entries": [],
         "kag_updates": {},
+        "followups": [],
     }
 
     result["reflection_summary"] = _extract_tag(raw, "reflection_summary")
@@ -751,6 +762,12 @@ def _parse_consolidation_output(raw: str) -> dict:
         parsed = _parse_json_robust(kag_block)
         if isinstance(parsed, dict):
             result["kag_updates"] = parsed
+
+    followups_block = _extract_tag(raw, "followups")
+    if followups_block:
+        parsed = _parse_json_robust(followups_block)
+        if isinstance(parsed, list):
+            result["followups"] = parsed
 
     return result
 

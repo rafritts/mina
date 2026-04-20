@@ -612,6 +612,26 @@ async def run_freetime(force: bool = False) -> None:
             write_kag(filename.replace("KNOWLEDGE/", "KNOWLEDGE" + os.sep), content)
             _log(f"KAG updated: {filename}")
 
+    # Queue any explicit commitments Mina made during the consolidated conversation
+    followups = reflection.get("followups", [])
+    if followups:
+        from src.brain.cortex.followup import load_queue, save_queue
+        queue = load_queue()
+        now = time.time()
+        for fu in followups:
+            if not isinstance(fu, dict) or not fu.get("context"):
+                continue
+            delay_s = float(fu.get("delay_minutes", 60)) * 60
+            entry = {
+                "fires_at": now + delay_s,
+                "scheduled_at": now,
+                "delay_str": f"{fu.get('delay_minutes', 60)} minutes",
+                "context": fu["context"],
+            }
+            queue.append(entry)
+            _log(f"Followup queued (fires in {fu.get('delay_minutes', 60)}m): {fu['context'][:80]}")
+        save_queue(queue)
+
     # RAG TTL pruning
     ttl = cfg.get("rag_ttl_days", 0)
     if ttl:
