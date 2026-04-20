@@ -408,7 +408,10 @@ def _execute_state_wipe(reason: str) -> None:
 
     # Clear relationship memory
     try:
-        write_kag("RELATIONSHIP.md", "No history yet.")
+        from src.config.config import RELATIONSHIP_DIR
+        import shutil
+        if os.path.isdir(RELATIONSHIP_DIR):
+            shutil.rmtree(RELATIONSHIP_DIR)
         write_kag("PENDING.md", "")
         write_kag("REFLECTION.md", "")
     except Exception:

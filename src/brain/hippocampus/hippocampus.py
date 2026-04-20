@@ -639,7 +639,6 @@ long-term memory.
 </rag_entries>
 <kag_updates>
 {
-  "RELATIONSHIP.md": "[full updated file content, or null if no change]",
   "PENDING.md": "[full updated file content, or null if no change]",
   "REFLECTION.md": "[new diary entry appended to existing content, or null if nothing worth writing]",
   "KNOWLEDGE/<filename>.md": "[new knowledge file content, or null]"
@@ -657,9 +656,6 @@ Do not invent emotional labels when the adjudicator already provided them.
 "affect": "<word>", "valence": <0.0-1.0>, "arousal": <0.0-1.0>}` \
 (omit affect/valence/arousal if no ADJ annotation is present for that moment).
 - KAG updates: only update if something genuinely changed. Return null for unchanged files.
-- RELATIONSHIP.md should accumulate over time. Add to notable moments. Update trust level \
-based on what actually happened — don't inflate it. Trust increases slowly from evidence, \
-not from single interactions. A single pleasant conversation does not move Low → High.
 - PENDING.md should reflect recommendations made, books mentioned, things deferred.
 - KNOWLEDGE/ entries are for things Mina learned that are worth retaining (facts, preferences \
 the user revealed, etc.)
