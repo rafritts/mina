@@ -25,7 +25,7 @@
     "dopamine_sensitivity": 1.0
   },
 
-  "customization_files": ["identity/CUSTOMIZATION.md", "identity/MATURITY.md"],
+  "customization_files": ["identity/CUSTOMIZATION.md"],
 
   "rag_ttl_days": 14,
 

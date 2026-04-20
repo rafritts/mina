@@ -25,6 +25,7 @@ src/memory/kag/
 
 # Generated images
 memory/images/
+src/application/memory/images/
 
 # Identity customization (personal — not for version control)
 identity/CUSTOMIZATION.md
