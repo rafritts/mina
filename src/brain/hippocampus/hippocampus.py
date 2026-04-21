@@ -833,12 +833,21 @@ def consolidate(
     raw = response.choices[0].message.content or ""
     result = _parse_consolidation_output(raw)
 
-    # Rolling RAG write: store the raw conversation block so it's retrievable
-    # by cosine similarity. This replaces _rag_write_and_trim from cortex/freetime.
+    # Rolling RAG write: chunk conversation into small windows so each specific
+    # moment gets its own embedding (a single blob dilutes retrieval precision).
     if new_entries:
-        block = _format_conversation_block(new_entries)
-        if block:
-            rag_add(block, {"source": "conversation", "ts": _time.time()})
+        _CHUNK_SIZE = 4  # entries per chunk (~2 exchange pairs)
+        for _i in range(0, len(new_entries), _CHUNK_SIZE):
+            _chunk = new_entries[_i:_i + _CHUNK_SIZE]
+            _block = _format_conversation_block(_chunk)
+            if _block:
+                # Use the timestamp of the last entry in the chunk so bucket
+                # queries reflect when the exchange actually happened.
+                _chunk_ts = next(
+                    (e.get("ts") for e in reversed(_chunk) if e.get("ts")),
+                    _time.time(),
+                )
+                rag_add(_block, {"source": "conversation", "timestamp": _chunk_ts})
 
     # Advance cursor to now so next consolidation sees only newer entries
     _save_consolidation_state({"last_consolidated_ts": _time.time()})
