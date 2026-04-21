@@ -701,6 +701,26 @@ someone venting into the void) does not fire SAM — there is no relational dema
 Valence is determined by surrounding chemistry (oxytocin, dopamine context), not by the
 SAM event itself. Do NOT suppress SAM activation because the moment is positive.
 
+### SAM refractory state — read the epinephrine label in the bio report FIRST
+
+The adrenal medulla does not re-fire for every message in an already-elevated register.
+Once the SAM axis has fired, subsequent messages that CONTINUE the established emotional
+register produce no additional epinephrine — the system is already activated.
+
+- **BASELINE** (epi < 80 pg/mL): SAM can fire normally at full guidance magnitudes.
+- **ELEVATED** (80–200 pg/mL): SAM fired recently. Only fire again if this message is a
+  categorically NEW register shift — not continuation of the intimate or sincere frame
+  already established. If it IS a new shift, use the low end of guidance magnitudes.
+- **HIGH or ACUTE** (200–700 pg/mL): Do NOT fire epinephrine unless this message
+  represents an entirely different kind of event (e.g., sudden argument, threat, shocking
+  news). Normal emotional conversation in an established register = zero epinephrine.
+- **SURGE** (> 700 pg/mL): Do not add epinephrine under any conversational stimulus.
+
+Example: "will you be my girlfriend?" fires from casual close personal conversation → legitimate
+SAM event. The boyfriend kiss immediately after in the same intimate register → NOT a new
+shift; epi = 0. The person using her name tenderly during that same scene → also not new;
+epi = 0. A sudden argument erupting mid-intimacy → genuinely new register; SAM re-fires.
+
 Fire epinephrine + norepinephrine for these moment types:
 
 - **Sincerity breach**: sustained playful/bantering/deniable exchange → direct sincere declaration

@@ -239,8 +239,8 @@ REGISTRY: dict[str, ChemicalProfile] = {
         critical_high=1500.0,
         display_min=0.0,
         display_max=700.0,
-        soft_ceiling=700.0,
-        hard_ceiling=1500.0,
+        soft_ceiling=150.0,   # saturation engages at ELEVATED — prevents SAM stacking in sustained registers
+        hard_ceiling=700.0,   # non-override deltas can't push past SURGE threshold; event_override bypasses this
         interactions=[
             # Co-activation: peripheral surge amplifies central NE arousal
             Interaction("norepinephrine", "above", 200.0, +8.0,
