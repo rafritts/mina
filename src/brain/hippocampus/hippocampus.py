@@ -26,6 +26,9 @@ from src.config.config import (
     PROJECT_ROOT, REPO_ROOT, RUN_DIR, load_config,
     CONSOLIDATION_STATE_FILE, RELATIONSHIP_DIR, get_conversation_file,
 )
+
+_SLIDING_SEQ_FILE = os.path.join(RUN_DIR, "sliding_seq.json")
+_SLIDING_WINDOW   = 10  # messages per sliding chunk
 from src.application.infra.text_filter import apply_word_filter, apply_replacements
 from src.brain.brainstem.state import BiologicalState
 from src.brain.subconscious.decoder import format_state_block
@@ -37,6 +40,10 @@ _RAG_DIR      = os.path.join(PROJECT_ROOT, "memory", "rag")
 # Lazy-initialized ChromaDB client and collection
 _chroma_client = None
 _collection    = None
+
+# Sliding-window collection (separate from episodic memories)
+_sliding_client     = None
+_sliding_collection = None
 
 OLLAMA_EMBED_MODEL = "embeddinggemma:latest"
 OLLAMA_BASE_URL    = "http://localhost:11434"
@@ -223,12 +230,47 @@ def _reset_collection() -> None:
     _collection = None
 
 
+def _get_sliding_collection():
+    global _sliding_client, _sliding_collection
+    if _sliding_collection is not None:
+        return _sliding_collection
+
+    try:
+        import chromadb
+    except ImportError:
+        return None
+
+    os.makedirs(_RAG_DIR, exist_ok=True)
+    _sliding_client = chromadb.PersistentClient(path=_RAG_DIR)
+
+    ef = _OllamaEmbeddingFunction()
+
+    _sliding_collection = _sliding_client.get_or_create_collection(
+        name="mina_sliding",
+        embedding_function=ef,
+        metadata={"hnsw:space": "cosine"},
+    )
+    return _sliding_collection
+
+
+def _reset_sliding_collection() -> None:
+    global _sliding_client, _sliding_collection
+    _sliding_client     = None
+    _sliding_collection = None
+
+
 def rag_wipe() -> None:
-    """Destroy the RAG store entirely. Recreated empty on next use."""
+    """Destroy both RAG stores entirely (episodic + sliding). Recreated empty on next use."""
     import shutil
     _reset_collection()
+    _reset_sliding_collection()
     if os.path.exists(_RAG_DIR):
         shutil.rmtree(_RAG_DIR)
+    # Also reset sliding sequence counter so seq numbers restart cleanly
+    try:
+        os.remove(_SLIDING_SEQ_FILE)
+    except FileNotFoundError:
+        pass
 
 
 def rag_add(text: str, metadata: Optional[dict] = None) -> None:
@@ -427,6 +469,161 @@ def rag_prune(ttl_days: int = 180) -> int:
         from src.application.infra.log import log
         log("RAG/PRUNE/ERR", str(e))
         return 0
+
+
+# ---------------------------------------------------------------------------
+# SPEC-45: Sliding window RAG — per-message chunks, expanded retrieval
+# ---------------------------------------------------------------------------
+
+def _load_sliding_seq() -> int:
+    try:
+        with open(_SLIDING_SEQ_FILE) as f:
+            return int(json.load(f).get("seq", 0))
+    except (FileNotFoundError, json.JSONDecodeError, ValueError):
+        return 0
+
+
+def _save_sliding_seq(seq: int) -> None:
+    os.makedirs(os.path.dirname(_SLIDING_SEQ_FILE), exist_ok=True)
+    with open(_SLIDING_SEQ_FILE, "w") as f:
+        json.dump({"seq": seq}, f)
+
+
+def sliding_rag_write(decoder_window: list[dict]) -> None:
+    """
+    Write a 10-message sliding window chunk to mina_sliding on every message.
+    Call after each individual message is appended to decoder_window.
+    Skips tool calls, system messages, and multimodal entries.
+    """
+    if not decoder_window:
+        return
+
+    collection = _get_sliding_collection()
+    if collection is None:
+        return
+
+    conv_entries = [
+        e for e in decoder_window
+        if e.get("role") in ("user", "assistant")
+        and isinstance(e.get("content"), str)
+        and e.get("content", "").strip()
+        and not e.get("tool_calls")
+    ]
+    if not conv_entries:
+        return
+
+    window = conv_entries[-_SLIDING_WINDOW:]
+    block = _format_conversation_block(window)
+    if not block:
+        return
+
+    seq = _load_sliding_seq() + 1
+    _save_sliding_seq(seq)
+
+    chunk_ts = next(
+        (e["ts"] for e in reversed(window) if e.get("ts")),
+        time.time(),
+    )
+
+    doc_id = f"sw_{int(time.time() * 1000)}_{seq}"
+    try:
+        collection.add(
+            documents=[block],
+            ids=[doc_id],
+            metadatas=[{"seq": seq, "timestamp": chunk_ts, "source": "sliding_window"}],
+        )
+    except Exception as e:
+        if "does not exist" in str(e):
+            _reset_sliding_collection()
+        # Non-fatal — skip silently
+
+
+def sliding_rag_query(query: str, expand_radius: int = 3) -> str:
+    """
+    SPEC-45: Query mina_sliding for the best semantic match, then expand
+    ±expand_radius sequence positions to recover surrounding context.
+    Returns a deduplicated message sequence as a plain text block.
+    """
+    collection = _get_sliding_collection()
+    if collection is None:
+        return ""
+
+    try:
+        count = collection.count()
+        if count == 0:
+            return ""
+    except Exception:
+        return ""
+
+    try:
+        results = collection.query(
+            query_texts=[query],
+            n_results=1,
+            include=["documents", "metadatas"],
+        )
+        docs  = results.get("documents", [[]])[0]
+        metas = results.get("metadatas", [[]])[0]
+        if not docs:
+            return ""
+
+        match_seq = int((metas[0] or {}).get("seq", 0))
+        match_doc = docs[0]
+
+        # Fetch adjacent chunks by seq
+        expand_seqs = [
+            match_seq + i
+            for i in range(-expand_radius, expand_radius + 1)
+            if i != 0
+        ]
+        try:
+            adj = collection.get(
+                where={"seq": {"$in": expand_seqs}},
+                include=["documents", "metadatas"],
+            )
+            adj_docs  = adj.get("documents") or []
+            adj_metas = adj.get("metadatas") or []
+        except Exception:
+            adj_docs, adj_metas = [], []
+
+        # Combine and sort by seq
+        all_chunks = [(match_seq, match_doc)]
+        for doc, meta in zip(adj_docs, adj_metas):
+            all_chunks.append((int((meta or {}).get("seq", 0)), doc))
+        all_chunks.sort(key=lambda x: x[0])
+
+        # Deduplicate lines: strip leading age label before comparing so the
+        # same message from overlapping chunks (with different age labels) only
+        # appears once. Keep the first occurrence (oldest chunk = most accurate age).
+        seen: set[str] = set()
+        out_lines: list[str] = []
+        for _, chunk_text in all_chunks:
+            for line in chunk_text.splitlines():
+                key = line.split("] ", 1)[1] if "] " in line else line
+                if key and key not in seen:
+                    seen.add(key)
+                    out_lines.append(line)
+
+        return "\n".join(out_lines)
+
+    except Exception as e:
+        if "does not exist" in str(e):
+            _reset_sliding_collection()
+        return ""
+
+
+def sliding_rag_wipe() -> None:
+    """Delete the mina_sliding collection and reset the sequence counter."""
+    global _sliding_client, _sliding_collection
+    if _sliding_client is not None:
+        try:
+            _sliding_client.delete_collection("mina_sliding")
+        except Exception:
+            pass
+    _reset_sliding_collection()
+    try:
+        os.remove(_SLIDING_SEQ_FILE)
+    except FileNotFoundError:
+        pass
 
 
 def rag_fix_word_filter() -> int:
@@ -833,21 +1030,9 @@ def consolidate(
     raw = response.choices[0].message.content or ""
     result = _parse_consolidation_output(raw)
 
-    # Rolling RAG write: chunk conversation into small windows so each specific
-    # moment gets its own embedding (a single blob dilutes retrieval precision).
-    if new_entries:
-        _CHUNK_SIZE = 4  # entries per chunk (~2 exchange pairs)
-        for _i in range(0, len(new_entries), _CHUNK_SIZE):
-            _chunk = new_entries[_i:_i + _CHUNK_SIZE]
-            _block = _format_conversation_block(_chunk)
-            if _block:
-                # Use the timestamp of the last entry in the chunk so bucket
-                # queries reflect when the exchange actually happened.
-                _chunk_ts = next(
-                    (e.get("ts") for e in reversed(_chunk) if e.get("ts")),
-                    _time.time(),
-                )
-                rag_add(_block, {"source": "conversation", "timestamp": _chunk_ts})
+    # Rolling conversation block write removed (SPEC-45): sliding_rag_write() in cortex.py
+    # now writes per-message chunks with much higher precision. Only LLM-generated
+    # episodic memories (rag_entries above) are stored in mina_experiences.
 
     # Advance cursor to now so next consolidation sees only newer entries
     _save_consolidation_state({"last_consolidated_ts": _time.time()})

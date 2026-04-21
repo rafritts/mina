@@ -32,6 +32,7 @@ from src.brain.hippocampus.hippocampus import (
     build_kag_context, build_rag_context, build_rag_context_dual,
     rag_add, rag_prune, write_kag, consolidate,
     get_relationship_bond_level, consolidate_relationship,
+    sliding_rag_write,
 )
 from src.brain.cortex.cortex import DECODER_WINDOW_SIZE, MINA_IMMEDIATE_WINDOW
 from src.brain.brainstem.state import (
@@ -727,6 +728,7 @@ async def run_freetime(force: bool = False) -> None:
     )
 
     decoder_window.extend(new_entries)
+    sliding_rag_write(decoder_window)  # SPEC-45: write chunk after freetime session
 
     # --- Phase 3: State update ---
     _log("Phase 3: applying state updates.")

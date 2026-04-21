@@ -44,7 +44,7 @@ class _SuppressResetError(logging.Filter):
 logging.getLogger("discord.client").addFilter(_SuppressResetError())
 logging.getLogger("discord.gateway").addFilter(_SuppressResetError())
 from src.brain.brainstem.state import load_and_advance, save_state, load_state, apply_deltas, log_state, derived
-from src.brain.hippocampus.hippocampus import build_kag_context, build_rag_context, rag_wipe, rag_fix_word_filter, kag_fix_word_filter, kag_apply_replacements, rag_apply_replacements
+from src.brain.hippocampus.hippocampus import build_kag_context, build_rag_context, rag_wipe, rag_fix_word_filter, kag_fix_word_filter, kag_apply_replacements, rag_apply_replacements, sliding_rag_wipe
 _CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
 _RUN_DIR = os.path.join(_PROJECT_ROOT, "run")
 _LOG_FILE = os.path.join(_PROJECT_ROOT, "logs", "mina.log")
