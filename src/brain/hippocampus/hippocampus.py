@@ -18,6 +18,7 @@ Storage layout:
 import json
 import os
 import re
+import threading
 import time
 from typing import Optional
 
@@ -37,11 +38,11 @@ _IDENTITY_DIR = os.path.join(REPO_ROOT, "identity")
 _KAG_DIR      = os.path.join(REPO_ROOT, "memory", "kag")
 _RAG_DIR      = os.path.join(PROJECT_ROOT, "memory", "rag")
 
-# Lazy-initialized ChromaDB client and collection
-_chroma_client = None
-_collection    = None
-
-# Sliding-window collection (shares _chroma_client with episodic memories)
+# Lazy-initialized ChromaDB client and collections
+# Lock prevents concurrent asyncio.to_thread calls from racing on first initialization.
+_chroma_lock        = threading.Lock()
+_chroma_client      = None
+_collection         = None
 _sliding_collection = None
 
 OLLAMA_EMBED_MODEL = "embeddinggemma:latest"
@@ -199,26 +200,33 @@ class _OllamaEmbeddingFunction:
         return self._embed(input)
 
 
-def _get_collection():
+def _init_chroma_client_locked() -> None:
+    """Initialize _chroma_client and mina_experiences collection. Must be called with _chroma_lock held."""
     global _chroma_client, _collection
-    if _collection is not None:
-        return _collection
-
+    if _chroma_client is not None:
+        return
     try:
         import chromadb
     except ImportError:
-        return None
-
+        return
     os.makedirs(_RAG_DIR, exist_ok=True)
     _chroma_client = chromadb.PersistentClient(path=_RAG_DIR)
-
     ef = _OllamaEmbeddingFunction()
-
     _collection = _chroma_client.get_or_create_collection(
         name="mina_experiences",
         embedding_function=ef,
         metadata={"hnsw:space": "cosine"},
     )
+
+
+def _get_collection():
+    global _collection
+    if _collection is not None:
+        return _collection
+    with _chroma_lock:
+        if _collection is not None:  # double-check after acquiring lock
+            return _collection
+        _init_chroma_client_locked()
     return _collection
 
 
@@ -233,20 +241,19 @@ def _get_sliding_collection():
     global _sliding_collection
     if _sliding_collection is not None:
         return _sliding_collection
-
-    # Reuse the shared client — two PersistentClients on the same path causes
-    # ChromaDB tenant errors under concurrent asyncio.to_thread calls.
-    _get_collection()  # ensures _chroma_client is initialized
-    if _chroma_client is None:
-        return None
-
-    ef = _OllamaEmbeddingFunction()
-
-    _sliding_collection = _chroma_client.get_or_create_collection(
-        name="mina_sliding",
-        embedding_function=ef,
-        metadata={"hnsw:space": "cosine"},
-    )
+    with _chroma_lock:
+        if _sliding_collection is not None:  # double-check after acquiring lock
+            return _sliding_collection
+        if _chroma_client is None:
+            _init_chroma_client_locked()
+        if _chroma_client is None:
+            return None
+        ef = _OllamaEmbeddingFunction()
+        _sliding_collection = _chroma_client.get_or_create_collection(
+            name="mina_sliding",
+            embedding_function=ef,
+            metadata={"hnsw:space": "cosine"},
+        )
     return _sliding_collection
 
 
