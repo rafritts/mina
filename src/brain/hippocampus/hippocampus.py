@@ -41,8 +41,7 @@ _RAG_DIR      = os.path.join(PROJECT_ROOT, "memory", "rag")
 _chroma_client = None
 _collection    = None
 
-# Sliding-window collection (separate from episodic memories)
-_sliding_client     = None
+# Sliding-window collection (shares _chroma_client with episodic memories)
 _sliding_collection = None
 
 OLLAMA_EMBED_MODEL = "embeddinggemma:latest"
@@ -231,21 +230,19 @@ def _reset_collection() -> None:
 
 
 def _get_sliding_collection():
-    global _sliding_client, _sliding_collection
+    global _sliding_collection
     if _sliding_collection is not None:
         return _sliding_collection
 
-    try:
-        import chromadb
-    except ImportError:
+    # Reuse the shared client — two PersistentClients on the same path causes
+    # ChromaDB tenant errors under concurrent asyncio.to_thread calls.
+    _get_collection()  # ensures _chroma_client is initialized
+    if _chroma_client is None:
         return None
-
-    os.makedirs(_RAG_DIR, exist_ok=True)
-    _sliding_client = chromadb.PersistentClient(path=_RAG_DIR)
 
     ef = _OllamaEmbeddingFunction()
 
-    _sliding_collection = _sliding_client.get_or_create_collection(
+    _sliding_collection = _chroma_client.get_or_create_collection(
         name="mina_sliding",
         embedding_function=ef,
         metadata={"hnsw:space": "cosine"},
@@ -254,8 +251,7 @@ def _get_sliding_collection():
 
 
 def _reset_sliding_collection() -> None:
-    global _sliding_client, _sliding_collection
-    _sliding_client     = None
+    global _sliding_collection
     _sliding_collection = None
 
 
@@ -613,10 +609,10 @@ def sliding_rag_query(query: str, expand_radius: int = 3) -> str:
 
 def sliding_rag_wipe() -> None:
     """Delete the mina_sliding collection and reset the sequence counter."""
-    global _sliding_client, _sliding_collection
-    if _sliding_client is not None:
+    global _sliding_collection
+    if _chroma_client is not None:
         try:
-            _sliding_client.delete_collection("mina_sliding")
+            _chroma_client.delete_collection("mina_sliding")
         except Exception:
             pass
     _reset_sliding_collection()
