@@ -46,8 +46,10 @@ from src.brain.cortex.tools import HEARTBEAT_TOOLS, call_tool, handle_generate_i
 
 _LAST_ACTIVE_FILE       = LAST_ACTIVE_FILE
 _LAST_SEARCH_FILE       = os.path.join(PROJECT_ROOT, "run", "last_search.json")
+_LAST_MSG_FILE          = os.path.join(PROJECT_ROOT, "run", "last_freetime_msg.json")
 _SEARCH_INTERVAL_S      = 4 * 3600   # 4 hours
 _FREETIME_IDLE_WINDOW_S = 20 * 60    # must be idle this long before freetime runs
+_MSG_COOLDOWN_S         = 3600       # suppress identical outbound messages within 1 hour
 
 
 def _load_decoder_window() -> list[dict]:
@@ -109,6 +111,22 @@ def _mark_search_done() -> None:
     os.makedirs(os.path.dirname(_LAST_SEARCH_FILE), exist_ok=True)
     with open(_LAST_SEARCH_FILE, "w") as f:
         json.dump({"ts": time.time()}, f)
+
+
+def _message_recently_sent(content: str) -> bool:
+    """True if this exact message was sent within _MSG_COOLDOWN_S seconds."""
+    try:
+        with open(_LAST_MSG_FILE) as f:
+            rec = json.load(f)
+        return rec.get("content") == content and (time.time() - rec.get("ts", 0)) < _MSG_COOLDOWN_S
+    except (FileNotFoundError, json.JSONDecodeError, KeyError):
+        return False
+
+
+def _mark_message_sent(content: str) -> None:
+    os.makedirs(os.path.dirname(_LAST_MSG_FILE), exist_ok=True)
+    with open(_LAST_MSG_FILE, "w") as f:
+        json.dump({"content": content, "ts": time.time()}, f)
 
 
 async def _build_ambient_search_entries() -> list[dict]:
@@ -775,6 +793,11 @@ async def run_freetime(force: bool = False) -> None:
         except (json.JSONDecodeError, AttributeError):
             pass  # LLM didn't return valid JSON — treat full text as inner_state, no send
 
+        # Deduplicate: suppress identical messages sent within the cooldown window.
+        if outbound_message and _message_recently_sent(outbound_message):
+            _log(f"Suppressed duplicate message (cooldown): {outbound_message[:60]}")
+            outbound_message = ""
+
         # Rewrite the closing entry so the decoder window stores readable text, not raw JSON.
         # Label sent messages explicitly — without this, the next freetime session sees the
         # message as an undelivered thought and sends it again.
@@ -793,6 +816,7 @@ async def run_freetime(force: bool = False) -> None:
             save_state(state)
 
         if outbound_message:
+            _mark_message_sent(outbound_message)
             await _discord_send.send(content=outbound_message)
             _log(f"Sent message to user: {outbound_message[:80]}")
 
