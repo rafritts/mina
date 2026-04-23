@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { apiFetch } from '../../lib/api'
 import type { EventEntry } from '../../lib/api'
-import AuthGate from '../../components/AuthGate'
 
 const TYPE_COLORS: Record<string, string> = {
   stimulus: 'text-blue-400 border-blue-500/30 bg-blue-500/10',
@@ -58,7 +57,7 @@ export default function EventsPage() {
   }
 
   return (
-    <AuthGate>
+    
       <div className="p-6 max-w-4xl space-y-4">
         {/* Controls */}
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -149,6 +148,6 @@ export default function EventsPage() {
           Load more
         </button>
       </div>
-    </AuthGate>
+    
   )
 }

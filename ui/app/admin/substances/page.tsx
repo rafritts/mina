@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import { apiFetch } from '../../lib/api'
-import AuthGate from '../../components/AuthGate'
 
 interface SubstanceEntry {
   name: string
@@ -64,7 +63,7 @@ export default function SubstancesPage() {
   }
 
   return (
-    <AuthGate>
+    
       <div className="p-6 max-w-3xl">
         {message && (
           <div
@@ -125,6 +124,6 @@ export default function SubstancesPage() {
           )}
         </div>
       </div>
-    </AuthGate>
+    
   )
 }

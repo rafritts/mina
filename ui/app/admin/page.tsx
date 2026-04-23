@@ -5,7 +5,6 @@ import { apiFetch } from '../lib/api'
 import { DerivedCard } from '../components/metrics/DerivedCard'
 import { useEffect, useState } from 'react'
 import type { EventEntry } from '../lib/api'
-import AuthGate from '../components/AuthGate'
 
 const SECOND_ORDER = ['energy', 'cognitive_clarity', 'hedonic_tone', 'social_warmth', 'arousal', 'mood_valence']
 const THIRD_ORDER = ['anxiety', 'depression', 'boredom', 'loneliness', 'flow', 'physical_distress', 'craving']
@@ -36,16 +35,16 @@ export default function OverviewPage() {
 
   if (!state) {
     return (
-      <AuthGate>
+      
         <div className="p-8 text-center" style={{ color: 'rgba(232,228,221,0.3)' }}>
           <div className="value-mono text-sm">connecting...</div>
         </div>
-      </AuthGate>
+      
     )
   }
 
   return (
-    <AuthGate>
+    
       <div className="p-6 space-y-8 max-w-6xl">
         {/* Second-order metrics */}
         <section>
@@ -88,6 +87,6 @@ export default function OverviewPage() {
           </div>
         </section>
       </div>
-    </AuthGate>
+    
   )
 }

@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import { apiFetch } from '../../lib/api'
 import type { StateData, CascadeEvent } from '../../lib/api'
 import { PRESETS } from '../../lib/presets'
-import AuthGate from '../../components/AuthGate'
 
 function formatFiresAt(unix: number): string {
   const diff = unix - Date.now() / 1000
@@ -82,7 +81,7 @@ export default function ControlPage() {
   }
 
   return (
-    <AuthGate>
+    
       <div className="p-6 space-y-8 max-w-4xl">
         {/* Toast */}
         {message && (
@@ -194,6 +193,6 @@ export default function ControlPage() {
           </div>
         </section>
       </div>
-    </AuthGate>
+    
   )
 }

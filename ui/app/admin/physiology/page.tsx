@@ -2,7 +2,6 @@
 
 import { useStatePoller } from '../../lib/hooks/useStatePoller'
 import { getLabel, COLOR_CLASSES } from '../../lib/labels'
-import AuthGate from '../../components/AuthGate'
 import { useState } from 'react'
 
 const IMMUNE_FIELDS = ['il1b', 'il6', 'tnf_alpha', 'crp', 'il10', 'inflammation_index']
@@ -36,9 +35,9 @@ export default function PhysiologyPage() {
   const [tab, setTab] = useState<Tab>('hormones')
 
   if (!state) return (
-    <AuthGate>
+    
       <div className="p-8 text-xs value-mono" style={{ color: 'rgba(232,228,221,0.3)' }}>connecting...</div>
-    </AuthGate>
+    
   )
 
   const tabs: { id: Tab; label: string }[] = [
@@ -48,7 +47,7 @@ export default function PhysiologyPage() {
   ]
 
   return (
-    <AuthGate>
+    
       <div className="p-6 space-y-6 max-w-3xl">
         {/* Tabs */}
         <div className="flex gap-1">
@@ -132,6 +131,6 @@ export default function PhysiologyPage() {
           </div>
         )}
       </div>
-    </AuthGate>
+    
   )
 }

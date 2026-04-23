@@ -1,33 +1,13 @@
 'use client'
 
-let _token = ''
-
-if (typeof window !== 'undefined') {
-  _token = localStorage.getItem('dashboard_token') ?? ''
-}
-
-export function setToken(t: string) {
-  _token = t
-  if (typeof window !== 'undefined') localStorage.setItem('dashboard_token', t)
-}
-export function getToken(): string { return _token }
-
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(path, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
       ...(options.headers ?? {}),
-      Authorization: `Bearer ${_token}`,
     },
   })
-  if (res.status === 401) {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('dashboard_token')
-      window.location.reload()
-    }
-    throw new Error('Unauthorized')
-  }
   if (!res.ok) {
     const text = await res.text()
     throw new Error(`${res.status}: ${text}`)

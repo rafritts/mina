@@ -4,7 +4,6 @@ import { useStatePoller } from '../../lib/hooks/useStatePoller'
 import { apiFetch } from '../../lib/api'
 import { StatBar } from '../../components/metrics/StatBar'
 import { useState } from 'react'
-import AuthGate from '../../components/AuthGate'
 
 const GROUPS: { label: string; chemicals: string[] }[] = [
   { label: 'Monoamines', chemicals: ['dopamine', 'serotonin', 'norepinephrine'] },
@@ -21,9 +20,9 @@ export default function NeuroPage() {
   const [saving, setSaving] = useState<Record<string, boolean>>({})
 
   if (!state) return (
-    <AuthGate>
+    
       <div className="p-8 text-xs value-mono" style={{ color: 'rgba(232,228,221,0.3)' }}>connecting...</div>
-    </AuthGate>
+    
   )
 
   const save = async (field: string) => {
@@ -40,7 +39,7 @@ export default function NeuroPage() {
   }
 
   return (
-    <AuthGate>
+    
       <div className="p-6 space-y-8 max-w-4xl">
         {GROUPS.map(({ label, chemicals }) => (
           <section key={label}>
@@ -111,6 +110,6 @@ export default function NeuroPage() {
           </div>
         </section>
       </div>
-    </AuthGate>
+    
   )
 }

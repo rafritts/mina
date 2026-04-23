@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react'
 import { apiFetch } from '../../lib/api'
 import type { TokenStats } from '../../lib/api'
-import AuthGate from '../../components/AuthGate'
 
 interface BillingData {
   cap: number
@@ -32,7 +31,7 @@ export default function SystemPage() {
   const billingPct = billing ? Math.min(100, (billing.used / billing.cap) * 100) : 0
 
   return (
-    <AuthGate>
+    
       <div className="p-6 space-y-8 max-w-3xl">
         {/* Billing */}
         <section>
@@ -129,6 +128,6 @@ export default function SystemPage() {
           </section>
         )}
       </div>
-    </AuthGate>
+    
   )
 }

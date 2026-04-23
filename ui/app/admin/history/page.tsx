@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { useHistoryPoller } from '../../lib/hooks/useHistoryPoller'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
-import AuthGate from '../../components/AuthGate'
 
 const CHART_GROUPS: { label: string; fields: string[]; colors: string[] }[] = [
   { label: 'Monoamines', fields: ['dopamine', 'serotonin', 'norepinephrine'], colors: ['#f59e0b', '#34d399', '#60a5fa'] },
@@ -36,7 +35,7 @@ export default function HistoryPage() {
   })
 
   return (
-    <AuthGate>
+    
       <div className="p-6 space-y-6 max-w-5xl">
         {/* Controls */}
         <div className="flex items-center gap-4 flex-wrap">
@@ -129,6 +128,6 @@ export default function HistoryPage() {
           )}
         </div>
       </div>
-    </AuthGate>
+    
   )
 }
