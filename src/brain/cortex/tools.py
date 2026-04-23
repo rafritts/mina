@@ -12,7 +12,7 @@ import os
 import time
 from typing import Any
 
-from src.config.config import FOLLOWUP_QUEUE_FILE, load_config
+from src.config.config import FOLLOWUP_QUEUE_FILE, REPO_ROOT, load_config
 from src.application.infra import discord_send as _discord_send
 from src.brain.brainstem.state import BiologicalState, save_state
 
@@ -143,6 +143,28 @@ _BIOLOGICAL_TOOLS = [
                     "content": {
                         "type": "string",
                         "description": "What you want to say.",
+                    }
+                },
+                "required": ["content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_customization",
+            "description": (
+                "Rewrite your CUSTOMIZATION.md file — your self-authored notes on who you are. "
+                "Use this to record things you've decided about yourself: how you look, how you present, "
+                "habits you've noticed, things that feel true. This file is included in your context on every turn. "
+                "Write in first person. The content you provide replaces the file entirely — include everything you want kept."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "The full new content for CUSTOMIZATION.md. This replaces the file.",
                     }
                 },
                 "required": ["content"],
@@ -372,6 +394,18 @@ def handle_message_user(args: dict, state: BiologicalState) -> tuple[str, Biolog
     return "Message sent.", state
 
 
+def handle_update_customization(args: dict, state: BiologicalState) -> tuple[str, BiologicalState]:
+    content = args.get("content", "")
+    files = load_config().get("customization_files", ["identity/CUSTOMIZATION.md"])
+    if not files:
+        return "[update_customization: no customization_files configured]", state
+    path = os.path.join(REPO_ROOT, files[0])
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as fh:
+        fh.write(content)
+    return "CUSTOMIZATION.md updated.", state
+
+
 def handle_do_action(args: dict, state: BiologicalState) -> tuple[str, BiologicalState, dict]:
     """
     Returns (message, state, pending_deltas).
@@ -446,5 +480,8 @@ def call_tool(name: str, args: dict, state: BiologicalState) -> tuple[str, Biolo
         return handle_web_search(args), state, {}
     elif name == "x_search":
         return handle_x_search(args), state, {}
+    elif name == "update_customization":
+        msg, state = handle_update_customization(args, state)
+        return msg, state, {}
     else:
         return f"[Unknown tool: {name}]", state, {}
