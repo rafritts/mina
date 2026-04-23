@@ -5,9 +5,9 @@ Exposes biological state read/write, heartbeat trigger, substance management,
 token usage, events, and simulation advance over HTTP.
 
 Run:
-  uv run python dashboard_server.py [--port 7843]
+  uv run python dashboard_server.py [--port 2049]
 
-The built SvelteKit dashboard is served as a static SPA from dashboard/build/.
+The Next.js dashboard (ui/) proxies /api/* to this server on port 2049.
 """
 import argparse
 import asyncio
@@ -25,8 +25,7 @@ load_dotenv(_DOTENV)
 _PROJECT_ROOT = Path(os.path.dirname(_DOTENV))
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 
 import uvicorn
@@ -37,7 +36,6 @@ import uvicorn
 
 _STATE_FILE      = _PROJECT_ROOT / "run" / "state.json"
 _HISTORY_FILE    = _PROJECT_ROOT / "run" / "bio_history.jsonl"   # SPEC-32: written by heartbeat, not here
-_DASHBOARD_BUILD = _PROJECT_ROOT / "dashboard" / "build"
 
 # ---------------------------------------------------------------------------
 # Auth
@@ -492,30 +490,12 @@ def get_history(request: Request, limit: int = 1000, hours: float = 0):
 
 
 # ---------------------------------------------------------------------------
-# SPA static file serving
+# Root
 # ---------------------------------------------------------------------------
 
-if _DASHBOARD_BUILD.exists():
-    _app_dir = _DASHBOARD_BUILD / "_app"
-    if _app_dir.exists():
-        app.mount("/_app", StaticFiles(directory=str(_app_dir)), name="assets")
-
-    @app.get("/{full_path:path}")
-    def spa_fallback(full_path: str, request: Request):
-        candidate = _DASHBOARD_BUILD / full_path
-        if candidate.is_file():
-            return FileResponse(str(candidate))
-        index = _DASHBOARD_BUILD / "index.html"
-        if index.exists():
-            return FileResponse(str(index))
-        return JSONResponse({"detail": "Dashboard not built yet. Run: cd dashboard && npm run build"}, status_code=503)
-else:
-    @app.get("/")
-    def root():
-        return JSONResponse(
-            {"detail": "Dashboard not built. Run: cd dashboard && npm run build"},
-            status_code=503,
-        )
+@app.get("/")
+def root():
+    return JSONResponse({"ok": True, "detail": "Mina API — use /api/* endpoints"})
 
 
 # ---------------------------------------------------------------------------
@@ -524,14 +504,12 @@ else:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=7843)
+    parser.add_argument("--port", type=int, default=2049)
     parser.add_argument("--host", default="0.0.0.0")
     args = parser.parse_args()
 
     print(f"Mina Dashboard starting on http://{args.host}:{args.port}")
     if not DASHBOARD_TOKEN:
         print("  WARNING: DASHBOARD_TOKEN not set — running without auth")
-    if not _DASHBOARD_BUILD.exists():
-        print("  INFO: dashboard/build/ not found — UI not yet built")
 
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")

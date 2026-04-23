@@ -36,3 +36,5 @@ identity/CUSTOMIZATION.md
 dashboard/build/
 dashboard/node_modules/
 dashboard/.svelte-kit/
+ui/node_modules/
+ui/.next/
