@@ -117,6 +117,7 @@ def _log(msg: str, tee) -> None:
 
 _DASHBOARD_PORT = 7843
 _dashboard_proc: subprocess.Popen | None = None
+_COMPACT_INTERVAL = 60  # seconds between compact log regenerations
 
 
 def _free_port(port: int) -> None:
@@ -135,6 +136,17 @@ def _free_port(port: int) -> None:
             time.sleep(0.5)  # give the old process a moment to release the port
     except FileNotFoundError:
         pass  # fuser not available — skip
+
+
+def _run_compact_log_loop() -> None:
+    """Regenerate mina-compact.log every _COMPACT_INTERVAL seconds."""
+    from scripts.compact_log import main as _compact_main
+    while True:
+        time.sleep(_COMPACT_INTERVAL)
+        try:
+            _compact_main()
+        except Exception:
+            pass  # never crash the supervisor over a log cosmetic
 
 
 def _run_dashboard(uv: str, tee_out) -> None:
@@ -185,6 +197,10 @@ def main():
         target=_run_dashboard, args=(uv, tee_out), daemon=True
     )
     dashboard_thread.start()
+
+    # Regenerate compact log in the background every minute
+    compact_thread = threading.Thread(target=_run_compact_log_loop, daemon=True)
+    compact_thread.start()
 
     cmd = [uv, "run", "python", "-u", "-m", "src.application.gateway.discord_gateway"]
     crashes = 0
