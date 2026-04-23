@@ -115,8 +115,10 @@ def _log(msg: str, tee) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
-_DASHBOARD_PORT = 7843
+_DASHBOARD_PORT = 2049
+_UI_PORT = 2050
 _dashboard_proc: subprocess.Popen | None = None
+_ui_proc: subprocess.Popen | None = None
 _COMPACT_INTERVAL = 60  # seconds between compact log regenerations
 
 
@@ -177,6 +179,50 @@ def _run_dashboard(uv: str, tee_out) -> None:
         time.sleep(backoff)
 
 
+def _run_ui(tee_out) -> None:
+    """
+    Run the Next.js admin UI on port 2050.
+
+    Production mode: `node .next/standalone/server.js` (requires `npm run build` first).
+    Falls back to `npm run dev` if the standalone build is absent — useful during
+    development before the first build.
+
+    Stops when the supervisor exits (daemon thread).
+    """
+    global _ui_proc
+    _UI_DIR = os.path.join(_PROJECT_ROOT, "ui")
+    standalone = os.path.join(_UI_DIR, ".next", "standalone", "server.js")
+    backoff = 5
+
+    # Resolve node binary (prefer system node, which npm also uses)
+    node = "node"
+
+    while True:
+        _free_port(_UI_PORT)
+        env = {**os.environ, "PORT": str(_UI_PORT), "HOSTNAME": "0.0.0.0"}
+        try:
+            if os.path.exists(standalone):
+                cmd = [node, standalone]
+                label = "production"
+            else:
+                # Dev server — slow cold start but always works without a pre-build
+                npm = "npm"
+                cmd = [npm, "run", "dev", "--", "--port", str(_UI_PORT)]
+                label = "dev"
+
+            _log(f"[UI] Starting Next.js UI ({label}) on :{_UI_PORT}.", tee_out)
+            ui_log = open(_LOG_FILE, "ab")
+            _ui_proc = subprocess.Popen(cmd, cwd=_UI_DIR, stdout=ui_log, stderr=ui_log, env=env)
+            ui_log.close()
+            rc = _ui_proc.wait()
+            _ui_proc = None
+            _log(f"[UI] Exited with code {rc} — restarting in {backoff}s.", tee_out)
+        except Exception as e:
+            _ui_proc = None
+            _log(f"[UI] Launch error: {e} — retrying in {backoff}s.", tee_out)
+        time.sleep(backoff)
+
+
 def main():
     os.makedirs(_RUN_DIR, exist_ok=True)
 
@@ -198,6 +244,12 @@ def main():
     )
     dashboard_thread.start()
 
+    # Start Next.js UI server as a daemon thread — auto-restarts on crash
+    ui_thread = threading.Thread(
+        target=_run_ui, args=(tee_out,), daemon=True
+    )
+    ui_thread.start()
+
     # Regenerate compact log in the background every minute
     compact_thread = threading.Thread(target=_run_compact_log_loop, daemon=True)
     compact_thread.start()
@@ -208,13 +260,16 @@ def main():
 
     def _handle_sigterm(signum, frame):
         """Kill the child and exit cleanly when systemd stops the service."""
-        # Kill dashboard first so the port is free if supervisor immediately restarts
-        if _dashboard_proc and _dashboard_proc.poll() is None:
-            _dashboard_proc.terminate()
-            try:
-                _dashboard_proc.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                _dashboard_proc.kill()
+        for proc, label in [
+            (_dashboard_proc, "DASHBOARD"),
+            (_ui_proc, "UI"),
+        ]:
+            if proc and proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
         if current_proc and current_proc.poll() is None:
             _log("[SUPERVISOR] SIGTERM received — killing child.", tee_out)
             current_proc.terminate()

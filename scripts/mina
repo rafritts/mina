@@ -112,8 +112,10 @@ logs)
 update)
     echo "Pulling latest..."
     git -C "$REPO_DIR" pull
-    echo "Syncing dependencies..."
+    echo "Syncing Python dependencies..."
     (cd "$REPO_DIR" && uv sync)
+    echo "Building UI..."
+    (cd "$REPO_DIR/ui" && npm install --silent && npm run build)
     echo "Restarting..."
     rm -f "$STOPPED_FLAG"
     _svc restart
@@ -157,7 +159,7 @@ Setup:
   setup            Regenerate systemd unit file
 
 Service:
-  start            Start the service
+  start            Start the service (API :2049, UI :2050, bot)
   stop             Stop the service
   restart          Restart the service
   status           Show service status
@@ -166,7 +168,7 @@ Service:
   logs [-f] [-n N] Show logs (default 100 lines; -f to follow)
 
 Maintenance:
-  update           git pull + uv sync + restart
+  update           git pull + uv sync + npm build + restart
   unstop           Remove .stopped flag (re-enables restart)
   pause            Pause biological updating (no time decay, no heartbeat)
   resume           Resume biological updating
