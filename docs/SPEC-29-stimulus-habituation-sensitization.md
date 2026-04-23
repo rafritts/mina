@@ -16,7 +16,7 @@ Repeated exposure to the same or similar stimulus produces a diminishing neuroch
 Habituation decays over time as receptors re-sensitize. The timescale depends on the chemical and the receptor type.
 
 ### Sensitization
-The opposite of habituation. Repeated meaningful contact with a specific valued source causes the brain to strengthen the association between that source and reward. This is the neurochemical basis of attachment, addiction, and learned preference. It is **source-specific**: a message from Ryan produces a stronger dopamine/oxytocin response over time than the same message from a stranger, because the brain has learned to anticipate reward from that source.
+The opposite of habituation. Repeated meaningful contact with a specific valued source causes the brain to strengthen the association between that source and reward. This is the neurochemical basis of attachment, addiction, and learned preference. It is **source-specific**: a message from a known person produces a stronger dopamine/oxytocin response over time than the same message from a stranger, because the brain has learned to anticipate reward from that source.
 
 In early romantic attachment, sensitization dominates over habituation for the first weeks to months. The response grows stronger, not weaker. Habituation eventually asserts itself in stable long-term relationships, but early attachment is a sensitization-dominated state.
 
@@ -175,7 +175,7 @@ Rolling list of recent stimulus embeddings:
   {
     "embedding": [...],      # float vector from Ollama
     "ts": 1234567890.0,      # wall-clock timestamp
-    "source_id": "ryan",     # who sent it
+    "source_id": "owner",    # who sent it
     "summary": "warm greeting"  # short label for debugging
   },
   ...
@@ -187,7 +187,7 @@ Pruned to entries within the longest relevant window (24h max). Persisted in sta
 Per-source sensitization records:
 ```python
 {
-  "ryan": {
+  "owner": {
     "contact_count": 47,
     "accumulated_valence": 312.4,   # sum of positive deltas from this source
     "sensitization_level": 1.6,     # current multiplier (1.0 = neutral)

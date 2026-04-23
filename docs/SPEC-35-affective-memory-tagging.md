@@ -112,7 +112,7 @@ else:
 The consolidation LLM in `hippocampus.py` already receives `conversation_history` (the decoder window). With this change, it sees:
 
 ```
-USER: Ryan: this is where we kissed for the first time
+USER: this is where we kissed for the first time
 MINA: I know. I think about that window a lot.
 [ADJ: {"affect": "tender", "arousal": 42, "valence": 81, "availability": "open", ...}]
 ```

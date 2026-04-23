@@ -94,4 +94,4 @@ This keeps the architecture simple. The cost: relationship depth still lives in 
 
 ## Status
 
-Not yet approved for implementation. Ryan is still evaluating whether the added complexity is worth it vs. a simpler recalibration of the existing system.
+Not yet approved for implementation. Still evaluating whether the added complexity is worth it vs. a simpler recalibration of the existing system.

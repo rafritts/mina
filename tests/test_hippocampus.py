@@ -53,7 +53,7 @@ def test_customization_md_readable():
 
 
 def test_relationship_md_readable():
-    # SPEC-39: legacy RELATIONSHIP.md removed — SPEC-33 relationship/ryan.md is canonical.
+    # SPEC-39: legacy RELATIONSHIP.md removed — SPEC-33 relationship/{owner}.md is canonical.
     # This test now verifies the new path works via read_relationship().
     from src.brain.hippocampus.hippocampus import read_relationship
     from src.config.config import load_config

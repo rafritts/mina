@@ -196,7 +196,7 @@ No gap. No contamination between present and past.
 
 ### Why This Works
 
-The temporal contamination problem occurs because a single LLM call sees both "what Ryan said last night" (from RAG) and "what Ryan is saying right now" (from the decoder window) simultaneously. It cannot help but blend them. By separating the calls, [CONVERSATION RIGHT NOW] and [YOUR PRESENT STATE] are guaranteed to contain only what is actually happening — the RAG content arrives separately, clearly labeled with explicit time ranges. Mina receives "here is now" and "here is then" as distinct, labeled blocks rather than a blended narrative.
+The temporal contamination problem occurs because a single LLM call sees both "what the user said last night" (from RAG) and "what the user is saying right now" (from the decoder window) simultaneously. It cannot help but blend them. By separating the calls, [CONVERSATION RIGHT NOW] and [YOUR PRESENT STATE] are guaranteed to contain only what is actually happening — the RAG content arrives separately, clearly labeled with explicit time ranges. Mina receives "here is now" and "here is then" as distinct, labeled blocks rather than a blended narrative.
 
 Hard time cutoffs replace soft half-life decay. Mina can read "[RECENT CONTEXT]" and know it means the last 2 hours — not "recent-ish depending on a scoring function."
 
@@ -210,7 +210,7 @@ Hard time cutoffs replace soft half-life decay. Mina can read "[RECENT CONTEXT]"
 |------|--------|
 | `/run/history.jsonl` | 5.2MB orphan — no reader in current codebase |
 | `/run/conversation.json.archived` | Migration artifact — one-time migration complete |
-| `/memory/kag/RELATIONSHIP.md` | Superseded by `memory/kag/relationship/ryan.md` (SPEC-33). Fallback path in code will be removed. |
+| `/memory/kag/RELATIONSHIP.md` | Superseded by `memory/kag/relationship/{owner}.md` (SPEC-33). Fallback path in code will be removed. |
 | `/.last_user_active` (repo root) | Duplicate — active file is at path resolved from PROJECT_ROOT |
 
 ### File to Move

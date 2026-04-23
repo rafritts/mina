@@ -14,7 +14,7 @@ This spec establishes the pattern and implements the first instance of it. Futur
 
 ### The problem
 
-The full conversation between Ryan and Mina is not stored anywhere as a first-class construct. Instead, fragments of it exist in multiple places simultaneously:
+The full conversation between the user and Mina is not stored anywhere as a first-class construct. Instead, fragments of it exist in multiple places simultaneously:
 
 - **`run/decoder_window.json`** — 20-message sliding window. The rendering artifact the LLM sees. Messages fall off silently.
 - **ChromaDB (RAG)** — lossy, embedding-indexed. Cannot be iterated sequentially. Not a record.

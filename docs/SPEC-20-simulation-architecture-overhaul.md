@@ -137,7 +137,7 @@ def decoder_drain_context(s: BiologicalState, now: float,
 ```
 
 **Bond state lives in KAG, not a relationship field:**
-A file like `memory/knowledge/relationship-ryan.md` holds the bond history. The encoder
+A file like `memory/knowledge/relationship-{owner}.md` holds the bond history. The encoder
 reads it and knows this is a trusted person. Oxytocin's resting baseline in the simulation
 reflects the *current* bond; KAG holds the *history* that contextualizes new interactions.
 Removing the relationship UI section is safe as long as this KAG file exists.

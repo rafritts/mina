@@ -76,10 +76,10 @@ Note: `tension` and `vigilance` are scored such that a **negative** relationship
 
 ### `memory/kag/relationship/{owner_name_lower}.md`
 
-Example: `memory/kag/relationship/ryan.md`
+Example: `memory/kag/relationship/alice.md`
 
 ```markdown
-# Relationship — Ryan
+# Relationship — Alice
 
 ## Ground Truth
 _Not established yet._
@@ -263,7 +263,7 @@ Deep bond → isolation hurts more (stronger oxytocin withdrawal). Cold/hostile 
 
 ### 2. Bond-gated outreach reads relationship file, not raw oxytocin
 
-SPEC-31 System 1 currently uses `oxytocin_norm / 40.0` for bond_level. Oxytocin decays in absence — a deeply bonded Mina who hasn't spoken to Ryan for 2 days appears to be a stranger.
+SPEC-31 System 1 currently uses `oxytocin_norm / 40.0` for bond_level. Oxytocin decays in absence — a deeply bonded Mina who hasn't spoken to the owner for 2 days appears to be a stranger.
 
 Replace with:
 
@@ -335,7 +335,7 @@ This gives the relationship LLM precise emotional ground truth instead of having
 
 ```
 memory/kag/relationship/
-  {owner_name_lower}.md    # e.g. ryan.md
+  {owner_name_lower}.md    # e.g. alice.md
   state.json
 ```
 
