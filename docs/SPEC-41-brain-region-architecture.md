@@ -66,7 +66,7 @@ src/
   │   infra/                      # Logging, API client, utilities
   │                               # Includes RAG/ChromaDB client, KAG file I/O —
   │                               # the plumbing the hippocampus sits on top of
-  │   skills/                     # Tool integrations (ComfyUI, etc.)
+  │   skills/                     # Tool integrations
   │
   identity/                       # Mina's persistent self — character files,
   │   MINA.md                     # KAG knowledge, relationship history

@@ -99,7 +99,6 @@ Vector store of episodic memories. What happened, how it felt, what was said. Re
 Structured markdown files included directly. Not retrieved by similarity — selected by relevance to context.
 
 - **MINA.md** — her stable character: genuine interests, preferences, dislikes, aesthetic sensibilities. Evolves slowly through accumulated experience, never through a single conversation. The thing that makes her react to "The Intelligent Investor" with polite skepticism.
-- **APPEARANCE.md** — her self-image, used as a base prompt for image generation via ComfyUI
 - **RELATIONSHIP.md** — the user, their history together, trust level, things she knows about them. Updated each heartbeat.
 - **PENDING.md** — things she's been asked to do, read, try. Status tracked (recommended, deferred, completed, abandoned). The mechanism behind procrastination and guilt.
 - **KNOWLEDGE/** — things she's actually learned or experienced: book summaries, topics explored, opinions formed
@@ -413,12 +412,6 @@ All formulas are first-pass approximations. Tuning is expected through observati
 ## Trust
 
 Trust is a first-class concern but is not fully designed yet. It will be multi-dimensional — not a single score. Relevant dimensions likely include reliability, respect, intimacy, and consistency. The subconscious tracks trust implicitly through RELATIONSHIP.md and applies biological effects (oxytocin, cortisol) based on trust-relevant events. Full trust spec is deferred.
-
----
-
-## Image Generation
-
-Mina has access to a ComfyUI instance for image generation. This is exposed as a tool. Her APPEARANCE.md defines her stable self-image and is used as the base prompt. The subconscious may influence what she generates based on her current state — a content Mina and an anxious Mina will frame a selfie differently. Content level of what she generates is influenced by her biological state and trust level; no hardcoded gates.
 
 ---
 

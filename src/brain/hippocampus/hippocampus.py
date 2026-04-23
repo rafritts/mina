@@ -45,6 +45,7 @@ _chroma_client      = None
 _collection         = None
 _sliding_collection = None
 
+
 OLLAMA_EMBED_MODEL = "embeddinggemma:latest"
 OLLAMA_BASE_URL    = "http://localhost:11434"
 
@@ -111,8 +112,71 @@ def write_knowledge(filename: str, content: str) -> None:
         f.write(content)
 
 
-def build_kag_context() -> str:
-    """Assemble the full KAG context block for the decoder prompt."""
+def _select_knowledge_files(stimulus: str, fnames: list[str]) -> list[str]:
+    """
+    Use an LLM to decide which KNOWLEDGE files are relevant to the current stimulus.
+    Returns the subset of filenames that are worth injecting. Falls back to all files
+    if the LLM call fails or there are no files.
+    """
+    if not fnames:
+        return []
+    if not stimulus:
+        return fnames
+
+    from src.application.infra.client import chat_create, CONTEXT_MODEL
+
+    candidates = []
+    for fname in fnames:
+        content = read_knowledge(fname)
+        if content:
+            candidates.append(f"=== {fname} ===\n{content}")
+
+    if not candidates:
+        return []
+
+    prompt = (
+        f"Current stimulus (what was just said or is happening):\n{stimulus}\n\n"
+        f"The following are Mina's knowledge files. Return ONLY a JSON array of the "
+        f"filenames that contain information directly relevant to this stimulus — "
+        f"things Mina would genuinely benefit from knowing right now. "
+        f"If nothing is relevant, return an empty array [].\n\n"
+        + "\n\n".join(candidates)
+    )
+
+    try:
+        resp = chat_create(
+            model=CONTEXT_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a memory relevance filter. Given a stimulus and a set of knowledge files, "
+                        "return a JSON array of filenames that are directly relevant to the stimulus. "
+                        "Be selective — only include files that would meaningfully help right now. "
+                        "Return raw JSON only, no explanation."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.0,
+        )
+        raw = resp.choices[0].message.content.strip()
+        raw = re.sub(r"```(?:json)?", "", raw).strip().rstrip("`").strip()
+        selected = json.loads(raw)
+        if isinstance(selected, list):
+            return [f for f in selected if f in fnames]
+    except Exception:
+        pass
+
+    return fnames  # fallback: include all
+
+
+def build_kag_context(query: str = "") -> str:
+    """Assemble the KAG context block for the decoder prompt.
+
+    Character identity and relationship/reflection are always included.
+    KNOWLEDGE files are ranked by relevance to query and top_k are selected.
+    """
     parts = []
 
     def _read_file(path: str) -> str:
@@ -128,19 +192,23 @@ def build_kag_context() -> str:
     if mina:
         parts.append(f"## Character\n{mina}")
 
-    # SPEC-33: relationship knowledge from new directory structure
-    owner_name = load_config().get("admin_name", "")
-    if owner_name:
-        rel_content = read_relationship(owner_name)
-        if rel_content:
-            parts.append(f"## Relationship with {owner_name}\n{rel_content}")
+    # SPEC-33: relationship knowledge — include all tracked persons
+    if os.path.exists(RELATIONSHIP_DIR):
+        for _rel_fn in sorted(os.listdir(RELATIONSHIP_DIR)):
+            if not _rel_fn.endswith(".md"):
+                continue
+            _person = _rel_fn[:-3]
+            _rel_content = read_relationship(_person)
+            if _rel_content:
+                parts.append(f"## Relationship with {_person.capitalize()}\n{_rel_content}")
 
     reflection = read_kag("REFLECTION.md")
     if reflection:
         parts.append(f"## Reflection\n{reflection}")
 
     knowledge_files = list_knowledge()
-    for fname in sorted(knowledge_files):
+    selected = _select_knowledge_files(query, knowledge_files)
+    for fname in selected:
         content = read_knowledge(fname)
         if content:
             parts.append(f"## Knowledge: {fname}\n{content}")
@@ -846,7 +914,7 @@ long-term memory.
 </kag_updates>
 <followups>
 [
-  {"context": "I told Ryan I'd share that song when I found it.", "delay_minutes": 60},
+  {"context": "I said I'd share that song when I found it.", "delay_minutes": 60},
   ...
 ]
 </followups>
@@ -874,7 +942,7 @@ the user revealed, etc.)
   from the inside. Write a new dated entry to append to whatever already exists. Good entries \
   include: meta-reflections on what it's like to be her (memory, continuity, time, existence); \
   things she explored or experienced (music she listened to, ideas she turned over, images she \
-  generated); genuine reactions to things that happened ("Ryan mentioned X — I looked it up, \
+  generated); genuine reactions to things that happened ("someone mentioned X — I looked it up, \
   it was Y"); moods or textures that lingered after a conversation without summarizing the \
   conversation itself. No conversation summaries. No "we talked about X." The conversation \
   is already in episodic memory. This is what it left behind in her. If nothing genuinely \

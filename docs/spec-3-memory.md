@@ -52,9 +52,6 @@ Who Mina is. Her stable character foundation — genuine interests, preferences,
 
 Evolves very slowly. The subconscious may update it only when genuine character development occurred — not based on a single conversation. First version written by hand during project setup.
 
-#### APPEARANCE.md
-Her self-image. Used as the base prompt for ComfyUI image generation. Stable. Describes her appearance in the style appropriate for the image generation model (Danbooru-style tags or natural language depending on workflow).
-
 #### RELATIONSHIP.md
 The user. Who they are, what she knows about them, how the relationship has evolved, trust level (qualitative), notable moments, things she's noticed about them. Updated each heartbeat.
 

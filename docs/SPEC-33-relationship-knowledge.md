@@ -343,18 +343,9 @@ The old `memory/kag/RELATIONSHIP.md` is removed. Its content is superseded by th
 
 ### build_kag_context() changes
 
-```python
-# New section: Relationship
-owner_name = load_config().get("admin_name", "")
-if owner_name:
-    rel_content = read_relationship(owner_name)
-    if rel_content:
-        parts.append(f"## Relationship with {owner_name}\n{rel_content}")
-```
+All relationship files in `memory/kag/relationship/` are included in KAG context. Each file is named `{person_name_lower}.md` and injected as `## Relationship with {Name}`. New files are created automatically on first encounter with a new speaker.
 
-`read_relationship(owner_name)` reads `memory/kag/relationship/{owner_name.lower()}.md`.
-
-The relationship file is injected into every turn as KAG context — Mina reads it and it directly informs her emotional framing of interactions with the owner before they begin.
+The relationship file is injected into every turn as KAG context — Mina reads it and it directly informs her emotional framing of interactions with that person before they begin.
 
 ---
 
@@ -388,8 +379,6 @@ The old `memory/kag/RELATIONSHIP.md` wipe remains in the reset list for migratio
 
 2. **Rate calibration** — the chemical delta values per dimension unit are estimates. They should be validated against real sessions. If oxytocin is already spiking from conversational stimulus, the relationship modifier should not double-count. Consider whether the modifier fires only once per session (first message from owner) rather than every message.
 
-3. **Owner identification** — `encode_stimulus()` currently receives `username`. It should check `username.lower() == admin_name.lower()` to gate the relationship modifier. Works cleanly; no new machinery needed.
-
-4. **Multiple relationships** — the directory structure supports it. Not in scope for this implementation. The `state.json` is per-directory, not per-file, so multi-person support would require a subdirectory per person. Deferred.
+3. **Multiple relationships** — the directory structure supports it. Each speaker gets their own `{name}.md` file. Freetime consolidation iterates over all files in the directory.
 
 5. **Consistency between relationship file and live oxytocin** — if the relationship file says bonding = +2 but live oxytocin is near zero (long absence), there is a gap. The `get_relationship_bond_level()` blend handles this intentionally — history stabilizes the signal, absence doesn't erase it. But the gap could produce slightly incoherent behavior. Worth monitoring on the first multi-day run.

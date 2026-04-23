@@ -851,7 +851,7 @@ async def cmd_actions(interaction: discord.Interaction, n: int = 10):
 
         src_tag = f" _{source}_" if source else ""
         lines.append(f"**{tool}** {summary}{src_tag} · {age}{delta_str}")
-        if result and tool not in ("generate_image",):
+        if result:
             lines.append(f"  ↳ {result[:120]}")
 
     await interaction.response.send_message("\n".join(lines)[:1900], ephemeral=True)

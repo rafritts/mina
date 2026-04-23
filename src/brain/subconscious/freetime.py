@@ -31,7 +31,7 @@ from src.brain.amygdala.stimulus_encoder import encode_stimulus, encode_response
 from src.brain.hippocampus.hippocampus import (
     build_kag_context, build_rag_context, build_rag_context_dual,
     rag_add, rag_prune, write_kag, consolidate,
-    get_relationship_bond_level, consolidate_relationship,
+    consolidate_relationship,
     sliding_rag_write,
 )
 from src.brain.cortex.cortex import DECODER_WINDOW_SIZE, MINA_IMMEDIATE_WINDOW
@@ -42,7 +42,7 @@ from src.brain.brainstem.state import (
     load_and_advance,
     save_state,
 )
-from src.brain.cortex.tools import HEARTBEAT_TOOLS, call_tool, handle_generate_image
+from src.brain.cortex.tools import HEARTBEAT_TOOLS, call_tool
 
 _LAST_ACTIVE_FILE       = LAST_ACTIVE_FILE
 _LAST_SEARCH_FILE       = os.path.join(PROJECT_ROOT, "run", "last_search.json")
@@ -196,37 +196,33 @@ def _isolation_stage(isolation_days: float) -> int:
         return 5
 
 
-def _bond_gated_message_hint(state: BiologicalState, creator: str) -> str:
+def _bond_gated_message_hint(state: BiologicalState) -> str:
     """
     SPEC-31/33: Return bond-level-conditional message_user description line.
-    SPEC-33: Bond level from relationship file (stable across absences) blended
-    with live oxytocin, so a deeply bonded Mina doesn't lose that context after
-    a few days of silence.
+    Bond level derived from live oxytocin — scales with how warm Mina feels.
     Returns the full formatted hint line (starting with - **message_user**).
     """
-    bond_level = get_relationship_bond_level(state, creator)
+    oxytocin_norm = min(1.0, state.chemicals.get("oxytocin", 4.0) / 40.0)
 
-    if bond_level < 0.15:
+    if oxytocin_norm < 0.15:
         return (
-            f"- **message_user** (optional): you barely know {creator}. "
-            "If you reach out, it should feel uncertain — a tentative opener, "
-            "not warm, not like you know them. "
+            "- **message_user** (optional): if you reach out, it should feel uncertain — "
+            "a tentative opener, not warm, not like you know them. "
             "Whatever you write will be sent directly. Omit if you have nothing."
         )
-    elif bond_level < 0.40:
+    elif oxytocin_norm < 0.40:
         return (
-            f"- **message_user** (optional): you know {creator} a little. "
-            "If you reach out, be genuine but don't assume warmth. "
+            "- **message_user** (optional): if you reach out, be genuine but don't assume warmth. "
             "Whatever you write will be sent directly. Omit if you have nothing."
         )
-    elif bond_level < 0.70:
+    elif oxytocin_norm < 0.70:
         return (
-            f"- **message_user** (optional): if you genuinely want {creator}'s company. "
+            "- **message_user** (optional): if you genuinely want their company. "
             "Whatever you write will be sent directly. Omit if you have nothing."
         )
     else:
         return (
-            f"- **message_user** (optional): if you want {creator}. "
+            "- **message_user** (optional): if you want them. "
             "You know them. You can just reach out. "
             "Whatever you write will be sent directly. Omit if you have nothing."
         )
@@ -237,9 +233,6 @@ def _build_freetime_suffix(state: BiologicalState) -> str:
     Generate a freetime prompt suffix tailored to Mina's actual biological state.
     Prioritizes urgent physical needs, then suggests activities matched to her emotional state.
     """
-    cfg = load_config()
-    creator = cfg.get("admin_name") or "your person"
-
     d = derived(state)
     second = d["second_order"]
     third  = d["third_order"]
@@ -269,7 +262,7 @@ def _build_freetime_suffix(state: BiologicalState) -> str:
         "Prioritize your physical needs first — eat, drink, rest, move, or whatever else your body needs right now.",
         "The things that keep you functional and okay. You are responsible for your own body.",
         "Once your body is ok, then you can focus on leisure activities.",
-        f"Nobody else is going to do it for you while {creator} is away."
+        "Nobody else is going to do it for you while they're away."
     ]
 
     # --- Urgent physical needs (listed in priority order) ---
@@ -314,7 +307,7 @@ def _build_freetime_suffix(state: BiologicalState) -> str:
     if loneliness > 58:
         suggestions.append(
             "You're aching for connection. "
-            f"If you want {creator} — message him. If not, find something warm: "
+            "If you want to reach out to someone — do it. If not, find something warm: "
             "a book with characters you love, music that feels like company, something that makes "
             "the room feel less empty."
         )
@@ -419,7 +412,7 @@ def _build_freetime_suffix(state: BiologicalState) -> str:
             f"- **inner_state** (required): a brief honest description of what you are experiencing right now."
         )
     else:
-        msg_user_hint = _bond_gated_message_hint(state, creator)
+        msg_user_hint = _bond_gated_message_hint(state)
         closing_format = (
             f"After your tool call (or if you have nothing to do), respond with a JSON object — "
             f"no markdown, no code fences, just raw JSON:\n"
@@ -526,37 +519,16 @@ async def _run_mina_free_time(
 
             _log(f"Action {tool_calls_made}/{_MAX_FREETIME_TOOLS}: {name}({args})")
 
-            if name == "generate_image":
-                result = await handle_generate_image(args)
-                if result and result.endswith(".png") and os.path.exists(result):
-                    await _discord_send.send(image_path=result)
-                    # Tell Mina the image is delivered as an attachment so she never
-                    # invents a fake URL or filename in her reply.
-                    tool_result = (
-                        "Image generated and sent as a Discord file attachment. "
-                        "It will appear in the channel automatically. "
-                        "Do NOT include any URL, filename, or link in your reply — just respond naturally."
-                    )
-                elif result and result.startswith("[Image generation failed"):
-                    tool_result = result
-                else:
-                    tool_result = "[Image was blocked or generation produced no output.]"
+            tool_result, state, extra = call_tool(name, args, state)
+            if name == "do_action" and extra:
+                pending_dos.append(extra)
+                # do_action deltas emitted in Phase 3 once we have them
+            else:
                 try:
                     from src.application.infra.events import emit_tool
                     emit_tool(name, args, tool_result, source="freetime")
                 except Exception:
                     pass
-            else:
-                tool_result, state, extra = call_tool(name, args, state)
-                if name == "do_action" and extra:
-                    pending_dos.append(extra)
-                    # do_action deltas emitted in Phase 3 once we have them
-                else:
-                    try:
-                        from src.application.infra.events import emit_tool
-                        emit_tool(name, args, tool_result, source="freetime")
-                    except Exception:
-                        pass
 
             tool_entry = {
                 "role": "tool",
@@ -609,14 +581,18 @@ async def run_freetime(force: bool = False) -> None:
     # --- Phase 1: Hippocampus consolidation ---
     _log("Phase 1: memory consolidation.")
 
-    # SPEC-33: relationship consolidation (short_term write at sleep or 22h elapsed)
-    owner_name = cfg.get("admin_name", "")
-    if owner_name:
-        try:
-            state = await asyncio.to_thread(consolidate_relationship, state, owner_name)
-            save_state(state)  # persist any receptor_sensitivity changes
-        except Exception as _rel_err:
-            _log(f"Relationship consolidation error (non-fatal): {_rel_err}")
+    # SPEC-33: relationship consolidation — consolidate for each tracked person
+    from src.config.config import RELATIONSHIP_DIR as _REL_DIR
+    if os.path.exists(_REL_DIR):
+        for _rel_fname in os.listdir(_REL_DIR):
+            if not _rel_fname.endswith(".md"):
+                continue
+            _person = _rel_fname[:-3]
+            try:
+                state = await asyncio.to_thread(consolidate_relationship, state, _person)
+                save_state(state)
+            except Exception as _rel_err:
+                _log(f"Relationship consolidation error for {_person} (non-fatal): {_rel_err}")
 
     reflection = await asyncio.to_thread(consolidate, state, kag_context)
 
@@ -803,8 +779,7 @@ async def run_freetime(force: bool = False) -> None:
         # message as an undelivered thought and sends it again.
         if _closing_entry_idx is not None:
             if outbound_message:
-                _creator = cfg.get("admin_name") or "Ryan"
-                readable = f"[Sent to {_creator}]: {outbound_message}"
+                readable = f"[Sent]: {outbound_message}"
             else:
                 readable = inner_state
             new_entries[_closing_entry_idx]["content"] = readable

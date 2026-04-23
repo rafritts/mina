@@ -1,9 +1,8 @@
 """
-Mina's tools — biological actions, search, and image generation.
+Mina's tools — biological actions and search.
 
 Biological tools: sleep, nap, do_action, message_user
 Search tools:     web_search, x_search (via xAI Responses API)
-Image:            generate_image (via ComfyUI)
 
 `call_tool()` is the unified synchronous dispatcher.
 `TOOLS` / `HEARTBEAT_TOOLS` are the OpenAI function-calling schemas offered to the LLM.
@@ -147,39 +146,6 @@ _BIOLOGICAL_TOOLS = [
                     }
                 },
                 "required": ["content"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "generate_image",
-            "description": "Generate an image via ComfyUI.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "prompt": {
-                        "type": "string",
-                        "description": "Image description as Danbooru-style tags.",
-                    },
-                    "dimensions": {
-                        "type": "string",
-                        "description": "WIDTHxHEIGHT e.g. 832x1216",
-                    },
-                    "filename": {
-                        "type": "string",
-                        "description": "Output filename (no extension)",
-                    },
-                    "negative_prompt": {
-                        "type": "string",
-                        "description": "What to avoid in the image.",
-                    },
-                    "seed": {
-                        "type": "integer",
-                        "description": "Random seed. 0 or omit for random.",
-                    },
-                },
-                "required": ["prompt"],
             },
         },
     },
@@ -449,41 +415,6 @@ def handle_x_search(args: dict) -> str:
         return response.output_text or "[x_search: no results]"
     except Exception as e:
         return f"[x_search error: {e}]"
-
-
-# ---------------------------------------------------------------------------
-# Image generation
-# ---------------------------------------------------------------------------
-
-async def handle_generate_image(args: dict) -> str:
-    """Generate an image via ComfyUI. Returns path or error string."""
-    from src.application.skills.comfyui.comfyui_skill import generate_image
-
-    prompt          = args.get("prompt", "")
-    dimensions      = args.get("dimensions", "832x1216")
-    filename        = args.get("filename", "mina")
-    negative_prompt = args.get("negative_prompt", None)
-    seed            = args.get("seed", None)
-
-    from src.application.infra.log import log
-    log("COMFY", f"dimensions={dimensions} seed={seed}")
-    log("COMFY", f"prompt={prompt[:200]}")
-    if negative_prompt:
-        log("COMFY", f"negative={negative_prompt[:120]}")
-
-    try:
-        path = await generate_image(
-            prompt=prompt,
-            dimensions=dimensions,
-            filename=filename,
-            negative_prompt=negative_prompt,
-            seed=seed,
-        )
-        log("COMFY", f"output={path or 'none'}")
-        return path or ""
-    except Exception as e:
-        log("COMFY/ERROR", str(e))
-        return f"[Image generation failed: {e}]"
 
 
 # ---------------------------------------------------------------------------

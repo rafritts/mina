@@ -1035,7 +1035,6 @@ Hard rules:
 - Never describe emotional state, mood, affect, arousal, or feelings.
 - Never describe internal sensations — the chemistry module owns all of that.
 - Facts only. Gradient richness: richer near now, lighter for older events.
-- "{admin_name}" is the user's name.
 """
 
 _RAG_CONTEXT_SYSTEM = """\
@@ -1060,7 +1059,6 @@ Hard rules that apply to ALL blocks:
 - Never describe Mina's emotional state, mood, or feelings — the emotion module owns that.
 - Never describe Mina's current physical state or sensations.
 - Facts only. Gradient richness: richer near now, lighter for history.
-- "{admin_name}" is the user's name.
 """
 
 _WINDOW_DEFAULT = """\
@@ -1114,9 +1112,8 @@ def build_window_context(
             lines.append(f"{label}: {content[:400]}")
 
     window_text = "\n".join(lines)
-    admin_name = load_config().get("admin_name", "the user")
     messages = [
-        {"role": "system", "content": _WINDOW_SYSTEM.format(admin_name=admin_name)},
+        {"role": "system", "content": _WINDOW_SYSTEM},
         {"role": "user", "content": f"[CURRENT MESSAGE FROM {username.upper()}]\n{user_input}\n\n[DECODER WINDOW — most recent last]\n{window_text}"},
     ]
 
@@ -1173,9 +1170,8 @@ def build_rag_context(
         if kag_context:
             parts.append(f"[BACKGROUND KNOWLEDGE]\n{kag_context}")
 
-        admin_name = load_config().get("admin_name", "the user")
         messages = [
-            {"role": "system", "content": _RAG_CONTEXT_SYSTEM.format(admin_name=admin_name)},
+            {"role": "system", "content": _RAG_CONTEXT_SYSTEM},
             {"role": "user", "content": "\n\n---\n\n".join(parts)},
         ]
 

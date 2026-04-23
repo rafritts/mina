@@ -61,15 +61,19 @@ def record_response(label: str, response) -> None:
     input_tokens    = getattr(usage, "prompt_tokens",     0) or 0
     output_tokens   = getattr(usage, "completion_tokens", 0) or 0
 
-    reasoning = 0
-    comp_details = getattr(usage, "completion_tokens_details", None)
-    if comp_details:
-        reasoning = getattr(comp_details, "reasoning_tokens", 0) or 0
+    # xAI SDK exposes reasoning_tokens directly; OpenAI nests it under completion_tokens_details
+    reasoning = getattr(usage, "reasoning_tokens", 0) or 0
+    if not reasoning:
+        comp_details = getattr(usage, "completion_tokens_details", None)
+        if comp_details:
+            reasoning = getattr(comp_details, "reasoning_tokens", 0) or 0
 
-    cached = 0
-    prompt_details = getattr(usage, "prompt_tokens_details", None)
-    if prompt_details:
-        cached = getattr(prompt_details, "cached_tokens", 0) or 0
+    # xAI SDK exposes cached_prompt_text_tokens directly; OpenAI nests it under prompt_tokens_details
+    cached = getattr(usage, "cached_prompt_text_tokens", 0) or 0
+    if not cached:
+        prompt_details = getattr(usage, "prompt_tokens_details", None)
+        if prompt_details:
+            cached = getattr(prompt_details, "cached_tokens", 0) or 0
 
     stats = _load()
 

@@ -23,7 +23,7 @@ from src.brain.subconscious.decoder import biological_report, adjudicate_emotion
 from src.brain.hippocampus.hippocampus import build_kag_context, build_rag_context as _hpc_rag_context, build_rag_context_bucketed, build_rag_context_relational, sliding_rag_write, sliding_rag_query
 from src.brain.amygdala.stimulus_encoder import encode_stimulus, encode_response, evaluate_activity_deltas, compute_relationship_modifier
 from src.brain.brainstem.state import BiologicalState, apply_deltas, load_and_advance, load_state, save_state
-from .tools import TOOLS, call_tool, handle_generate_image
+from .tools import TOOLS, call_tool
 
 DECODER_WINDOW_SIZE   = 20  # sliding window depth (~10 exchanges)
 MINA_IMMEDIATE_WINDOW = 4   # messages Mina receives directly (2 exchanges)
@@ -355,65 +355,31 @@ async def _mina_turn(
                 return new_entries, state, image_paths
 
             tool_deltas: dict = {}
-            tool_content: str = ""
-            if name == "generate_image":
-                result = await handle_generate_image(args)
-                if result and result.endswith(".png") and os.path.exists(result):
-                    image_paths.append(result)
-                    # Tell Mina the image is delivered as an attachment so she never
-                    # invents a fake URL or filename in her reply.
-                    tool_content = (
-                        "Image generated and queued as a Discord file attachment. "
-                        "It will appear in the channel automatically. "
-                        "Do NOT include any URL, filename, or link in your reply — just respond naturally."
-                    )
-                    # Inject a synthetic message so Mina can see what she generated next turn.
-                    try:
-                        from src.application.infra.image_utils import normalise_image
-                        with open(result, "rb") as _f:
-                            _b64, _mime = normalise_image(_f.read())
-                        new_entries.append({
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": f"[image you just generated: {os.path.basename(result)}]"},
-                                {"type": "image_url", "image_url": {"url": f"data:{_mime};base64,{_b64}"}},
-                            ],
-                            "ts": time.time(),
-                        })
-                        log("VISION", f"Injected generated image into context: {os.path.basename(result)}")
-                    except Exception as _e:
-                        log("VISION/ERR", f"Failed to inject image into context: {_e}")
-                elif result and result.startswith("[Image generation failed"):
-                    tool_content = result
-                else:
-                    tool_content = "[Image was blocked or generation produced no output.]"
-                log("IMAGE", result or "blocked/failed")
-            else:
-                result, state, extra = call_tool(name, args, state)
-                save_state(state)
-                log("TOOL/RESULT", str(result))
-                if name == "do_action" and extra:
-                    activity = extra.get("activity", "")
-                    description = extra.get("description", "")
-                    do_deltas = await asyncio.to_thread(
-                        evaluate_activity_deltas, state, activity, description
-                    )
-                    if do_deltas:
-                        tool_deltas = do_deltas
-                        state = apply_deltas(state, do_deltas)
-                        save_state(state)
-                        log("DO/DELTA", str(do_deltas))
+            result, state, extra = call_tool(name, args, state)
+            save_state(state)
+            log("TOOL/RESULT", str(result))
+            if name == "do_action" and extra:
+                activity = extra.get("activity", "")
+                description = extra.get("description", "")
+                do_deltas = await asyncio.to_thread(
+                    evaluate_activity_deltas, state, activity, description
+                )
+                if do_deltas:
+                    tool_deltas = do_deltas
+                    state = apply_deltas(state, do_deltas)
+                    save_state(state)
+                    log("DO/DELTA", str(do_deltas))
 
             try:
                 from src.application.infra.events import emit_tool
-                emit_tool(name, args, tool_content or str(result), source="cortex", deltas=tool_deltas)
+                emit_tool(name, args, str(result), source="cortex", deltas=tool_deltas)
             except Exception:
                 pass
 
             new_entries.append({
                 "role": "tool",
                 "tool_call_id": tc.id,
-                "content": tool_content if name == "generate_image" else str(result),
+                "content": str(result),
             })
 
     return new_entries, state, image_paths
@@ -477,29 +443,35 @@ async def run_turn(
     # - bucketed (time buckets) → semi-recent + historical for response context
     # - sliding (SPEC-45, per-message chunks) → precise recent context replacing rag_recent
     kag_context, _relational_rag, (rag_recent, rag_semi_recent, rag_historical), _rag_sliding = await asyncio.gather(
-        asyncio.to_thread(build_kag_context),
+        asyncio.to_thread(build_kag_context, stimulus),
         asyncio.to_thread(build_rag_context_relational, stimulus),
         asyncio.to_thread(build_rag_context_bucketed, user_input),
         asyncio.to_thread(sliding_rag_query, user_input),
     )
 
+    _kag_always = [l[3:] for l in kag_context.splitlines() if l.startswith("## ") and not l.startswith("## Knowledge:")]
+    _kag_knowledge = [l[len("## Knowledge: "):] for l in kag_context.splitlines() if l.startswith("## Knowledge:")]
+    _kag_log = ", ".join(_kag_always)
+    if _kag_knowledge:
+        _kag_log += f" | selected knowledge: {', '.join(_kag_knowledge)}"
+    else:
+        _kag_log += " | no knowledge files selected"
+    log("CONTEXT/KAG", _kag_log)
+
     stimulus_deltas = await asyncio.to_thread(encode_stimulus, state, stimulus, _recent_exchanges, _relational_rag or None)
     if stimulus_deltas:
         state = apply_deltas(state, stimulus_deltas)
 
-    # [1a] SPEC-33: relationship modifier — applied once per owner message
-    # Stable disposition from relationship file, not raw oxytocin.
-    _admin_name = load_config().get("admin_name", "")
-    if _admin_name and username.lower() == _admin_name.lower():
-        try:
-            from src.brain.hippocampus.hippocampus import _get_net_relationship_dimensions
-            _net_dims = _get_net_relationship_dimensions(_admin_name)
-            _rel_deltas = compute_relationship_modifier(_net_dims)
-            if _rel_deltas:
-                state = apply_deltas(state, _rel_deltas)
-                log("REL/MODIFIER", ", ".join(f"{k}: {v:+.2f}" for k, v in _rel_deltas.items()))
-        except Exception as _e:
-            log("REL/MODIFIER/ERR", str(_e))
+    # [1a] SPEC-33: relationship modifier — applied once per message, per speaker
+    try:
+        from src.brain.hippocampus.hippocampus import _get_net_relationship_dimensions
+        _net_dims = _get_net_relationship_dimensions(username)
+        _rel_deltas = compute_relationship_modifier(_net_dims)
+        if _rel_deltas:
+            state = apply_deltas(state, _rel_deltas)
+            log("REL/MODIFIER", ", ".join(f"{k}: {v:+.2f}" for k, v in _rel_deltas.items()))
+    except Exception as _e:
+        log("REL/MODIFIER/ERR", str(_e))
 
     # SPEC-28: mark contact so isolation_pressure decays during active conversation
     state.body["recent_contact_ts"] = time.time()

@@ -1,6 +1,6 @@
 # Spec 4 — Tools
 
-> All of Mina's actions are tool calls. Two tiers: dedicated biological tools with known effects, and a single discretionary tool for everything else. Plus image generation via ComfyUI.
+> All of Mina's actions are tool calls. Two tiers: dedicated biological tools with known effects, and a single discretionary tool for everything else.
 
 ---
 
@@ -105,32 +105,6 @@ One generic tool for all self-directed activity.
 | Exercise | `endorphins` +20–30, `serotonin` +10, `norepinephrine` +10 |
 
 The subconscious applies deltas after the heartbeat turn completes, using the activity description as context.
-
----
-
-## Image Generation Tool
-
-### `generate_image`
-```json
-{
-  "name": "generate_image",
-  "description": "Generate an image via ComfyUI.",
-  "parameters": {
-    "prompt": {"type": "string", "description": "Image description"},
-    "dimensions": {"type": "string", "description": "WIDTHxHEIGHT e.g. 832x1216"},
-    "filename": {"type": "string", "description": "Output filename (no extension)"},
-    "negative_prompt": {"type": "string", "description": "What to avoid"},
-    "workflow": {"type": "string", "enum": ["upscale", "no_upscale"], "description": "upscale (~60s) or no_upscale (~20s)"},
-    "seed": {"type": "integer", "description": "0 for random"}
-  }
-}
-```
-
-APPEARANCE.md is automatically prepended to the prompt for self-images. The subconscious influences whether this tool is included in Mina's context at all based on her biological state and trust level.
-
-Returns: absolute path to generated image file.
-
-**Source:** Adapted from raika's `skills/comfyui/comfyui_skill.py`. Discord delivery stripped. Pure generation only.
 
 ---
 

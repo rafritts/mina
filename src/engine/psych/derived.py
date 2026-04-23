@@ -445,14 +445,16 @@ def derived(s) -> dict:
     # resentment makes social_hostility spike faster during isolation.
     _effective_sero_norm = _clamp(effective_serotonin)  # already 0-100
     try:
-        from src.config.config import load_config as _lc
-        _owner = _lc().get("admin_name", "")
-        if _owner:
-            from src.brain.hippocampus.hippocampus import _get_net_relationship_dimensions
-            _rel_dims = _get_net_relationship_dimensions(_owner)
-            _rel_tension = max(0.0, float(_rel_dims.get("tension", 0.0)))  # only positive (bad) tension
-        else:
-            _rel_tension = 0.0
+        from src.config.config import RELATIONSHIP_DIR as _REL_DIR
+        from src.brain.hippocampus.hippocampus import _get_net_relationship_dimensions
+        import os as _os
+        _tensions = []
+        if _os.path.exists(_REL_DIR):
+            for _fn in _os.listdir(_REL_DIR):
+                if _fn.endswith(".md"):
+                    _dims = _get_net_relationship_dimensions(_fn[:-3])
+                    _tensions.append(max(0.0, float(_dims.get("tension", 0.0))))
+        _rel_tension = sum(_tensions) / len(_tensions) if _tensions else 0.0
     except Exception:
         _rel_tension = 0.0
     social_hostility = _clamp(
