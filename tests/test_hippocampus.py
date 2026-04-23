@@ -47,8 +47,9 @@ def test_mina_md_readable():
 
 
 def test_customization_md_readable():
+    # File is blank by default — Mina fills it herself. Verify it exists, not that it has content.
     content = read_identity("CUSTOMIZATION.md")
-    assert content, "CUSTOMIZATION.md returned empty — file missing or unreadable"
+    assert content is not None, "CUSTOMIZATION.md not readable — file missing"
 
 
 def test_relationship_md_readable():
@@ -56,7 +57,7 @@ def test_relationship_md_readable():
     # This test now verifies the new path works via read_relationship().
     from src.brain.hippocampus.hippocampus import read_relationship
     from src.config.config import load_config
-    owner = load_config().get("admin_name", "ryan")
+    owner = load_config().get("admin_name", "default")
     content = read_relationship(owner)
     assert content is not None  # allowed to be empty if no relationship written yet
 
