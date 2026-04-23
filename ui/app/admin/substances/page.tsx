@@ -64,7 +64,7 @@ export default function SubstancesPage() {
 
   return (
     
-      <div className="p-6 max-w-3xl">
+      <div className="p-8 mx-auto max-w-3xl">
         {message && (
           <div
             className="fixed top-4 right-4 px-4 py-2 rounded-lg text-sm value-mono z-50"

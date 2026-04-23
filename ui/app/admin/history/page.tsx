@@ -36,7 +36,7 @@ export default function HistoryPage() {
 
   return (
     
-      <div className="p-6 space-y-6 max-w-5xl">
+      <div className="p-8 mx-auto space-y-6 max-w-5xl">
         {/* Controls */}
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex gap-1">

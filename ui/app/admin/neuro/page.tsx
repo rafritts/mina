@@ -40,7 +40,7 @@ export default function NeuroPage() {
 
   return (
     
-      <div className="p-6 space-y-8 max-w-4xl">
+      <div className="p-8 mx-auto space-y-8 max-w-4xl">
         {GROUPS.map(({ label, chemicals }) => (
           <section key={label}>
             <h2 className="text-xs uppercase tracking-widest mb-4" style={{ color: 'rgba(232,228,221,0.3)' }}>{label}</h2>

@@ -27,9 +27,9 @@ export function DerivedCard({ field, value, size = 'small' }: Props) {
   const colorCls = labelEntry ? COLOR_CLASSES[labelEntry.color] : COLOR_CLASSES.neutral
 
   return (
-    <div className={`gallery-card rounded-lg ${size === 'large' ? 'p-5' : 'p-3.5'} space-y-2`}>
+    <div className={`gallery-card rounded-lg ${size === 'large' ? 'p-5' : 'p-4'} space-y-2.5`}>
       <div className="flex items-start justify-between">
-        <span className={`uppercase tracking-widest ${size === 'large' ? 'text-xs' : 'text-[10px]'}`} style={{ color: 'rgba(232,228,221,0.4)' }}>
+        <span className={`uppercase tracking-widest ${size === 'large' ? 'text-xs' : 'text-[10px]'}`} style={{ color: 'rgba(232,228,221,0.5)' }}>
           {FIELD_LABELS[field] ?? field.replace(/_/g, ' ')}
         </span>
         {labelEntry && (
@@ -38,17 +38,17 @@ export function DerivedCard({ field, value, size = 'small' }: Props) {
           </span>
         )}
       </div>
-      <div className={`value-mono font-light ${size === 'large' ? 'text-3xl' : 'text-xl'}`} style={{ color: '#e8e4dd' }}>
+      <div className={`value-mono ${size === 'large' ? 'text-4xl font-extralight' : 'text-2xl font-light'}`} style={{ color: '#f0ebe2' }}>
         {value.toFixed(0)}
       </div>
-      <div className="h-0.5 rounded-full overflow-hidden" style={{ background: 'rgba(232,228,221,0.06)' }}>
+      <div className="h-[3px] rounded-full overflow-hidden" style={{ background: 'rgba(232,228,221,0.08)' }}>
         <div
           className={`h-full rounded-full transition-all duration-700 ${colorCls.bar}`}
           style={{ width: `${value}%` }}
         />
       </div>
       {size === 'large' && labelEntry && (
-        <p className="text-xs" style={{ color: 'rgba(232,228,221,0.3)' }}>{labelEntry.implication}</p>
+        <p className="text-xs" style={{ color: 'rgba(232,228,221,0.4)' }}>{labelEntry.implication}</p>
       )}
     </div>
   )

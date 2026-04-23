@@ -52,11 +52,11 @@
   --accent-hue: 0;
   --background: #07070a;
   --foreground: #e8e4dd;
-  --card: #0d0d12;
+  --card: #111118;
   --card-foreground: #e8e4dd;
-  --popover: #0d0d12;
+  --popover: #111118;
   --popover-foreground: #e8e4dd;
-  --border: rgba(232, 228, 221, 0.08);
+  --border: rgba(232, 228, 221, 0.11);
   --input: rgba(232, 228, 221, 0.06);
   --ring: rgba(232, 228, 221, 0.2);
   --muted: rgba(232, 228, 221, 0.45);
@@ -106,7 +106,7 @@ body::before {
 
 /* Art gallery card spotlight effect */
 .gallery-card {
-  background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, transparent 50%), var(--card);
+  background: linear-gradient(160deg, rgba(255, 240, 210, 0.05) 0%, transparent 40%), var(--card);
   border: 1px solid var(--border);
   transition: all 0.3s ease;
   position: relative;
@@ -116,14 +116,14 @@ body::before {
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.06) 0%, transparent 60%);
+  background: radial-gradient(ellipse at 50% 0%, rgba(255, 220, 160, 0.08) 0%, transparent 65%);
   pointer-events: none;
   border-radius: inherit;
 }
 
 .gallery-card:hover {
-  border-color: rgba(232, 228, 221, 0.15);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.04);
+  border-color: rgba(232, 228, 221, 0.22);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,220,160,0.06);
   transform: translateY(-1px);
 }
 

@@ -48,7 +48,7 @@ export default function PhysiologyPage() {
 
   return (
     
-      <div className="p-6 space-y-6 max-w-3xl">
+      <div className="p-8 mx-auto space-y-6 max-w-3xl">
         {/* Tabs */}
         <div className="flex gap-1">
           {tabs.map(t => (

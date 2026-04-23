@@ -82,7 +82,7 @@ export default function ControlPage() {
 
   return (
     
-      <div className="p-6 space-y-8 max-w-4xl">
+      <div className="p-8 mx-auto space-y-8 max-w-4xl">
         {/* Toast */}
         {message && (
           <div
