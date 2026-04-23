@@ -58,7 +58,7 @@ export default function EventsPage() {
 
   return (
     
-      <div className="p-8 mx-auto max-w-4xl space-y-4">
+      <div className="p-8 mx-auto max-w-3xl space-y-4">
         {/* Controls */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex gap-1">

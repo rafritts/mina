@@ -45,11 +45,11 @@ export default function OverviewPage() {
 
   return (
     
-      <div className="p-8 mx-auto space-y-8 max-w-6xl">
+      <div className="p-6 mx-auto space-y-5 max-w-3xl">
         {/* Second-order metrics */}
         <section>
-          <h2 className="text-xs uppercase tracking-widest mb-4" style={{ color: 'rgba(232,228,221,0.3)' }}>State</h2>
-          <div className="grid grid-cols-3 gap-3">
+          <h2 className="text-[10px] uppercase tracking-widest mb-2.5" style={{ color: 'rgba(232,228,221,0.3)' }}>State</h2>
+          <div className="grid grid-cols-3 gap-2">
             {SECOND_ORDER.map(field => (
               <DerivedCard key={field} field={field} value={state.second_order[field] ?? 50} size="large" />
             ))}
@@ -58,8 +58,8 @@ export default function OverviewPage() {
 
         {/* Third-order metrics */}
         <section>
-          <h2 className="text-xs uppercase tracking-widest mb-4" style={{ color: 'rgba(232,228,221,0.3)' }}>Derived Signals</h2>
-          <div className="grid grid-cols-4 gap-2.5">
+          <h2 className="text-[10px] uppercase tracking-widest mb-2.5" style={{ color: 'rgba(232,228,221,0.3)' }}>Derived Signals</h2>
+          <div className="grid grid-cols-4 gap-2">
             {THIRD_ORDER.map(field => (
               <DerivedCard key={field} field={field} value={state.third_order[field] ?? 0} size="small" />
             ))}
@@ -68,20 +68,20 @@ export default function OverviewPage() {
 
         {/* Recent events */}
         <section>
-          <h2 className="text-xs uppercase tracking-widest mb-4" style={{ color: 'rgba(232,228,221,0.3)' }}>Recent Events</h2>
+          <h2 className="text-[10px] uppercase tracking-widest mb-2.5" style={{ color: 'rgba(232,228,221,0.3)' }}>Recent Events</h2>
           <div className="gallery-card rounded-lg divide-y" style={{ borderColor: 'rgba(232,228,221,0.06)' }}>
             {events.length === 0 && (
-              <p className="p-4 text-xs value-mono" style={{ color: 'rgba(232,228,221,0.2)' }}>No recent events</p>
+              <p className="px-3 py-2 text-xs value-mono" style={{ color: 'rgba(232,228,221,0.2)' }}>No recent events</p>
             )}
             {events.map((ev, i) => (
-              <div key={i} className="px-4 py-3 flex items-start gap-3">
-                <span className={`text-[10px] px-1.5 py-0.5 rounded border mt-0.5 flex-shrink-0 ${EVENT_TYPE_COLORS[ev.type] ?? EVENT_TYPE_COLORS.activity}`}>
+              <div key={i} className="px-3 py-2 flex items-center gap-2.5">
+                <span className={`text-[9px] px-1 py-0.5 rounded border flex-shrink-0 ${EVENT_TYPE_COLORS[ev.type] ?? EVENT_TYPE_COLORS.activity}`}>
                   {ev.type}
                 </span>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs truncate" style={{ color: 'rgba(232,228,221,0.6)' }}>{ev.content}</p>
                 </div>
-                <span className="text-xs value-mono flex-shrink-0" style={{ color: 'rgba(232,228,221,0.25)' }}>{formatTs(ev.ts)}</span>
+                <span className="text-[11px] value-mono flex-shrink-0" style={{ color: 'rgba(232,228,221,0.25)' }}>{formatTs(ev.ts)}</span>
               </div>
             ))}
           </div>
