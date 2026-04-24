@@ -716,8 +716,12 @@ def _wipe_user_data() -> list[str]:
         "run/decoder_history.jsonl",
         "run/bio_snapshots.jsonl",
         "run/last_search.json",
-        "run/consolidation_state.json",   # SPEC-32: hippocampus cursor
-        "run/bio_history.jsonl",           # SPEC-32: physiological timeseries
+        "run/consolidation_state.json",
+        "run/bio_history.jsonl",
+        "run/events.jsonl",
+        "run/token_stats.json",
+        "run/followup_queue.json",
+        "run/sliding_seq.json",
     ] + spec32_paths:
         dst = os.path.join(_PROJECT_ROOT, rel_path)
         if os.path.exists(dst):
