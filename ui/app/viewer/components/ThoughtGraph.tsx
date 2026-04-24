@@ -79,12 +79,21 @@ export function ThoughtGraph({ nodes, typewriterText, isTyping }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const rafRef = useRef<number>(0)
 
-  // RAF loop: manually tick the simulation and trigger re-renders while hot
+  // RAF loop: manually tick the simulation and trigger re-renders while hot;
+  // reheat every 8s so nodes never fully settle
   useEffect(() => {
-    function frame() {
+    let lastReheat = performance.now()
+    function frame(now: number) {
       rafRef.current = requestAnimationFrame(frame)
       const sim = simRef.current
       if (!sim) return
+
+      // Gentle periodic reheat so nodes keep drifting
+      if (now - lastReheat > 8000) {
+        lastReheat = now
+        if (sim.alpha() < 0.05) sim.alpha(0.05)
+      }
+
       if (sim.alpha() > sim.alphaMin()) {
         sim.tick()
         setRenderTick(t => t + 1)
@@ -228,6 +237,7 @@ export function ThoughtGraph({ nodes, typewriterText, isTyping }: Props) {
               color: isResponse ? 'rgba(232,228,221,0.9)' : 'rgba(232,228,221,0.7)',
               fontFamily: isResponse ? 'var(--font-geist-sans)' : 'var(--font-geist-mono)',
               wordBreak: 'break-word',
+              whiteSpace: 'pre-wrap',
             }}>
               {text || ' '}
               {isResponse && isTyping && (

@@ -36,6 +36,7 @@ export interface ContextPillarEvent {
     social_context: string
     urgency: string
     notable: string | null
+    situational_summary: string
   }
 }
 
@@ -58,6 +59,7 @@ export interface EmotionPillarEvent {
     valence: string
     availability: string
     dominant_drive: string
+    emotional_response_texturing: string
   }
 }
 

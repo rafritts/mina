@@ -17,6 +17,8 @@ const NAV = [
   { href: '/admin/system', label: 'System', icon: '◈' },
 ]
 
+const VIEWER_LINK = { href: '/viewer', label: 'Viewer', icon: '⊙' }
+
 function computeDominantState(state: { second_order?: Record<string, number>; third_order?: Record<string, number>; sleeping?: boolean }): string {
   if (state.sleeping) return 'Sleeping'
   const so = state.second_order ?? {}
@@ -83,6 +85,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             )
           })}
         </nav>
+
+        {/* Viewer shortcut */}
+        <div className="px-3 pb-2">
+          <Link
+            href={VIEWER_LINK.href}
+            className="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-all duration-150"
+            style={{ color: 'rgba(232,228,221,0.42)', borderLeft: '2px solid transparent' }}
+          >
+            <span className="text-xs w-4 text-center" style={{ color: 'rgba(232,228,221,0.25)' }}>{VIEWER_LINK.icon}</span>
+            {VIEWER_LINK.label}
+          </Link>
+        </div>
 
         {/* Status */}
         <div className="px-4 py-3 border-t space-y-1" style={{ borderColor: 'rgba(232,228,221,0.06)' }}>

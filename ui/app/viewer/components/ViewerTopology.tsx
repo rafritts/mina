@@ -35,7 +35,7 @@ function blendByNormalized(chemicals: Record<string, number>): RGB {
     b += rgb[2] * norm
     total += norm
   }
-  if (total === 0) return [80, 80, 100]
+  if (total === 0) return [137, 150, 78]
   return [r / total, g / total, b / total]
 }
 
@@ -69,10 +69,12 @@ type PulsePhase = 'idle' | 'in' | 'hold' | 'out'
 
 export function ViewerTopology({ chemicals, pulseChemicals }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const overlayRef = useRef<HTMLDivElement>(null)
   const effectRef = useRef<{ destroy: () => void; setOptions: (o: Record<string, unknown>) => void } | null>(null)
-  const currentColorRef = useRef<RGB>([80, 80, 100])
-  const baselineRef = useRef<RGB>([80, 80, 100])
-  const targetColorRef = useRef<RGB>([80, 80, 100])
+  // Start with the Vanta default color (0x89964E) so lines are visible before state_snapshot
+  const currentColorRef = useRef<RGB>([137, 150, 78])
+  const baselineRef = useRef<RGB>([137, 150, 78])
+  const targetColorRef = useRef<RGB>([137, 150, 78])
   const phaseRef = useRef<PulsePhase>('idle')
   const phaseStartRef = useRef<number>(0)
   const rafRef = useRef<number>(0)
@@ -85,7 +87,8 @@ export function ViewerTopology({ chemicals, pulseChemicals }: Props) {
     async function init() {
       const p5 = (await import('p5')).default
       ;(window as unknown as Record<string, unknown>).p5 = p5
-      const VANTA = await import('vanta/dist/vanta.topology.min')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const VANTA = await import('../vanta-topology-patched') as any
       effect = VANTA.default({
         el: containerRef.current!,
         p5,
@@ -103,7 +106,28 @@ export function ViewerTopology({ chemicals, pulseChemicals }: Props) {
     }
 
     init().catch(console.error)
-    return () => { effect?.destroy(); effectRef.current = null }
+
+    // Restart every 10s: canvas saturates quickly, so we fade out → restart → fade in.
+    const cycleTimer = setInterval(() => {
+      const overlay = overlayRef.current
+      if (!overlay || !effectRef.current) return
+      // Fade to black over 1s
+      overlay.style.transition = 'opacity 1000ms ease'
+      overlay.style.opacity = '1'
+      setTimeout(() => {
+        effectRef.current?.setOptions({ color: toHex(currentColorRef.current) })
+        ;(effectRef.current as unknown as { restart: () => void }).restart()
+        // Fade back in
+        overlay.style.transition = 'opacity 800ms ease'
+        overlay.style.opacity = '0'
+      }, 1000)
+    }, 20_000)
+
+    return () => {
+      clearInterval(cycleTimer)
+      effect?.destroy()
+      effectRef.current = null
+    }
   }, [])
 
   // Update baseline when chemicals change
@@ -179,10 +203,25 @@ export function ViewerTopology({ chemicals, pulseChemicals }: Props) {
   }, [])
 
   return (
-    <div
-      ref={containerRef}
-      style={{ position: 'fixed', inset: 0, zIndex: 0 }}
-      aria-hidden
-    />
+    <>
+      <div
+        ref={containerRef}
+        style={{ position: 'fixed', inset: 0, zIndex: 0 }}
+        aria-hidden
+      />
+      {/* Fade overlay for smooth restart transitions */}
+      <div
+        ref={overlayRef}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 1,
+          background: '#050505',
+          opacity: 0,
+          pointerEvents: 'none',
+        }}
+        aria-hidden
+      />
+    </>
   )
 }

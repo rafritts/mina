@@ -98,10 +98,14 @@ export default function ViewerPage() {
       }
 
       case 'context_pillar': {
+        const parts = [event.payload.social_context]
+        if (event.payload.urgency !== 'none') parts.push(`urgency: ${event.payload.urgency}`)
+        if (event.payload.situational_summary) parts.push(event.payload.situational_summary)
+        if (event.payload.notable) parts.push(`↳ ${event.payload.notable}`)
         const node: GraphNode = {
           id: nextId('context'),
           type: 'context',
-          text: event.payload.social_context,
+          text: parts.join('\n'),
           opacity: 1,
         }
         setNodes(prev => [...prev.filter(n => n.type !== 'context'), node])
@@ -131,10 +135,13 @@ export default function ViewerPage() {
       }
 
       case 'emotion_pillar': {
+        const parts = [`${event.payload.dominant_affect} · ${event.payload.trend}`]
+        if (event.payload.dominant_drive) parts.push(event.payload.dominant_drive)
+        if (event.payload.emotional_response_texturing) parts.push(event.payload.emotional_response_texturing)
         const node: GraphNode = {
           id: nextId('emotion'),
           type: 'emotion',
-          text: `${event.payload.dominant_affect} · ${event.payload.trend}`,
+          text: parts.join('\n'),
           opacity: 1,
         }
         setNodes(prev => [...prev.filter(n => n.type !== 'emotion'), node])
@@ -142,12 +149,14 @@ export default function ViewerPage() {
       }
 
       case 'reasoning': {
+        const parts = [event.payload.tone
+          ? `${event.payload.approach} · ${event.payload.tone}`
+          : event.payload.approach]
+        if (event.payload.internal_reaction) parts.push(event.payload.internal_reaction)
         const node: GraphNode = {
           id: nextId('reasoning'),
           type: 'reasoning',
-          text: event.payload.tone
-            ? `${event.payload.approach} · ${event.payload.tone}`
-            : event.payload.approach,
+          text: parts.join('\n'),
           opacity: 1,
         }
         setNodes(prev => [...prev.filter(n => n.type !== 'reasoning'), node])

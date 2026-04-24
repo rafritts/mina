@@ -175,6 +175,7 @@ def run_context_pillar(
             "social_context": result["social_context"],
             "urgency": result["urgency"],
             "notable": result.get("notable"),
+            "situational_summary": result.get("situational_summary", ""),
         })
     except Exception:
         pass

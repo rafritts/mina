@@ -341,6 +341,7 @@ def run_emotion_pillar(
             "valence": result["valence"],
             "availability": result["availability"],
             "dominant_drive": result.get("dominant_drive", ""),
+            "emotional_response_texturing": result.get("emotional_response_texturing", ""),
         })
     except Exception:
         pass
