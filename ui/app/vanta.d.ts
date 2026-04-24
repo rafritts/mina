@@ -7,9 +7,8 @@ declare module 'vanta/dist/vanta.dots.min' {
 }
 
 declare module 'vanta/dist/vanta.topology.min' {
-  import type * as THREE from 'three'
   interface VantaEffect { destroy: () => void; setOptions: (opts: Record<string, unknown>) => void }
-  interface VantaOptions { el: HTMLElement; THREE: typeof THREE; [key: string]: unknown }
+  interface VantaOptions { el: HTMLElement; p5: unknown; [key: string]: unknown }
   function TOPOLOGY(options: VantaOptions): VantaEffect
   export default TOPOLOGY
 }

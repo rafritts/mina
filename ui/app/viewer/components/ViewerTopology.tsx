@@ -74,12 +74,12 @@ export function ViewerTopology({ chemicals, pulseChemicals }: Props) {
     let effect: typeof effectRef.current = null
 
     async function init() {
-      const THREE = await import('three')
-      ;(window as unknown as Record<string, unknown>).THREE = THREE
+      const p5 = (await import('p5')).default
+      ;(window as unknown as Record<string, unknown>).p5 = p5
       const VANTA = await import('vanta/dist/vanta.topology.min')
       effect = VANTA.default({
         el: containerRef.current!,
-        THREE,
+        p5,
         mouseControls: false,
         touchControls: false,
         gyroControls: false,
