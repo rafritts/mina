@@ -212,6 +212,11 @@ def build_kag_context(query: str = "") -> str:
         content = read_knowledge(fname)
         if content:
             parts.append(f"## Knowledge: {fname}\n{content}")
+            try:
+                from src.infrastructure.stream_bus import stream_bus
+                stream_bus.emit("kag_selection", {"filename": fname, "excerpt": content[:120]})
+            except Exception:
+                pass
 
     return "\n\n---\n\n".join(parts)
 
@@ -444,6 +449,12 @@ def build_rag_context(query: str, n_results: int = 5) -> str:
     memories = rag_query(query, n_results)
     if not memories:
         return ""
+    try:
+        from src.infrastructure.stream_bus import stream_bus
+        for i, mem in enumerate(memories):
+            stream_bus.emit("rag_hit", {"index": i, "excerpt": mem[:120], "bucket": "default"})
+    except Exception:
+        pass
     lines = "\n".join(f"- {m}" for m in memories)
     return f"## Relevant Memories\n{lines}"
 
@@ -496,6 +507,14 @@ def build_rag_context_bucketed(query: str, n_results: int = 4) -> tuple[str, str
     recent_docs      = _query_bucket({"timestamp": {"$gte": cutoff_recent}})
     semi_recent_docs = _query_bucket({"$and": [{"timestamp": {"$gte": cutoff_semi}}, {"timestamp": {"$lt": cutoff_recent}}]})
     historical_docs  = _query_bucket({"timestamp": {"$lt": cutoff_semi}})
+
+    try:
+        from src.infrastructure.stream_bus import stream_bus
+        for bucket, docs in (("recent", recent_docs), ("semi_recent", semi_recent_docs), ("historical", historical_docs)):
+            for i, doc in enumerate(docs):
+                stream_bus.emit("rag_hit", {"index": i, "excerpt": doc[:120], "bucket": bucket})
+    except Exception:
+        pass
 
     def _to_str(docs: list[str]) -> str:
         return "\n".join(f"- {d}" for d in docs) if docs else ""

@@ -25,7 +25,7 @@ load_dotenv(_DOTENV)
 _PROJECT_ROOT = Path(os.path.dirname(_DOTENV))
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
 import uvicorn
@@ -487,6 +487,62 @@ def get_history(request: Request, limit: int = 1000, hours: float = 0):
         snaps = [s for s in snaps if s.get("ts", 0) >= cutoff]
 
     return snaps[-min(limit, 10000):]
+
+
+# ---------------------------------------------------------------------------
+# SSE stream — SPEC-49
+# ---------------------------------------------------------------------------
+
+@app.get("/api/stream")
+async def sse_stream(request: Request):
+    _check_auth(request)
+    stream_file = _PROJECT_ROOT / "run" / "stream.jsonl"
+
+    async def generate():
+        # Start from current EOF — only stream events from this connection forward
+        file_pos: list[int] = [0]
+        try:
+            file_pos[0] = stream_file.stat().st_size
+        except FileNotFoundError:
+            pass
+
+        last_event_ts = time.time()
+
+        def _read_new() -> list[str]:
+            lines: list[str] = []
+            try:
+                with open(stream_file) as f:
+                    f.seek(file_pos[0])
+                    for raw in f:
+                        stripped = raw.strip()
+                        if stripped:
+                            lines.append(stripped)
+                    file_pos[0] = f.tell()
+            except FileNotFoundError:
+                pass
+            return lines
+
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                lines = await asyncio.to_thread(_read_new)
+                if lines:
+                    last_event_ts = time.time()
+                    for line in lines:
+                        yield f"data: {line}\n\n"
+                else:
+                    await asyncio.sleep(0.1)
+                    if time.time() - last_event_ts > 25:
+                        yield ": keepalive\n\n"
+                        last_event_ts = time.time()
+        except Exception:
+            pass
+
+    return StreamingResponse(generate(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+    })
 
 
 # ---------------------------------------------------------------------------

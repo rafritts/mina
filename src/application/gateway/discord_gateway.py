@@ -63,6 +63,19 @@ _DISCORD_API = "https://discord.com/api/v10"
 
 _IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
+# Register mina.log as a stream bus consumer — drives structured log from the bus
+try:
+    from src.infrastructure.stream_bus import stream_bus as _stream_bus
+    from ..infra.log import log as _log
+
+    def _stream_log_handler(event) -> None:
+        import json as _json
+        _log(event.type.upper(), _json.dumps(event.payload)[:200])
+
+    _stream_bus.register(_stream_log_handler)
+except Exception:
+    pass
+
 from ..infra.image_utils import normalise_image as _normalise_image
 
 

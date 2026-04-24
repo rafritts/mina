@@ -79,6 +79,17 @@ async def bio_tick_loop() -> None:
         try:
             state = load_and_advance()  # advances time and saves internally
             _append_bio_history(state)
+            snap = _snapshot(state)
+            try:
+                from src.infrastructure.stream_bus import stream_bus
+                stream_bus.emit("state_snapshot", {
+                    "chemicals": snap["chemicals"],
+                    "second_order": snap["second_order"],
+                    "third_order": snap["third_order"],
+                    "sleeping": state.sleeping,
+                })
+            except Exception:
+                pass
         except Exception as e:
             log("BIO/TICK/ERROR", str(e))
 

@@ -564,6 +564,16 @@ def _emit_event(
         emit(type, preview, display_deltas, event_override=event_override, momentum_dampened=momentum_dampened)
     except Exception:
         pass
+    try:
+        from src.infrastructure.stream_bus import stream_bus
+        stream_bus.emit("delta", {
+            "source": type,
+            "preview": preview[:120],
+            "deltas": {k: round(v, 2) for k, v in display_deltas.items() if v != 0},
+            "event_override": event_override,
+        })
+    except Exception:
+        pass
 
 
 def _is_habituation_dampened(pre: dict, post: dict) -> bool:
@@ -806,6 +816,11 @@ positive deltas for it should be 20–30% of the guidance maximums above.
 
     raw, event_override = _call_delta_json([{"role": "user", "content": prompt}], label="encode_stimulus")
     saturated = _apply_saturation(raw, state)
+    try:
+        from src.infrastructure.stream_bus import stream_bus
+        stream_bus.emit("stimulus_land", {"preview": stimulus_text[:120]})
+    except Exception:
+        pass
     if event_override:
         _emit_event("stimulus", stimulus_text, raw, False, event_override=True)
         return saturated  # EVENT_OVERRIDE: bypass queue, apply instantly

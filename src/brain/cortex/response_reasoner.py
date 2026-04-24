@@ -213,6 +213,16 @@ def reason_response(
         with open(_FOLLOW_UP_THOUGHTS_FILE, "w") as f:
             json.dump({"ts": time.time(), "thoughts": thoughts}, f, indent=2)
 
+    try:
+        from src.infrastructure.stream_bus import stream_bus
+        stream_bus.emit("reasoning", {
+            "approach": result["approach"],
+            "tone": result.get("tone", ""),
+            "internal_reaction": result["internal_reaction"][:120],
+        })
+    except Exception:
+        pass
+
     return result
 
 

@@ -332,6 +332,19 @@ def run_emotion_pillar(
         result["trend"],
     )
 
+    try:
+        from src.infrastructure.stream_bus import stream_bus
+        stream_bus.emit("emotion_pillar", {
+            "dominant_affect": result["dominant_affect"],
+            "trend": result["trend"],
+            "arousal": result["arousal"],
+            "valence": result["valence"],
+            "availability": result["availability"],
+            "dominant_drive": result.get("dominant_drive", ""),
+        })
+    except Exception:
+        pass
+
     return result
 
 

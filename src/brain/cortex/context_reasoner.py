@@ -169,6 +169,16 @@ def run_context_pillar(
     trend = "stable" if result["social_context"] == prior_social else "shifting"
     _save_context_state(result["social_context"], trend)
 
+    try:
+        from src.infrastructure.stream_bus import stream_bus
+        stream_bus.emit("context_pillar", {
+            "social_context": result["social_context"],
+            "urgency": result["urgency"],
+            "notable": result.get("notable"),
+        })
+    except Exception:
+        pass
+
     return result
 
 

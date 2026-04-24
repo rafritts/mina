@@ -452,6 +452,12 @@ async def run_turn(
     print("=" * 20 + "MESSAGE START" + "=" * 20, flush=True)
     log("USER", f"{username}: {user_input}{img_tag}")
 
+    try:
+        from src.infrastructure.stream_bus import stream_bus as _stream_bus
+        _stream_bus.new_trace()
+    except Exception:
+        pass
+
     # Snapshot state before encoder so a rescue (cancel) rewinds cleanly.
     # CancelledError can only be raised at await points; the first one after
     # save_state(state) is the asyncio.gather below, so that's where we catch it.
@@ -700,6 +706,15 @@ async def run_turn(
 
         from src.application.infra import token_stats as _ts
         _ts.increment_turns()
+
+        try:
+            from src.infrastructure.stream_bus import stream_bus as _stream_bus
+            _stream_bus.emit("response_complete", {
+                "text": reply[:300] if reply else "",
+                "token_count": _ts.get().get("total", {}).get("completion_tokens", 0),
+            })
+        except Exception:
+            pass
 
         touch_last_active()
         return reply, image_paths
