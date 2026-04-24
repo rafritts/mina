@@ -142,7 +142,7 @@ resume)
     echo "Biological updates resumed."
     ;;
 
-clean)
+factory-reset)
     confirm=false
     [[ "${1:-}" == "--yes" ]] && confirm=true
     if ! $confirm; then
@@ -191,7 +191,7 @@ Maintenance:
   unstop           Remove .stopped flag (re-enables restart)
   pause            Pause biological updating (no time decay, no heartbeat)
   resume           Resume biological updating
-  clean [--yes]    Factory reset: clear all runtime state, events, history, memory
+  factory-reset [--yes]  Clear all runtime state, events, history, and memory
 EOF
     ;;
 
