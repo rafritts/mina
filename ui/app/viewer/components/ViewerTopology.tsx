@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import type { ChemicalEntry } from '../../lib/api'
+import { DISPLAY_RANGES } from '../../lib/labels'
 
 type RGB = [number, number, number]
 
@@ -17,10 +17,19 @@ const MONOAMINE_COLORS: Record<string, RGB> = {
   anandamide:     [134, 239, 172],
 }
 
-function blendByNormalized(chemicals: Record<string, ChemicalEntry>): RGB {
+// Stream sends raw floats — normalize against DISPLAY_RANGES
+function normalize(name: string, value: number): number {
+  const range = DISPLAY_RANGES[name]
+  if (!range) return 0
+  return Math.max(0, Math.min(1, (value - range.min) / (range.max - range.min)))
+}
+
+function blendByNormalized(chemicals: Record<string, number>): RGB {
   let r = 0, g = 0, b = 0, total = 0
   for (const [name, rgb] of Object.entries(MONOAMINE_COLORS)) {
-    const norm = chemicals[name]?.normalized ?? 0
+    const raw = chemicals[name]
+    if (raw === undefined) continue
+    const norm = normalize(name, raw)
     r += rgb[0] * norm
     g += rgb[1] * norm
     b += rgb[2] * norm
@@ -51,7 +60,7 @@ function toHex(rgb: RGB): number {
 }
 
 interface Props {
-  chemicals: Record<string, ChemicalEntry> | null
+  chemicals: Record<string, number> | null
   // Changed reference on each delta pulse; null when idle
   pulseChemicals: string[] | null
 }

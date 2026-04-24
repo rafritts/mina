@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { ViewerTopology } from './components/ViewerTopology'
 import { ThoughtGraph, type GraphNode, type NodeType } from './components/ThoughtGraph'
 import { useStream, type StreamEvent } from '../lib/stream'
-import type { ChemicalEntry } from '../lib/api'
 
 // Typewriter at ~35 chars/sec
 const TYPEWRITER_INTERVAL = Math.round(1000 / 35)
@@ -14,7 +13,7 @@ let nodeCounter = 0
 function nextId(type: NodeType) { return `${type}-${++nodeCounter}` }
 
 export default function ViewerPage() {
-  const [chemicals, setChemicals] = useState<Record<string, ChemicalEntry> | null>(null)
+  const [chemicals, setChemicals] = useState<Record<string, number> | null>(null)
   const [pulseChemicals, setPulseChemicals] = useState<string[] | null>(null)
 
   const [nodes, setNodes] = useState<GraphNode[]>([])

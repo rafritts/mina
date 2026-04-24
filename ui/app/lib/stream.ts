@@ -1,14 +1,14 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import type { ChemicalEntry } from './api'
 
 // --- Event payload types (matching stream_bus.emit calls in the backend) ---
 
 export interface StateSnapshotEvent {
   type: 'state_snapshot'
   payload: {
-    chemicals: Record<string, ChemicalEntry>
+    // Stream sends raw floats, NOT ChemicalEntry objects
+    chemicals: Record<string, number>
     second_order: Record<string, number>
     third_order: Record<string, number>
     sleeping: boolean
