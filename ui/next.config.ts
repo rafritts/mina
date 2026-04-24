@@ -10,6 +10,17 @@ const nextConfig: NextConfig = {
       },
     ]
   },
+  async headers() {
+    return [
+      {
+        // Never cache HTML routes — always serve the latest build
+        source: '/(.*)',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+        ],
+      },
+    ]
+  },
 }
 
 export default nextConfig

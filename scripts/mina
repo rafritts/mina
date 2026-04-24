@@ -117,6 +117,8 @@ update)
     echo "Building UI..."
     (cd "$REPO_DIR/ui" && npm install --silent && npm run build)
     echo "Copying UI static assets into standalone bundle..."
+    rm -rf "$REPO_DIR/ui/.next/standalone/.next/static"
+    rm -rf "$REPO_DIR/ui/.next/standalone/public"
     cp -r "$REPO_DIR/ui/.next/static"  "$REPO_DIR/ui/.next/standalone/.next/static"
     cp -r "$REPO_DIR/ui/public"        "$REPO_DIR/ui/.next/standalone/public"
     echo "Restarting..."
