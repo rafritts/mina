@@ -13,6 +13,18 @@ const TYPE_COLORS: Record<string, string> = {
 
 const TYPE_FILTERS = ['all', 'stimulus', 'response', 'activity', 'tool']
 
+function eventText(ev: EventEntry): string {
+  if (ev.preview) return ev.preview
+  if (ev.result) return ev.result
+  if (ev.tool) return ev.tool
+  return '—'
+}
+
+function eventLabel(ev: EventEntry): string | undefined {
+  // For tool events, show the tool name as a sub-label
+  return ev.type === 'tool' && ev.tool ? ev.tool : undefined
+}
+
 function formatTs(ts: number): { relative: string; absolute: string } {
   const d = new Date(ts * 1000)
   const diff = Date.now() - d.getTime()
@@ -108,7 +120,12 @@ export default function EventsPage() {
                     {ev.type}
                   </span>
                   <div className="flex-1 min-w-0 space-y-1">
-                    <p className="text-xs truncate" style={{ color: 'rgba(232,228,221,0.7)' }}>{ev.content}</p>
+                    <div className="flex items-center gap-2 min-w-0">
+                      {eventLabel(ev) && (
+                        <span className="text-[10px] value-mono flex-shrink-0" style={{ color: 'rgba(232,228,221,0.3)' }}>{eventLabel(ev)}</span>
+                      )}
+                      <p className="text-xs truncate" style={{ color: 'rgba(232,228,221,0.7)' }}>{eventText(ev)}</p>
+                    </div>
                     {ev.deltas && Object.keys(ev.deltas).length > 0 && (
                       <div className="flex flex-wrap gap-1">
                         {Object.entries(ev.deltas).slice(0, 5).map(([k, v]) => (
@@ -127,7 +144,7 @@ export default function EventsPage() {
                     )}
                     {isOpen && (
                       <p className="text-xs whitespace-pre-wrap mt-2 pt-2 border-t" style={{ color: 'rgba(232,228,221,0.5)', borderColor: 'rgba(232,228,221,0.06)' }}>
-                        {ev.content}
+                        {eventText(ev)}
                       </p>
                     )}
                   </div>

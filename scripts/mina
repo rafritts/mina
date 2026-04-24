@@ -146,12 +146,26 @@ clean)
     confirm=false
     [[ "${1:-}" == "--yes" ]] && confirm=true
     if ! $confirm; then
-        read -rp "Clear conversation.json, state.json, and memory/rag/? [y/N] " ans
+        read -rp "Factory reset: clear all runtime state, events, history, and memory? [y/N] " ans
         [[ "$ans" =~ ^[Yy]$ ]] || exit 0
     fi
-    rm -f "$RUN_DIR/conversation.json" "$RUN_DIR/state.json"
+    # Runtime state
+    rm -f "$RUN_DIR/state.json"
+    rm -f "$RUN_DIR/conversation.json"
+    rm -f "$RUN_DIR/conversation-"*.jsonl
+    # UI data feeds
+    rm -f "$RUN_DIR/events.jsonl"
+    rm -f "$RUN_DIR/bio_history.jsonl"
+    rm -f "$RUN_DIR/bio_snapshots.jsonl"
+    rm -f "$RUN_DIR/token_stats.json"
+    # Internal runtime state
+    rm -f "$RUN_DIR/consolidation_state.json"
+    rm -f "$RUN_DIR/decoder_window.json"
+    rm -f "$RUN_DIR/followup_queue.json"
+    rm -f "$RUN_DIR/sliding_seq.json"
+    # Memory
     rm -rf "$REPO_DIR/memory/rag"
-    echo "Runtime data cleared."
+    echo "Factory reset complete."
     ;;
 
 help|--help|-h)
@@ -177,7 +191,7 @@ Maintenance:
   unstop           Remove .stopped flag (re-enables restart)
   pause            Pause biological updating (no time decay, no heartbeat)
   resume           Resume biological updating
-  clean [--yes]    Clear conversation.json, state.json, memory/rag/
+  clean [--yes]    Factory reset: clear all runtime state, events, history, memory
 EOF
     ;;
 

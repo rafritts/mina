@@ -99,6 +99,12 @@ export interface EventEntry {
   id?: string
   ts: number
   type: string
-  content: string
+  // stimulus / response / activity events
+  preview?: string
+  // tool events
+  tool?: string
+  args?: Record<string, unknown>
+  result?: string
+  source?: string
   deltas?: Record<string, number>
 }

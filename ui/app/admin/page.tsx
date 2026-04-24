@@ -9,6 +9,13 @@ import type { EventEntry } from '../lib/api'
 const SECOND_ORDER = ['energy', 'cognitive_clarity', 'hedonic_tone', 'social_warmth', 'arousal', 'mood_valence']
 const THIRD_ORDER = ['anxiety', 'depression', 'boredom', 'loneliness', 'flow', 'physical_distress', 'craving']
 
+function eventText(ev: EventEntry): string {
+  if (ev.preview) return ev.preview
+  if (ev.result) return ev.result
+  if (ev.tool) return ev.tool
+  return '—'
+}
+
 function formatTs(ts: number): string {
   const d = new Date(ts * 1000)
   const diff = Date.now() - d.getTime()
@@ -79,7 +86,7 @@ export default function OverviewPage() {
                   {ev.type}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs truncate" style={{ color: 'rgba(232,228,221,0.6)' }}>{ev.content}</p>
+                  <p className="text-xs truncate" style={{ color: 'rgba(232,228,221,0.6)' }}>{eventText(ev)}</p>
                 </div>
                 <span className="text-[11px] value-mono flex-shrink-0" style={{ color: 'rgba(232,228,221,0.25)' }}>{formatTs(ev.ts)}</span>
               </div>
