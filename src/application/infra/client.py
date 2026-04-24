@@ -62,7 +62,7 @@ def _dict_to_xai_message(m: dict) -> chat_pb2.Message:
         xai_tcs = [
             chat_pb2.ToolCall(
                 id=tc.get("id", ""),
-                function=chat_pb2.Function(
+                function=chat_pb2.FunctionCall(
                     name=(tc.get("function") or {}).get("name", ""),
                     arguments=(tc.get("function") or {}).get("arguments", "{}"),
                 ),
