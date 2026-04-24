@@ -49,7 +49,7 @@ export default function OverviewPage() {
         {/* Second-order metrics */}
         <section>
           <h2 className="text-[10px] uppercase tracking-widest mb-2.5" style={{ color: 'rgba(232,228,221,0.3)' }}>State</h2>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {SECOND_ORDER.map(field => (
               <DerivedCard key={field} field={field} value={state.second_order[field] ?? 50} size="large" />
             ))}
@@ -59,7 +59,7 @@ export default function OverviewPage() {
         {/* Third-order metrics */}
         <section>
           <h2 className="text-[10px] uppercase tracking-widest mb-2.5" style={{ color: 'rgba(232,228,221,0.3)' }}>Derived Signals</h2>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {THIRD_ORDER.map(field => (
               <DerivedCard key={field} field={field} value={state.third_order[field] ?? 0} size="small" />
             ))}

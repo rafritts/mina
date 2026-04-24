@@ -50,9 +50,9 @@
 
 :root {
   --accent-hue: 0;
-  --background: #07070a;
+  --background: #050505;
   --foreground: #e8e4dd;
-  --card: #111118;
+  --card: #0e0e0e;
   --card-foreground: #e8e4dd;
   --popover: #111118;
   --popover-foreground: #e8e4dd;
@@ -101,13 +101,23 @@ body::before {
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
   pointer-events: none;
   z-index: 9999;
-  opacity: 0.03;
+  opacity: 0.035;
 }
 
-/* Art gallery card spotlight effect */
+/* ─── Vanta background mount point ─── */
+.ambience-root {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Card blocks — black with warm amber crown */
 .gallery-card {
-  background: linear-gradient(160deg, rgba(255, 240, 210, 0.05) 0%, transparent 40%), var(--card);
-  border: 1px solid var(--border);
+  background: rgba(4, 4, 4, 0.92);
+  border: 1px solid rgba(232,228,221,0.09);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   transition: all 0.3s ease;
   position: relative;
 }
@@ -116,14 +126,14 @@ body::before {
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at 50% 0%, rgba(255, 220, 160, 0.08) 0%, transparent 65%);
+  background: radial-gradient(ellipse at 50% 0%, rgba(251,191,36,0.13) 0%, transparent 60%);
   pointer-events: none;
   border-radius: inherit;
 }
 
 .gallery-card:hover {
-  border-color: rgba(232, 228, 221, 0.22);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,220,160,0.06);
+  border-color: rgba(251,191,36,0.22);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(251,191,36,0.08);
   transform: translateY(-1px);
 }
 

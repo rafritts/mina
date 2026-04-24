@@ -194,8 +194,22 @@ def _run_ui(tee_out) -> None:
     standalone = os.path.join(_UI_DIR, ".next", "standalone", "server.js")
     backoff = 5
 
-    # Resolve node binary (prefer system node, which npm also uses)
-    node = "node"
+    # Resolve node/npm — check Linuxbrew and nvm locations that systemd won't have in PATH
+    def _find_bin(name: str) -> str:
+        candidates = [
+            f"/home/linuxbrew/.linuxbrew/bin/{name}",
+            os.path.expanduser(f"~/.nvm/versions/node/$(ls ~/.nvm/versions/node 2>/dev/null | tail -1)/bin/{name}"),
+            f"/usr/local/bin/{name}",
+            f"/usr/bin/{name}",
+            name,  # last resort: rely on PATH
+        ]
+        for c in candidates:
+            if os.path.isfile(c) and os.access(c, os.X_OK):
+                return c
+        return name
+
+    node = _find_bin("node")
+    npm  = _find_bin("npm")
 
     while True:
         _free_port(_UI_PORT)
@@ -206,7 +220,6 @@ def _run_ui(tee_out) -> None:
                 label = "production"
             else:
                 # Dev server — slow cold start but always works without a pre-build
-                npm = "npm"
                 cmd = [npm, "run", "dev", "--", "--port", str(_UI_PORT)]
                 label = "dev"
 
