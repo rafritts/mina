@@ -26,7 +26,8 @@ from src.application.infra import discord_send as _discord_send
 from src.application.infra.client import chat_create, MODEL
 from src.brain.cortex.cortex import apply_ts_label
 from src.application.infra.log import log as _log_raw
-from src.brain.subconscious.decoder import biological_report, adjudicate_emotion, build_memory_context, needs_summary
+from src.brain.subconscious.decoder import biological_report, build_memory_context, needs_summary
+from src.brain.cortex.emotional_reasoner import run_emotion_pillar, format_emotional_state_block
 from src.brain.amygdala.stimulus_encoder import encode_stimulus, encode_response, evaluate_activity_deltas
 from src.brain.hippocampus.hippocampus import (
     build_kag_context, build_rag_context, build_rag_context_dual,
@@ -692,8 +693,8 @@ async def run_freetime(force: bool = False) -> None:
         pass
     _ft_time_context = "\n".join(_ft_time_parts)
 
-    system_prompt, memory_context = await asyncio.gather(
-        asyncio.to_thread(adjudicate_emotion, state, stimulus_text, "freetime", _ft_time_context),
+    _emotion_result, memory_context = await asyncio.gather(
+        asyncio.to_thread(run_emotion_pillar, state, stimulus_text, "freetime", _ft_time_context),
         asyncio.to_thread(
             build_memory_context,
             stimulus_text, kag_context, rag_recent, rag_historical,
@@ -701,11 +702,22 @@ async def run_freetime(force: bool = False) -> None:
         ),
     )
 
-    if not system_prompt:
-        _log("No emotional disposition from adjudicator — skipping Mina turn.")
+    if not _emotion_result:
+        _log("Emotion Pillar failed — skipping Mina turn.")
         _save_decoder_window(decoder_window)
         return
 
+    # Apply regulation if warranted
+    if _emotion_result.get("regulation"):
+        from src.brain.amygdala.stimulus_encoder import regulate
+        from src.brain.brainstem.state import apply_deltas
+        _reg = _emotion_result["regulation"]
+        _reg_deltas = regulate(_reg["chemical"], _reg["amount"], _reg.get("rationale", ""))
+        if _reg_deltas:
+            state = apply_deltas(state, _reg_deltas)
+            save_state(state)
+
+    system_prompt = format_emotional_state_block(_emotion_result)
     if memory_context:
         system_prompt = memory_context + "\n\n---\n\n" + system_prompt
 

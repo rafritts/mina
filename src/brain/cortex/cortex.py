@@ -19,11 +19,14 @@ from src.config.config import (
     load_config, get_conversation_file,
 )
 from src.application.infra.log import log
-from src.brain.subconscious.decoder import biological_report, adjudicate_emotion, build_window_context, build_rag_context, needs_summary
+from src.brain.subconscious.decoder import biological_report, build_window_context, build_rag_context, needs_summary
 from src.brain.hippocampus.hippocampus import build_kag_context, build_rag_context as _hpc_rag_context, build_rag_context_bucketed, build_rag_context_relational, sliding_rag_write, sliding_rag_query
-from src.brain.amygdala.stimulus_encoder import encode_stimulus, encode_response, evaluate_activity_deltas, compute_relationship_modifier
+from src.brain.amygdala.stimulus_encoder import encode_stimulus, encode_response, evaluate_activity_deltas, compute_relationship_modifier, regulate
 from src.brain.brainstem.state import BiologicalState, apply_deltas, load_and_advance, load_state, save_state
 from .tools import TOOLS, call_tool
+from .response_reasoner import reason_response, format_strategy_block, pop_queued_question
+from .emotional_reasoner import run_emotion_pillar, format_emotional_state_block
+from .context_reasoner import run_context_pillar, format_situational_context_block
 
 DECODER_WINDOW_SIZE   = 20  # sliding window depth (~10 exchanges)
 MINA_IMMEDIATE_WINDOW = 4   # messages Mina receives directly (2 exchanges)
@@ -45,6 +48,30 @@ _EMOJI_RE = re.compile(
 
 def _strip_emoji(text: str) -> str:
     return _EMOJI_RE.sub("", text).strip()
+
+
+def _safe_emotion_pillar(state, stimulus, mode="active", time_context="", recent_messages=None, context_hint=None) -> "dict | None":
+    try:
+        return run_emotion_pillar(state, stimulus, mode, time_context, recent_messages, context_hint)
+    except Exception as exc:
+        log("EMOTION_PILLAR/ERR", str(exc))
+        return None
+
+
+def _safe_context_pillar(emotion_result, window_context, rag_context) -> "dict | None":
+    try:
+        return run_context_pillar(emotion_result or {}, window_context, rag_context)
+    except Exception as exc:
+        log("CONTEXT_PILLAR/ERR", str(exc))
+        return None
+
+
+def _safe_reason_response(state, stimulus, emotion_result=None, context_result=None) -> "dict | None":
+    try:
+        return reason_response(state, stimulus, emotion_result, context_result)
+    except Exception as exc:
+        log("REASONER/ERR", str(exc))
+        return None
 
 
 # Backward-compat constants — gateway imports these for display/checks
@@ -490,7 +517,7 @@ async def run_turn(
     except Exception as _e:
         log("DANGER/ERROR", str(_e))
 
-    # [2] profile logged inside adjudicate_emotion as [BIO/PROFILE]
+    # [2] Emotion Pillar logs [BIO/PROFILE] internally via _build_emotional_profile
 
     decoder_window = _window_for_encoder
     cfg = load_config()
@@ -507,8 +534,7 @@ async def run_turn(
     decoder_window.append({"role": "user", "content": user_content, "ts": time.time()})
     sliding_rag_write(decoder_window)  # SPEC-45: write chunk after user message
 
-    # [3] Three-way parallel: window synthesis, RAG assembly, emotion adjudication
-    # kag_context, rag_recent/semi/historical already retrieved above alongside relational RAG.
+    # [3] SPEC-52 three-pillar pipeline — sequential, each constrains the next.
     stimulus = f"{username}: {user_input}"
 
     # Build time context: clock time + how long since the previous message
@@ -527,20 +553,38 @@ async def run_turn(
     _time_context = "\n".join(_time_context_parts)
 
     try:
-        system_prompt, window_context, rag_context = await asyncio.gather(
-            # adjudicator: full decoder window + relationship context hint
-            asyncio.to_thread(adjudicate_emotion, state, stimulus, "active", _time_context, decoder_window, _relational_rag or None),
-            # Call A: window synthesis — decoder window only, no RAG
+        _sep = "\n\n---\n\n"
+
+        # Step A: Emotion Pillar + context assembly in parallel (independent)
+        _emotion_result, window_context, rag_context = await asyncio.gather(
+            asyncio.to_thread(
+                _safe_emotion_pillar, state, stimulus, "active",
+                _time_context, decoder_window, _relational_rag or None,
+            ),
             asyncio.to_thread(build_window_context, decoder_window, username, user_input),
-            # Call B: RAG assembly — sliding window replaces rag_recent (SPEC-45)
             asyncio.to_thread(build_rag_context, stimulus, kag_context, _rag_sliding or rag_recent, rag_semi_recent, rag_historical),
         )
-        if not system_prompt:
-            system_prompt = "You are Mina. Respond naturally."
 
-        # Assemble per SPEC-39 order:
-        # [IDENTITY] --- [CONVERSATION RIGHT NOW] [YOUR PRESENT STATE] [RECENT...] --- [EMOTIONAL DISPOSITION]
-        _sep = "\n\n---\n\n"
+        # Apply regulation if the Emotion Pillar requested it
+        if _emotion_result and _emotion_result.get("regulation"):
+            _reg = _emotion_result["regulation"]
+            _reg_deltas = regulate(_reg["chemical"], _reg["amount"], _reg.get("rationale", ""))
+            if _reg_deltas:
+                state = apply_deltas(state, _reg_deltas)
+                save_state(state)
+
+        # Step B: Context Pillar (depends on Emotion Pillar + context text)
+        _context_result = await asyncio.to_thread(
+            _safe_context_pillar, _emotion_result, window_context, rag_context,
+        )
+
+        # Step C: Conversation Pillar — Response Reasoner (depends on both prior pillars)
+        _reasoning_result = await asyncio.to_thread(
+            _safe_reason_response, state, stimulus, _emotion_result, _context_result,
+        )
+
+        # System prompt assembly:
+        # [IDENTITY] --- [CONVERSATION NOW + MEMORY] --- [Emotional State] --- [Situational Context] --- [Response Strategy]
         _identity_block = ""
         _rag_memory_blocks = ""
         if rag_context:
@@ -556,22 +600,26 @@ async def run_turn(
             _middle_parts.append(_rag_memory_blocks)
         _middle = "\n\n".join(_middle_parts)
 
-        if _identity_block or _middle:
-            prefix_parts = []
-            if _identity_block:
-                prefix_parts.append(_identity_block)
-            if _middle:
-                prefix_parts.append(_middle)
-            system_prompt = _sep.join(prefix_parts) + _sep + system_prompt
+        # Build system prompt from pillar outputs
+        system_prompt_parts = []
+        if _identity_block:
+            system_prompt_parts.append(_identity_block)
+        if _middle:
+            system_prompt_parts.append(_middle)
+        if _emotion_result:
+            system_prompt_parts.append(format_emotional_state_block(_emotion_result))
+        if _context_result:
+            system_prompt_parts.append(format_situational_context_block(_context_result))
+        if _reasoning_result:
+            _queued_q: str | None = None
+            if _reasoning_result.get("approach") in ("question", "warm"):
+                _queued_q = pop_queued_question()
+            system_prompt_parts.append(format_strategy_block(_reasoning_result, _queued_q))
 
-        # SPEC-35: extract adjudicator JSON so it can be attached to the assistant entry
-        _adj_json: dict | None = None
-        _adj_match = re.search(r'\[EMOTIONAL DISPOSITION\]\s*(\{.*?\})', system_prompt, re.DOTALL)
-        if _adj_match:
-            try:
-                _adj_json = json.loads(_adj_match.group(1))
-            except json.JSONDecodeError:
-                pass
+        system_prompt = _sep.join(system_prompt_parts) if system_prompt_parts else "You are Mina. Respond naturally."
+
+        # Emotion Pillar result stored as adj (replaces adjudicator JSON — SPEC-52)
+        _adj_json: dict | None = _emotion_result
 
         # [3b] Override — injected directly into system prompt, bypasses decoder.
         override = consume_admin_instructions()

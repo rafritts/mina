@@ -48,13 +48,13 @@ async def fire_followup(entry: dict) -> None:
     context with no conversation history — only emotion adjudication + KAG/RAG.
     """
     from src.brain.brainstem.state import load_and_advance, save_state
-    from src.brain.subconscious.decoder import adjudicate_emotion
     from src.brain.hippocampus.hippocampus import build_kag_context, build_rag_context_bucketed
     from src.application.infra import token_stats
     from src.application.infra.client import chat_create, MODEL
     from src.brain.amygdala.stimulus_encoder import encode_response
     from src.brain.brainstem.state import apply_deltas
     from src.brain.subconscious.decoder import build_memory_context
+    from src.brain.cortex.emotional_reasoner import run_emotion_pillar, format_emotional_state_block
 
     context = entry.get("context", "")
     scheduled_at = entry.get("scheduled_at", time.time())
@@ -78,8 +78,8 @@ async def fire_followup(entry: dict) -> None:
     kag_context = build_kag_context()
     rag_recent, rag_semi_recent, rag_historical = build_rag_context_bucketed(context)
 
-    emotional_disposition, memory_context = await asyncio.gather(
-        asyncio.to_thread(adjudicate_emotion, state, stimulus, "active"),
+    _emotion_result, memory_context = await asyncio.gather(
+        asyncio.to_thread(run_emotion_pillar, state, stimulus, "active"),
         asyncio.to_thread(build_memory_context,
                           context,
                           kag_context,
@@ -91,8 +91,8 @@ async def fire_followup(entry: dict) -> None:
     system_parts = []
     if memory_context:
         system_parts.append(memory_context)
-    if emotional_disposition:
-        system_parts.append(emotional_disposition)
+    if _emotion_result:
+        system_parts.append(format_emotional_state_block(_emotion_result))
     system_prompt = "\n\n---\n\n".join(system_parts) if system_parts else "You are Mina."
 
     # Single user turn — the deferred context is all she gets

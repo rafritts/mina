@@ -4,12 +4,13 @@ Encoder — external events → neurochemical deltas.
 Translates what happened in the world (incoming messages, Mina's own responses,
 physical actions) into delta dicts that get applied to BiologicalState.
 
-Three public entry points:
+Public entry points:
     encode_stimulus(state, text)              — incoming message/event
     encode_response(state, text)              — Mina's reply
     evaluate_activity_deltas(state, act, desc) — do_action tool result
+    regulate(chemical, amount, rationale)     — PFC post-hoc modulation of an amygdala response
 
-All three return plain dicts of chemical field → float delta.
+All encode/evaluate functions return plain dicts of chemical field → float delta.
 Falls back to {} on any error — never crashes a turn.
 """
 import json
@@ -952,3 +953,24 @@ positive deltas for it should be 20–30% of the guidance maximums.
     immediate = _post_to_secretion_queue(final, state)
     _emit_event("activity", activity_text, raw, _is_habituation_dampened(scaled, final), event_override=False)
     return immediate
+
+
+def regulate(chemical: str, amount: float, rationale: str = "") -> dict:
+    """
+    Post-hoc PFC modulation of an amygdala response — SPEC-52.
+
+    Called by the Emotion Pillar when a biological event was disproportionate
+    (false alarm, overcorrection). Returns a delta dict for the caller to apply
+    via apply_deltas(). Does not apply it internally.
+
+    amount should be negative (dampening only). The caller is responsible for
+    ensuring the magnitude does not exceed the original delta being modulated.
+    """
+    from src.application.infra.log import log
+    if amount == 0:
+        return {}
+    log_msg = f"{chemical} {amount:+.2f} (source: regulation)"
+    if rationale:
+        log_msg += f" — {rationale}"
+    log("REGULATE", log_msg)
+    return {chemical: amount}

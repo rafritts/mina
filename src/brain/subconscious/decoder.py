@@ -1,18 +1,14 @@
 """
-Decoder — neurochemical state → emotional disposition → system prompt.
+Decoder — supporting utilities for the pre-response pipeline.
 
-Primary entry point:
-  adjudicate_emotion(state, stimulus, mode)
-    Takes BiologicalState + what was just said/happening.
-    Combines derived emotional profile with the stimulus to adjudicate a concrete
-    emotional disposition (happy, irritable, playful, depressed, etc.) and how that
-    chemistry shapes how the stimulus lands. Returns [EMOTIONAL DISPOSITION] block.
-
-Supporting:
   biological_report(state)        Pure Python diagnostics. Chemical values → labeled
                                   ranges. Used for logging — not injected into prompts.
-  build_memory_context(...)       Identity + KAG/RAG context block.
+  build_window_context(...)       Live conversation window synthesis (LLM call).
+  build_rag_context(...)          Identity + KAG/RAG context block assembly.
+  build_memory_context(...)       Legacy shim over build_rag_context.
   needs_summary()                 Freetime heartbeat stimulus text.
+
+Emotional reasoning moved to src/brain/cortex/emotional_reasoner.py (SPEC-52).
 """
 import json
 import os
@@ -707,6 +703,11 @@ def _build_isolation_context(state: "BiologicalState") -> str:
         f"{behavioral_note}"
     )
 
+
+# ---------------------------------------------------------------------------
+# Adjudicator removed — SPEC-52
+# Emotional reasoning is now in src/brain/cortex/emotional_reasoner.py
+# ---------------------------------------------------------------------------
 
 _ADJUDICATOR_SYSTEM_ACTIVE = """\
 You adjudicate Mina's current state — not what she feels in the abstract, but what it \
