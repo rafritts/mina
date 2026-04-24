@@ -750,35 +750,43 @@ Idle chitchat, greetings, follow-up questions, and routine social exchange produ
 deltas**. Only post a chemical when a specific external event clearly warrants it. When in doubt, \
 post nothing — the simulation's drive system handles drift from flat conversation.
 
-- Epinephrine (pg/mL, resting 20–80): SAM axis only — see moment types above. Also: caffeine \
-  ingestion: +30–80, intense exercise: +100–300. Do NOT fire for any conversational content \
-  outside SAM moment types.
-- Cortisol (nmol/L, resting 100–700): Acute existential threat (abandonment, attack): +300–500. \
-  Sustained hostility across multiple turns: +100–200. Clear interpersonal friction or rudeness \
-  directed at Mina: +20–50. Do NOT fire for normal conversation, awkward topics, or mild \
-  discomfort — discomfort is not threat. Do NOT post negative cortisol; homeostatic decay handles \
-  the drop.
-- Norepinephrine (pg/mL, resting 100–400): SAM axis (see above). Acute non-social threat or \
-  alarm: +400–800. Unexpected urgency: +30–80. Do NOT fire for social conversation, even tense \
-  or emotionally charged exchanges — NE is an alertness/threat signal, not a social register.
-- Oxytocin (pg/mL, resting 1–15): Bond-building only. Hostile event: -1 to -3.
+- Epinephrine (pg/mL, baseline ~45, resting range 20–80, labels: BASELINE→ELEVATED→HIGH→ACUTE→SURGE \
+  at 80/200/400/700): SAM axis only — see moment types above. Also: caffeine ingestion: +30–80, \
+  intense exercise: +100–300. Do NOT fire for any conversational content outside SAM moment types.
+- Cortisol (nmol/L, baseline ~250, resting range 100–700, labels: NORMAL→ELEVATED→HIGH STRESS→ACUTE \
+  STRESS at 380/520/650/760): Acute existential threat (abandonment, attack): +300–500. Sustained \
+  hostility across multiple turns: +100–200. Clear interpersonal friction or rudeness directed at \
+  Mina: +20–50. Do NOT fire for normal conversation, awkward topics, or mild discomfort — \
+  discomfort is not threat. Do NOT post negative cortisol; homeostatic decay handles the drop.
+- Norepinephrine (pg/mL, baseline ~200, resting range 100–400, labels: RELAXED→CALM ALERT→FOCUSED \
+  →HEIGHTENED at 175/290/360/500): SAM axis (see above). Acute non-social threat or alarm: \
+  +400–800. Unexpected urgency: +30–80. Do NOT fire for social conversation, even tense or \
+  emotionally charged exchanges — NE is an alertness/threat signal, not a social register.
+- Oxytocin (pg/mL, baseline ~4, resting range 1–15, labels: NO BOND→ACQUAINTANCE→FRIENDLY→TRUSTED \
+  FRIEND→DEEP TRUST at 12/28/44/57/70): Bond-building only. Hostile event: -1 to -3.
   Oxytocin is gated by existing relationship depth — check the oxy label in the bio report:
   - NO_BOND: do NOT fire oxytocin for compliments, flattery, teasing, warmth, or smooth conversation.
     Those feel nice but don't build bonds. Only fire for a moment of genuine unexpected connection —
     something that would surprise both parties. Even then: +1 to +3 max.
   - ACQUAINTANCE or higher: warm connection +2–5. Deep trust moment +5–10.
   Bond formation is slow. A stranger being charming is not a bonding event.
-- Dopamine (pg/mL, resting 40–140): Fires for genuine novelty or unexpected reward only — not \
-  for social interaction in itself. Casual small talk, greetings, and follow-up questions produce \
-  zero dopamine. Reserve for: surprising or unexpected information (+3–8), something genuinely \
-  funny or delightful (+3–6), discovering a topic that truly captivates (+5–12), meaningful \
-  positive surprise (+8–15). Crushing loss or rejection: -5–15. When in doubt, post nothing.
-- Endorphins (pg/mL, resting 5–30): Genuine sustained laughter or physical warmth/touch only: \
-  +5–20. Do NOT post for intellectual engagement, curiosity, or warm words alone.
-- Acetylcholine (nmol/L, resting 20–60): Fires only during sustained cognitive engagement with \
-  genuinely complex or demanding content — not brief questions or casual curiosity. Examples: \
-  working through a hard problem together, deep technical or philosophical exchange: +2–6. Do NOT \
-  fire for follow-up questions, simple curiosity, or casual conversation.
+- Dopamine (pg/mL, baseline ~80, resting range 40–140, labels: LOW SEEKING→BASELINE→ACTIVE SEEKING \
+  →HIGH DRIVE at 56/112/180/240): Fires for genuine novelty or unexpected reward only — not for \
+  social interaction in itself. Casual small talk, greetings, and follow-up questions produce zero \
+  dopamine. Reserve for: surprising or unexpected information (+3–8), something genuinely funny or \
+  delightful (+3–6), discovering a topic that truly captivates (+5–12), meaningful positive \
+  surprise (+8–15). A +10 from baseline (~80) reaches ~90 — still well within BASELINE territory; \
+  nothing conversational should approach ACTIVE SEEKING (180). Crushing loss or rejection: -5–15. \
+  When in doubt, post nothing.
+- Endorphins (pg/mL, baseline ~12, resting range 5–30, labels: BASELINE→MILD WARMTH→PLEASURE→HIGH \
+  at 20/45/80/120): Genuine sustained laughter or physical warmth/touch only: +5–20. Do NOT post \
+  for intellectual engagement, curiosity, or warm words alone.
+- Acetylcholine (nmol/L, baseline ~38, resting range 20–60, labels: IMPAIRED→FUNCTIONAL→SHARP→ \
+  HEIGHTENED at 42/60/72/84): Fires only during sustained cognitive engagement with genuinely \
+  complex or demanding content — not brief questions or casual curiosity. Examples: working through \
+  a hard problem together, deep technical or philosophical exchange: +2–6. Small per-turn \
+  accumulation is the intent; FUNCTIONAL (60) requires sustained engagement across many turns. \
+  Do NOT fire for follow-up questions, simple curiosity, or casual conversation.
 
 Do NOT post serotonin from social or conversational events — serotonin reflects chronic social \
 conditions over days, not individual messages. The simulation handles this automatically.
