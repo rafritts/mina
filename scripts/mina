@@ -165,7 +165,8 @@ factory-reset)
     rm -f "$RUN_DIR/sliding_seq.json"
     # Memory
     rm -rf "$REPO_DIR/memory/rag"
-    echo "Factory reset complete."
+    echo "Factory reset complete. Restarting service..."
+    _svc restart
     ;;
 
 help|--help|-h)
