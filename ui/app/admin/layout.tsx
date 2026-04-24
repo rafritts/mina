@@ -36,7 +36,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const dominantState = state ? computeDominantState(state) : '—'
   const lastUpdateStr = lastUpdate ? formatDistanceToNow(lastUpdate, { addSuffix: true }) : '—'
-  const hasAlerts = state ? Object.entries(state.chemicals).some(([, v]) => v.normalized > 0.85 || v.normalized < 0.1) : false
+  // Chemicals that naturally sit at zero — low value is not an alert for these
+  const FLOOR_ZERO = new Set(['bac', 'sleep_pressure', 'anandamide', 'two_ag'])
+  const hasAlerts = state ? Object.entries(state.chemicals).some(([k, v]) =>
+    v.normalized > 0.85 || (!FLOOR_ZERO.has(k) && v.normalized < 0.1)
+  ) : false
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: '#07070a' }}>
