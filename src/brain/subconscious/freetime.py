@@ -625,7 +625,7 @@ async def run_freetime(force: bool = False) -> None:
                 "context": fu["context"],
             }
             queue.append(entry)
-            _log(f"Followup queued (fires in {fu.get('delay_minutes', 60)}m): {fu['context'][:80]}")
+            _log(f"Followup queued (fires in {fu.get('delay_minutes', 60)}m): {fu['context']}")
         save_queue(queue)
 
     # RAG TTL pruning
@@ -655,7 +655,7 @@ async def run_freetime(force: bool = False) -> None:
         vs = vital_signs(state)
         danger_text = process_danger(state, vs)
         if danger_text:
-            _log(f"DANGER DETECTED: {danger_text[:120]}...")
+            _log(f"DANGER DETECTED: {danger_text}")
             os.makedirs(os.path.dirname(_INJECT_FILE), exist_ok=True)
             with open(_INJECT_FILE, "w") as _f:
                 _f.write(danger_text)
@@ -710,7 +710,6 @@ async def run_freetime(force: bool = False) -> None:
     # Apply regulation if warranted
     if _emotion_result.get("regulation"):
         from src.brain.amygdala.stimulus_encoder import regulate
-        from src.brain.brainstem.state import apply_deltas
         _reg = _emotion_result["regulation"]
         _reg_deltas = regulate(_reg["chemical"], _reg["amount"], _reg.get("rationale", ""))
         if _reg_deltas:
@@ -783,7 +782,7 @@ async def run_freetime(force: bool = False) -> None:
 
         # Deduplicate: suppress identical messages sent within the cooldown window.
         if outbound_message and _message_recently_sent(outbound_message):
-            _log(f"Suppressed duplicate message (cooldown): {outbound_message[:60]}")
+            _log(f"Suppressed duplicate message (cooldown): {outbound_message}")
             outbound_message = ""
 
         # Rewrite the closing entry so the decoder window stores readable text, not raw JSON.
@@ -805,7 +804,7 @@ async def run_freetime(force: bool = False) -> None:
         if outbound_message:
             _mark_message_sent(outbound_message)
             await _discord_send.send(content=outbound_message)
-            _log(f"Sent message to user: {outbound_message[:80]}")
+            _log(f"Sent message to user: {outbound_message}")
 
     # SPEC-32: append freetime assistant messages to conversation.jsonl
     conv_entries = []
