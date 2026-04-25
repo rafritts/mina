@@ -429,6 +429,23 @@ def advance(state: BiologicalState,
                     name, current + gap * min(1.0, 0.05 * sim_hours)
                 )
 
+        elif name == "epinephrine":
+            # Exponential decay toward baseline, half-life ~2 minutes (plasma clearance via COMT/MAO).
+            # The linear approach_rate=0.85 formula gave an effective ~49-min half-life — wildly wrong.
+            # Sustained arousal after a spike is carried by norepinephrine and cortisol, not epinephrine.
+            baseline = profile.resting_baseline  # 45.0 pg/mL
+            if current > baseline:
+                half_life_hours = 2.0 / 60.0
+                decay_factor    = 0.5 ** (sim_hours / half_life_hours)
+                excess          = current - baseline
+                s.chemicals[name] = clamp_chemical(name, baseline + excess * decay_factor)
+            else:
+                # Below baseline: restore at the normal approach rate
+                gap = baseline - current
+                s.chemicals[name] = clamp_chemical(
+                    name, current + gap * min(1.0, profile.approach_rate * sim_hours)
+                )
+
         else:
             # Standard: approach dynamic or fixed baseline at approach_rate per hour
             target = (profile.baseline_fn(hour_of_day, ctx)
