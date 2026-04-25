@@ -13,18 +13,30 @@ import {
 
 export type NodeType = 'response' | 'stimulus' | 'context' | 'rag' | 'kag' | 'emotion' | 'reasoning'
 
+export interface GraphField {
+  label: string
+  value: string
+}
+
 export interface GraphNode {
   id: string
   type: NodeType
-  text: string
+  text?: string       // plain text (response/stimulus/rag/kag)
+  fields?: GraphField[] // structured rows (context/emotion/reasoning)
   opacity: number
+}
+
+export interface GraphEdge {
+  source: string
+  target: string
 }
 
 // D3 internal node — mutated in place by the simulation
 interface D3Node {
   id: string
   type: NodeType
-  text: string
+  text?: string
+  fields?: GraphField[]
   x: number
   y: number
   vx: number
@@ -67,20 +79,19 @@ const NODE_BORDER: Record<NodeType, string> = {
 
 interface Props {
   nodes: GraphNode[]
+  edges: GraphEdge[]
   typewriterText: string
   isTyping: boolean
 }
 
-export function ThoughtGraph({ nodes, typewriterText, isTyping }: Props) {
-  // Render tick — incremented from the RAF loop to force re-renders while sim is hot
+export function ThoughtGraph({ nodes, edges, typewriterText, isTyping }: Props) {
   const [, setRenderTick] = useState(0)
   const d3NodesRef = useRef<D3Node[]>([])
   const simRef = useRef<Simulation<D3Node, undefined> | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const rafRef = useRef<number>(0)
 
-  // RAF loop: manually tick the simulation and trigger re-renders while hot;
-  // reheat every 8s so nodes never fully settle
+  // RAF loop: manually tick simulation; reheat every 8s so nodes never fully settle
   useEffect(() => {
     let lastReheat = performance.now()
     function frame(now: number) {
@@ -88,16 +99,28 @@ export function ThoughtGraph({ nodes, typewriterText, isTyping }: Props) {
       const sim = simRef.current
       if (!sim) return
 
-      // Gentle periodic reheat so nodes keep drifting
       if (now - lastReheat > 8000) {
         lastReheat = now
         if (sim.alpha() < 0.05) sim.alpha(0.05)
       }
 
-      if (sim.alpha() > sim.alphaMin()) {
-        sim.tick()
-        setRenderTick(t => t + 1)
+      const simHot = sim.alpha() > sim.alphaMin()
+      if (simHot) sim.tick()
+
+      // Always clamp — even after sim cools, spawned nodes may sit outside bounds
+      const el = containerRef.current
+      const W = el?.clientWidth ?? window.innerWidth
+      const H = el?.clientHeight ?? window.innerHeight
+      const PADX = 120   // card half-width (100) + 20px margin
+      const PADY = 90    // generous vertical margin for tall cards
+      let clamped = false
+      for (const node of d3NodesRef.current) {
+        const cx = Math.max(PADX, Math.min(W - PADX, node.x))
+        const cy = Math.max(PADY, Math.min(H - PADY, node.y))
+        if (cx !== node.x || cy !== node.y) { node.x = cx; node.y = cy; clamped = true }
       }
+
+      if (simHot || clamped) setRenderTick(t => t + 1)
     }
     rafRef.current = requestAnimationFrame(frame)
     return () => cancelAnimationFrame(rafRef.current)
@@ -118,24 +141,34 @@ export function ThoughtGraph({ nodes, typewriterText, isTyping }: Props) {
       if (existing) {
         existing.opacity = n.opacity
         existing.text = n.text
+        existing.fields = n.fields
         return existing
       }
       return {
         id: n.id,
         type: n.type,
         text: n.text,
+        fields: n.fields,
         opacity: n.opacity,
-        x: halfW + ox * halfW + (Math.random() - 0.5) * 60,
-        y: halfH + oy * halfH + (Math.random() - 0.5) * 60,
+        // Wider jitter so siblings within a cluster spread out on spawn
+        x: halfW + ox * halfW + (Math.random() - 0.5) * 120,
+        y: halfH + oy * halfH + (Math.random() - 0.5) * 120,
         vx: 0, vy: 0,
-        fx: n.type === 'response' ? halfW : null,
-        fy: n.type === 'response' ? halfH : null,
+        fx: null,
+        fy: null,
       }
     })
 
     d3NodesRef.current = nextD3.filter(n => incomingIds.has(n.id))
 
-    // Stop previous sim before creating a new one
+    // Clamp initial spawn positions before first render
+    const W0 = el?.clientWidth ?? window.innerWidth
+    const H0 = el?.clientHeight ?? window.innerHeight
+    for (const node of d3NodesRef.current) {
+      node.x = Math.max(120, Math.min(W0 - 120, node.x))
+      node.y = Math.max(90, Math.min(H0 - 90, node.y))
+    }
+
     simRef.current?.stop()
 
     if (d3NodesRef.current.length === 0) {
@@ -143,36 +176,30 @@ export function ThoughtGraph({ nodes, typewriterText, isTyping }: Props) {
       return
     }
 
-    // Create simulation in stopped state — the RAF loop ticks it manually
-    simRef.current = forceSimulation<D3Node>(d3NodesRef.current)
-      .force('charge', forceManyBody<D3Node>().strength(-200))
-      .force('center', forceCenter(halfW, halfH).strength(0.02))
-      .force('collide', forceCollide<D3Node>(80))
-      .force('cx', forceX<D3Node>(n => halfW + CLUSTER_OFFSET[n.type][0] * halfW).strength(0.1))
-      .force('cy', forceY<D3Node>(n => halfH + CLUSTER_OFFSET[n.type][1] * halfH).strength(0.1))
-      .alphaDecay(0.02)
-      .stop()  // do NOT auto-start — RAF loop drives it
+    const PAD = 140
+    const clampX = (x: number) => Math.max(PAD, Math.min(halfW * 2 - PAD, x))
+    const clampY = (y: number) => Math.max(PAD, Math.min(halfH * 2 - PAD, y))
 
-    // Kick off the RAF loop render immediately
+    simRef.current = forceSimulation<D3Node>(d3NodesRef.current)
+      .force('charge', forceManyBody<D3Node>().strength(-400))
+      .force('center', forceCenter(halfW, halfH).strength(0.01))
+      .force('collide', forceCollide<D3Node>(160))
+      .force('cx', forceX<D3Node>(n => clampX(halfW + CLUSTER_OFFSET[n.type][0] * halfW)).strength(n => n.type === 'response' ? 0.2 : 0.05))
+      .force('cy', forceY<D3Node>(n => clampY(halfH + CLUSTER_OFFSET[n.type][1] * halfH)).strength(n => n.type === 'response' ? 0.2 : 0.05))
+      .alphaDecay(0.02)
+      .stop()
+
     setRenderTick(t => t + 1)
   }, [nodes])
 
-  // Fix response node at center on resize
   useEffect(() => {
-    function onResize() {
-      const el = containerRef.current
-      const halfW = (el?.clientWidth ?? window.innerWidth) / 2
-      const halfH = (el?.clientHeight ?? window.innerHeight) / 2
-      const node = d3NodesRef.current.find(n => n.type === 'response')
-      if (node) { node.fx = halfW; node.fy = halfH }
-      simRef.current?.alpha(0.3).restart()
-    }
+    function onResize() { simRef.current?.alpha(0.3).restart() }
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
-  const responseNode = d3NodesRef.current.find(n => n.type === 'response')
-  const inputNodes = d3NodesRef.current.filter(n => n.type !== 'response')
+  // Build a lookup map for edge rendering
+  const d3Map = new Map(d3NodesRef.current.map(n => [n.id, n]))
 
   return (
     <div
@@ -183,25 +210,28 @@ export function ThoughtGraph({ nodes, typewriterText, isTyping }: Props) {
       <svg
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible' }}
       >
-        {responseNode && inputNodes.map(n => (
-          <line
-            key={`edge-${n.id}`}
-            x1={responseNode.x}
-            y1={responseNode.y}
-            x2={n.x}
-            y2={n.y}
-            stroke="rgba(255,255,255,0.15)"
-            strokeWidth={1}
-            style={{ opacity: Math.min(responseNode.opacity, n.opacity) }}
-          />
-        ))}
+        {edges.map(edge => {
+          const src = d3Map.get(edge.source)
+          const tgt = d3Map.get(edge.target)
+          if (!src || !tgt) return null
+          return (
+            <line
+              key={`${edge.source}→${edge.target}`}
+              x1={src.x} y1={src.y}
+              x2={tgt.x} y2={tgt.y}
+              stroke="rgba(255,255,255,0.15)"
+              strokeWidth={1}
+              style={{ opacity: Math.min(src.opacity, tgt.opacity) }}
+            />
+          )
+        })}
       </svg>
 
       {/* Node cards */}
       {d3NodesRef.current.map(node => {
         const isResponse = node.type === 'response'
-        const w = isResponse ? 420 : 260
-        const text = isResponse ? typewriterText : node.text
+        const hasFields = !isResponse && node.fields && node.fields.length > 0
+        const w = isResponse ? 460 : 240
 
         return (
           <div
@@ -209,7 +239,7 @@ export function ThoughtGraph({ nodes, typewriterText, isTyping }: Props) {
             style={{
               position: 'absolute',
               left: node.x - w / 2,
-              top: node.y - (isResponse ? 60 : 44),
+              top: node.y - (isResponse ? 70 : 50),
               width: w,
               opacity: node.opacity,
               transition: 'opacity 0.3s',
@@ -219,35 +249,71 @@ export function ThoughtGraph({ nodes, typewriterText, isTyping }: Props) {
               backdropFilter: 'blur(10px)',
               WebkitBackdropFilter: 'blur(10px)',
               borderRadius: 8,
-              padding: isResponse ? '14px 16px' : '8px 12px',
+              padding: isResponse ? '14px 18px' : '10px 14px',
             }}
           >
+            {/* Card header */}
             <div style={{
               fontSize: 9,
               letterSpacing: '0.12em',
               textTransform: 'uppercase',
-              color: 'rgba(232,228,221,0.4)',
-              marginBottom: isResponse ? 8 : 4,
+              color: 'rgba(232,228,221,0.35)',
+              marginBottom: isResponse ? 8 : 6,
             }}>
               {node.type}
             </div>
-            <div style={{
-              fontSize: isResponse ? 13 : 11,
-              lineHeight: isResponse ? 1.6 : 1.5,
-              color: isResponse ? 'rgba(232,228,221,0.9)' : 'rgba(232,228,221,0.7)',
-              fontFamily: isResponse ? 'var(--font-geist-sans)' : 'var(--font-geist-mono)',
-              wordBreak: 'break-word',
-              whiteSpace: 'pre-wrap',
-            }}>
-              {text || ' '}
-              {isResponse && isTyping && (
+
+            {/* Structured fields */}
+            {hasFields && node.fields!.map((f, i) => (
+              <div key={i} style={{
+                display: 'flex',
+                gap: 8,
+                marginBottom: i < node.fields!.length - 1 ? 4 : 0,
+                alignItems: 'flex-start',
+              }}>
                 <span style={{
-                  borderRight: '2px solid rgba(232,228,221,0.7)',
-                  marginLeft: 1,
-                  animation: 'blink 1s step-end infinite',
-                }} />
-              )}
-            </div>
+                  fontSize: 9,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  color: 'rgba(232,228,221,0.3)',
+                  whiteSpace: 'nowrap',
+                  paddingTop: 1,
+                  minWidth: 64,
+                }}>
+                  {f.label}
+                </span>
+                <span style={{
+                  fontSize: 11,
+                  lineHeight: 1.45,
+                  color: 'rgba(232,228,221,0.75)',
+                  fontFamily: 'var(--font-geist-mono)',
+                  wordBreak: 'break-word',
+                }}>
+                  {f.value}
+                </span>
+              </div>
+            ))}
+
+            {/* Plain text (response / stimulus / rag / kag) */}
+            {!hasFields && (
+              <div style={{
+                fontSize: isResponse ? 13 : 11,
+                lineHeight: isResponse ? 1.65 : 1.5,
+                color: isResponse ? 'rgba(232,228,221,0.9)' : 'rgba(232,228,221,0.7)',
+                fontFamily: isResponse ? 'var(--font-geist-sans)' : 'var(--font-geist-mono)',
+                wordBreak: 'break-word',
+                whiteSpace: 'pre-wrap',
+              }}>
+                {(isResponse ? typewriterText : node.text) || ' '}
+                {isResponse && isTyping && (
+                  <span style={{
+                    borderRight: '2px solid rgba(232,228,221,0.7)',
+                    marginLeft: 1,
+                    animation: 'blink 1s step-end infinite',
+                  }} />
+                )}
+              </div>
+            )}
           </div>
         )
       })}

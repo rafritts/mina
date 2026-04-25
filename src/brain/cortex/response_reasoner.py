@@ -178,7 +178,7 @@ def reason_response(
             result = parsed
             break
         except (json.JSONDecodeError, ValueError) as exc:
-            log("REASONER/ERR", f"attempt {attempt}: {exc} — raw: {repr(raw[:120])}")
+            log("REASONER/ERR", f"attempt {attempt}: {exc} — raw: {repr(raw)}")
             if attempt < 3 and raw:
                 messages = messages + [
                     {"role": "assistant", "content": raw},
@@ -194,8 +194,8 @@ def reason_response(
         raise RuntimeError("Reasoning pass failed after 3 attempts")
 
     log("REASONER", (
-        f"[{result['approach']}] {result['internal_reaction'][:80]} "
-        f"→ {result['strategy_rationale'][:80]}"
+        f"[{result['approach']}] {result['internal_reaction']} "
+        f"→ {result['strategy_rationale']}"
     ))
 
     # Append new questions to the queue (accumulated across turns)
@@ -218,7 +218,7 @@ def reason_response(
         stream_bus.emit("reasoning", {
             "approach": result["approach"],
             "tone": result.get("tone", ""),
-            "internal_reaction": result["internal_reaction"][:120],
+            "internal_reaction": result["internal_reaction"],
         })
     except Exception:
         pass

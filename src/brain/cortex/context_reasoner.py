@@ -145,7 +145,7 @@ def run_context_pillar(
             result = parsed
             break
         except (json.JSONDecodeError, ValueError) as exc:
-            log("CONTEXT_PILLAR/ERR", f"attempt {attempt}: {exc} — raw: {repr(raw[:120])}")
+            log("CONTEXT_PILLAR/ERR", f"attempt {attempt}: {exc} — raw: {repr(raw)}")
             if attempt < 3 and raw:
                 messages = messages + [
                     {"role": "assistant", "content": raw},
@@ -161,7 +161,7 @@ def run_context_pillar(
 
     log("CONTEXT_PILLAR", (
         f"[{result['social_context']}] urgency={result['urgency']}"
-        + (f" notable: {result['notable'][:60]}" if result.get("notable") else "")
+        + (f" notable: {result['notable']}" if result.get("notable") else "")
     ))
 
     # Infer trend for coherence tracking

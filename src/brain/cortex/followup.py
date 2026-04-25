@@ -68,7 +68,7 @@ async def fire_followup(entry: dict) -> None:
     else:
         elapsed_label = f"{elapsed_seconds / 86400:.1f} days"
 
-    log("FOLLOWUP", f"Firing: scheduled {elapsed_label} ago — {context[:80]}")
+    log("FOLLOWUP", f"Firing: scheduled {elapsed_label} ago — {context}")
 
     state = load_and_advance()
 
@@ -121,7 +121,7 @@ async def fire_followup(entry: dict) -> None:
         log("FOLLOWUP/ERR", "Empty response — skipping delivery")
         return
 
-    log("FOLLOWUP/REPLY", reply[:120])
+    log("FOLLOWUP/REPLY", reply)
 
     await _discord_send.send(content=reply)
 

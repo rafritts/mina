@@ -945,7 +945,7 @@ def adjudicate_emotion(
                 missing = [k for k in required if k not in parsed]
                 raise ValueError(f"missing fields: {missing}")
         except (json.JSONDecodeError, ValueError) as exc:
-            log("ADJUDICATOR/ERR", f"attempt {attempt}: {exc} — raw: {repr(raw[:120])}")
+            log("ADJUDICATOR/ERR", f"attempt {attempt}: {exc} — raw: {repr(raw)}")
             if attempt < 3 and raw:
                 messages = messages + [
                     {"role": "assistant", "content": raw},

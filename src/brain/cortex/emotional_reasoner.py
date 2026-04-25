@@ -304,7 +304,7 @@ def run_emotion_pillar(
             result = parsed
             break
         except (json.JSONDecodeError, ValueError) as exc:
-            log("EMOTION_PILLAR/ERR", f"attempt {attempt}: {exc} — raw: {repr(raw[:120])}")
+            log("EMOTION_PILLAR/ERR", f"attempt {attempt}: {exc} — raw: {repr(raw)}")
             if attempt < 3 and raw:
                 messages = messages + [
                     {"role": "assistant", "content": raw},

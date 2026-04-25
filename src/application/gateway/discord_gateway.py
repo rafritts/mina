@@ -70,7 +70,7 @@ try:
 
     def _stream_log_handler(event) -> None:
         import json as _json
-        _log(event.type.upper(), _json.dumps(event.payload)[:200])
+        _log(event.type.upper(), _json.dumps(event.payload))
 
     _stream_bus.register(_stream_log_handler)
 except Exception:
@@ -363,7 +363,7 @@ async def _do_send(content: str = "", image_path: str = "") -> None:
         if content:
             for chunk in _chunk_text(content):
                 await channel.send(chunk)
-            log("SEND", f"Delivered: {content[:80]}")
+            log("SEND", f"Delivered: {content}")
         if image_path and os.path.exists(image_path):
             await channel.send(file=discord.File(image_path))
             log("SEND", f"Delivered image: {os.path.basename(image_path)}")

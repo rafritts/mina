@@ -55,8 +55,8 @@ export interface EmotionPillarEvent {
   payload: {
     dominant_affect: string
     trend: string
-    arousal: string
-    valence: string
+    arousal: number
+    valence: number
     availability: string
     dominant_drive: string
     emotional_response_texturing: string

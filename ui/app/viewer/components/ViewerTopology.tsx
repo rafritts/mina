@@ -17,7 +17,6 @@ const MONOAMINE_COLORS: Record<string, RGB> = {
   anandamide:     [134, 239, 172],
 }
 
-// Stream sends raw floats — normalize against DISPLAY_RANGES
 function normalize(name: string, value: number): number {
   const range = DISPLAY_RANGES[name]
   if (!range) return 0
@@ -61,17 +60,18 @@ function toHex(rgb: RGB): number {
 
 interface Props {
   chemicals: Record<string, number> | null
-  // Changed reference on each delta pulse; null when idle
   pulseChemicals: string[] | null
+  lowPower: boolean
+  onLowPower: () => void
 }
 
 type PulsePhase = 'idle' | 'in' | 'hold' | 'out'
 
-export function ViewerTopology({ chemicals, pulseChemicals }: Props) {
+export function ViewerTopology({ chemicals, pulseChemicals, lowPower, onLowPower }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
+  const gradientRef = useRef<HTMLDivElement>(null)
   const effectRef = useRef<{ destroy: () => void; setOptions: (o: Record<string, unknown>) => void } | null>(null)
-  // Start with the Vanta default color (0x89964E) so lines are visible before state_snapshot
   const currentColorRef = useRef<RGB>([137, 150, 78])
   const baselineRef = useRef<RGB>([137, 150, 78])
   const targetColorRef = useRef<RGB>([137, 150, 78])
@@ -79,16 +79,39 @@ export function ViewerTopology({ chemicals, pulseChemicals }: Props) {
   const phaseStartRef = useRef<number>(0)
   const rafRef = useRef<number>(0)
 
-  // Initialize Vanta TOPOLOGY
+  // Keep props readable inside RAF closure without stale captures
+  const lowPowerRef = useRef(lowPower)
+  lowPowerRef.current = lowPower
+  const onLowPowerRef = useRef(onLowPower)
+  onLowPowerRef.current = onLowPower
+
+  // FPS detection state (one-shot, measures once Vanta is running)
+  const vantaReadyRef = useRef(false)
+  const fpsStartRef = useRef(0)
+  const fpsCountRef = useRef(0)
+  const fpsReportedRef = useRef(false)
+
+  // Warm up dynamic imports immediately so switching to full mode is instant
   useEffect(() => {
+    import('p5').catch(() => {})
+    import('../vanta-topology-patched').catch(() => {})
+  }, [])
+
+  // Initialize Vanta — re-runs when lowPower toggles so it can be destroyed/created
+  useEffect(() => {
+    if (lowPower) return
     if (!containerRef.current) return
+
     let effect: typeof effectRef.current = null
+    let alive = true
 
     async function init() {
       const p5 = (await import('p5')).default
+      if (!alive) return
       ;(window as unknown as Record<string, unknown>).p5 = p5
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const VANTA = await import('../vanta-topology-patched') as any
+      if (!alive) return
       effect = VANTA.default({
         el: containerRef.current!,
         p5,
@@ -103,32 +126,36 @@ export function ViewerTopology({ chemicals, pulseChemicals }: Props) {
         backgroundColor: 0x050505,
       })
       effectRef.current = effect
+      // Start FPS measurement window after Vanta is live
+      vantaReadyRef.current = true
+      fpsStartRef.current = performance.now()
+      fpsCountRef.current = 0
     }
 
     init().catch(console.error)
 
-    // Restart every 10s: canvas saturates quickly, so we fade out → restart → fade in.
+    // Restart every 20s: canvas saturates, so fade out → restart → fade in
     const cycleTimer = setInterval(() => {
       const overlay = overlayRef.current
       if (!overlay || !effectRef.current) return
-      // Fade to black over 1s
       overlay.style.transition = 'opacity 1000ms ease'
       overlay.style.opacity = '1'
       setTimeout(() => {
         effectRef.current?.setOptions({ color: toHex(currentColorRef.current) })
         ;(effectRef.current as unknown as { restart: () => void }).restart()
-        // Fade back in
         overlay.style.transition = 'opacity 800ms ease'
         overlay.style.opacity = '0'
       }, 1000)
     }, 20_000)
 
     return () => {
+      alive = false
+      vantaReadyRef.current = false
       clearInterval(cycleTimer)
       effect?.destroy()
       effectRef.current = null
     }
-  }, [])
+  }, [lowPower])
 
   // Update baseline when chemicals change
   useEffect(() => {
@@ -145,47 +172,44 @@ export function ViewerTopology({ chemicals, pulseChemicals }: Props) {
     if (pulseChemicals === null) return
     if (pulseChemicals === prevPulseRef.current) return
     prevPulseRef.current = pulseChemicals
-
     targetColorRef.current = blendByNames(pulseChemicals)
     phaseRef.current = 'in'
     phaseStartRef.current = performance.now()
   }, [pulseChemicals])
 
-  // RAF color animation loop
+  // RAF color animation loop — drives both Vanta color and CSS gradient fallback
   useEffect(() => {
     const PHASE_DURATION: Record<PulsePhase, number> = {
-      idle: 0,
-      in: 400,
-      hold: 300,
-      out: 2500,
+      idle: 0, in: 400, hold: 300, out: 2500,
     }
 
     function tick(now: number) {
       rafRef.current = requestAnimationFrame(tick)
 
-      const effect = effectRef.current
-      if (!effect) return
+      // FPS detection: measure for 6s after Vanta starts; auto-switch if avg < 25fps
+      if (vantaReadyRef.current && !fpsReportedRef.current && !lowPowerRef.current) {
+        fpsCountRef.current++
+        const elapsed = now - fpsStartRef.current
+        if (elapsed > 6000) {
+          fpsReportedRef.current = true
+          const avgFps = fpsCountRef.current / (elapsed / 1000)
+          if (avgFps < 25) onLowPowerRef.current()
+        }
+      }
 
+      // Color phase logic
       const phase = phaseRef.current
       const elapsed = now - phaseStartRef.current
 
       if (phase === 'idle') {
-        // Drift toward baseline slowly
         currentColorRef.current = lerp(currentColorRef.current, baselineRef.current, 0.02)
       } else {
         const t = Math.min(elapsed / PHASE_DURATION[phase], 1)
-
         if (phase === 'in') {
           currentColorRef.current = lerp(currentColorRef.current, targetColorRef.current, t)
-          if (t >= 1) {
-            phaseRef.current = 'hold'
-            phaseStartRef.current = now
-          }
+          if (t >= 1) { phaseRef.current = 'hold'; phaseStartRef.current = now }
         } else if (phase === 'hold') {
-          if (t >= 1) {
-            phaseRef.current = 'out'
-            phaseStartRef.current = now
-          }
+          if (t >= 1) { phaseRef.current = 'out'; phaseStartRef.current = now }
         } else if (phase === 'out') {
           currentColorRef.current = lerp(targetColorRef.current, baselineRef.current, t)
           if (t >= 1) {
@@ -195,7 +219,18 @@ export function ViewerTopology({ chemicals, pulseChemicals }: Props) {
         }
       }
 
-      effect.setOptions({ color: toHex(currentColorRef.current) })
+      // Apply color to whichever renderer is active
+      if (lowPowerRef.current) {
+        const el = gradientRef.current
+        if (el) {
+          const [r, g, b] = currentColorRef.current.map(Math.round)
+          el.style.background =
+            `radial-gradient(ellipse 80% 80% at 50% 50%, rgba(${r},${g},${b},0.13) 0%, #050505 68%)`
+        }
+      } else {
+        const effect = effectRef.current
+        if (effect) effect.setOptions({ color: toHex(currentColorRef.current) })
+      }
     }
 
     rafRef.current = requestAnimationFrame(tick)
@@ -204,9 +239,22 @@ export function ViewerTopology({ chemicals, pulseChemicals }: Props) {
 
   return (
     <>
+      {/* Vanta container — hidden (not destroyed) when in low-power mode */}
       <div
         ref={containerRef}
-        style={{ position: 'fixed', inset: 0, zIndex: 0 }}
+        style={{ position: 'fixed', inset: 0, zIndex: 0, display: lowPower ? 'none' : 'block' }}
+        aria-hidden
+      />
+      {/* CSS gradient fallback — shown in low-power mode */}
+      <div
+        ref={gradientRef}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 0,
+          background: '#050505',
+          display: lowPower ? 'block' : 'none',
+        }}
         aria-hidden
       />
       {/* Fade overlay for smooth restart transitions */}

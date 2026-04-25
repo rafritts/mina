@@ -818,7 +818,7 @@ positive deltas for it should be 20–30% of the guidance maximums above.
     saturated = _apply_saturation(raw, state)
     try:
         from src.infrastructure.stream_bus import stream_bus
-        stream_bus.emit("stimulus_land", {"preview": stimulus_text[:120]})
+        stream_bus.emit("stimulus_land", {"preview": stimulus_text})
     except Exception:
         pass
     if event_override:

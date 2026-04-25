@@ -516,7 +516,7 @@ async def run_turn(
         from src.config.config import INJECT_FILE as _INJECT
         _danger = _pd(state, _vs(state))
         if _danger:
-            log("DANGER", _danger[:120])
+            log("DANGER", _danger)
             os.makedirs(os.path.dirname(_INJECT), exist_ok=True)
             with open(_INJECT, "w") as _f:
                 _f.write(_danger)

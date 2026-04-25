@@ -214,7 +214,7 @@ def build_kag_context(query: str = "") -> str:
             parts.append(f"## Knowledge: {fname}\n{content}")
             try:
                 from src.infrastructure.stream_bus import stream_bus
-                stream_bus.emit("kag_selection", {"filename": fname, "excerpt": content[:120]})
+                stream_bus.emit("kag_selection", {"filename": fname, "excerpt": content})
             except Exception:
                 pass
 
@@ -452,7 +452,7 @@ def build_rag_context(query: str, n_results: int = 5) -> str:
     try:
         from src.infrastructure.stream_bus import stream_bus
         for i, mem in enumerate(memories):
-            stream_bus.emit("rag_hit", {"index": i, "excerpt": mem[:120], "bucket": "default"})
+            stream_bus.emit("rag_hit", {"index": i, "excerpt": mem, "bucket": "default"})
     except Exception:
         pass
     lines = "\n".join(f"- {m}" for m in memories)
@@ -512,7 +512,7 @@ def build_rag_context_bucketed(query: str, n_results: int = 4) -> tuple[str, str
         from src.infrastructure.stream_bus import stream_bus
         for bucket, docs in (("recent", recent_docs), ("semi_recent", semi_recent_docs), ("historical", historical_docs)):
             for i, doc in enumerate(docs):
-                stream_bus.emit("rag_hit", {"index": i, "excerpt": doc[:120], "bucket": bucket})
+                stream_bus.emit("rag_hit", {"index": i, "excerpt": doc, "bucket": bucket})
     except Exception:
         pass
 

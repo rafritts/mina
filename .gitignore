@@ -30,6 +30,9 @@ src/application/memory/images/
 # Identity customization (personal — not for version control)
 identity/CUSTOMIZATION.md
 
+# Claude Code project memory (local only)
+.claude/
+
 # Secrets
 .env
 *.key
