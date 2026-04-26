@@ -14,11 +14,6 @@ CORTISOL_CIRCADIAN_AMPLITUDE   = 270.0   # nmol/L — peak swing above base
 CORTISOL_CIRCADIAN_PEAK_HOUR   = 8       # hour of day — cortisol awakening response
 CORTISOL_CIRCADIAN_FLOOR       = 50.0    # nmol/L — absolute minimum (adrenal safety floor)
 
-MELATONIN_PEAK_AMPLITUDE       = 210.0   # pg/mL above daytime floor at the 3am peak
-MELATONIN_DAYTIME_FLOOR        = 5.0     # pg/mL — suppressed baseline during daylight hours
-MELATONIN_PEAK_HOUR            = 2.5     # hour of day — physiological peak ~2-3am
-MELATONIN_GAUSSIAN_SIGMA       = 2.0     # hours — controls width of secretion window
-# σ=2 gives: ~215 at 2:30am → ~33 at 6:30am → ~7 at 8:30am → ~5 by 10am (daytime baseline)
 
 OREXIN_CIRCADIAN_BASE          = 200.0   # pg/mL — baseline wake-promoting level
 OREXIN_CIRCADIAN_AMPLITUDE     = 150.0   # pg/mL — afternoon peak swing
@@ -54,6 +49,10 @@ SLEEP_PRESSURE_CLEAR_RATE      = 24.0    # AU/hr — during sleep
 ENDORPHIN_FAST_DECAY_RATE      = 18.0    # pg/mL/hr — decay when above baseline
 ENDORPHIN_SLOW_RECOVERY_RATE   = 0.05    # fraction of gap/hr — recovery when below baseline
 ENDORPHIN_RESTING_BASELINE     = 12.0    # pg/mL — homeostatic target
+
+# SPEC-53: explicit plasma half-lives for exponential clearance model
+EPINEPHRINE_PLASMA_HALF_LIFE_MINUTES  = 2.0    # minutes — COMT/MAO enzymatic clearance
+ENDORPHIN_PLASMA_HALF_LIFE_MINUTES    = 25.0   # minutes — β-endorphin plasma half-life
 
 ANANDAMIDE_APPROACH_RATE       = 2.8     # /hr — fast FAAH enzymatic degradation (~15min half-life)
 TWO_AG_APPROACH_RATE           = 0.8     # /hr — slower MAGL degradation

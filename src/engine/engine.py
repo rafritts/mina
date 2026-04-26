@@ -372,6 +372,12 @@ def advance(state: BiologicalState,
     compression = float(cfg.get("time_compression_factor", 1.0))
     sim_hours = (now - state.last_updated) * compression / 3600.0
 
+    # SPEC-53: seed noise RNG once per process if noise_seed is configured.
+    noise_seed = cfg.get("noise_seed")
+    if noise_seed is not None and not getattr(advance, "_noise_seeded", False):
+        random.seed(int(noise_seed))
+        advance._noise_seeded = True
+
     if sim_hours <= 0:
         return state
 
@@ -397,6 +403,14 @@ def advance(state: BiologicalState,
     ctx = _make_context(s, hour_of_day)
 
     # --- Phase 1: each chemical advances toward its own baseline ---
+    # SPEC-53: generic clearance dispatch — no per-chemical branches.
+
+    noise_scale = 1.0
+    if s.sleeping:
+        noise_scale *= 0.5  # CNS quiets during NREM
+    allostatic_load = s.neuroplasticity.get("allostatic_load", 0.0)
+    if allostatic_load > 60:
+        noise_scale *= 1.5  # dysregulation increases variance
 
     for name, profile in REGISTRY.items():
         if name in _SUBSYSTEM_MANAGED:
@@ -404,56 +418,49 @@ def advance(state: BiologicalState,
 
         current = s.chemicals.get(name, CHEMICAL_DEFAULTS.get(name, 0.0))
 
-        if name == "hydration":
-            # Pure decay: -0.4% TBW/hr; restored only by drink tool
-            s.chemicals[name] = clamp_chemical(name, current - 0.4 * sim_hours)
-
-        elif name == "melatonin":
-            # Pure circadian formula — snap to computed value each tick
+        if profile.clearance == "formula":
             target = (profile.baseline_fn(hour_of_day, ctx)
                       if profile.baseline_fn else profile.resting_baseline)
-            s.chemicals[name] = clamp_chemical(name, target)
+            new_val = clamp_chemical(name, target)
 
-        elif name == "endorphins":
-            # SPEC-29: exponential decay toward baseline, half-life ~25 minutes.
-            # Replaces linear 18 units/hr which produced staircase accumulation.
-            baseline = 12.0
+        elif profile.clearance == "exponential":
+            baseline = profile.resting_baseline
+            half_life_hours = (profile.plasma_half_life or 2.0) / 60.0
             if current > baseline:
-                half_life_hours = 25.0 / 60.0
-                decay_factor    = 0.5 ** (sim_hours / half_life_hours)
-                excess          = current - baseline
-                s.chemicals[name] = clamp_chemical(name, baseline + excess * decay_factor)
+                decay_factor = 0.5 ** (sim_hours / half_life_hours)
+                new_val = clamp_chemical(name, baseline + (current - baseline) * decay_factor)
             else:
                 gap = baseline - current
-                s.chemicals[name] = clamp_chemical(
-                    name, current + gap * min(1.0, 0.05 * sim_hours)
-                )
-
-        elif name == "epinephrine":
-            # Exponential decay toward baseline, half-life ~2 minutes (plasma clearance via COMT/MAO).
-            # The linear approach_rate=0.85 formula gave an effective ~49-min half-life — wildly wrong.
-            # Sustained arousal after a spike is carried by norepinephrine and cortisol, not epinephrine.
-            baseline = profile.resting_baseline  # 45.0 pg/mL
-            if current > baseline:
-                half_life_hours = 2.0 / 60.0
-                decay_factor    = 0.5 ** (sim_hours / half_life_hours)
-                excess          = current - baseline
-                s.chemicals[name] = clamp_chemical(name, baseline + excess * decay_factor)
-            else:
-                # Below baseline: restore at the normal approach rate
-                gap = baseline - current
-                s.chemicals[name] = clamp_chemical(
+                new_val = clamp_chemical(
                     name, current + gap * min(1.0, profile.approach_rate * sim_hours)
                 )
 
-        else:
-            # Standard: approach dynamic or fixed baseline at approach_rate per hour
-            target = (profile.baseline_fn(hour_of_day, ctx)
-                      if profile.baseline_fn else profile.resting_baseline)
-            gap = target - current
-            s.chemicals[name] = clamp_chemical(
-                name, current + gap * min(1.0, profile.approach_rate * sim_hours)
-            )
+        else:  # gap_closure (default)
+            if name == "hydration":
+                # Pure decay; restored only by drink tool
+                new_val = clamp_chemical(name, current - 0.4 * sim_hours)
+            else:
+                target = (profile.baseline_fn(hour_of_day, ctx)
+                          if profile.baseline_fn else profile.resting_baseline)
+                gap = target - current
+                new_val = clamp_chemical(
+                    name, current + gap * min(1.0, profile.approach_rate * sim_hours)
+                )
+
+        # SPEC-53: stochastic noise — applied after clearance, before interactions.
+        if profile.noise_sigma > 0 and noise_scale > 0:
+            local_scale = noise_scale
+            # High anxiety amplifies norepinephrine and GABA noise
+            if name in ("norepinephrine", "gaba"):
+                anxiety = ctx.get("allostatic_load", allostatic_load)
+                if anxiety > 60:
+                    local_scale *= 1.3
+            noise = random.gauss(0, profile.noise_sigma) * local_scale
+            lo = profile.critical_low if profile.critical_low > 0 else 0.0
+            hi = profile.critical_high if profile.critical_high > 0 else float("inf")
+            new_val = max(lo, min(hi, new_val + noise))
+
+        s.chemicals[name] = new_val
 
     # --- Phase 2: cross-interactions from REGISTRY ---
     # TODO SPEC-22: extend for neuroendocrine tier targets

@@ -26,12 +26,12 @@ import math
 import os
 
 from src.engine.chem.profiles import ChemicalProfile, Interaction
-from src.engine.constants import (
-    MELATONIN_PEAK_AMPLITUDE,
-    MELATONIN_DAYTIME_FLOOR,
-    MELATONIN_PEAK_HOUR,
-    MELATONIN_GAUSSIAN_SIGMA,
-)
+
+# Melatonin shape parameters (SPEC-53: moved inline from constants.py)
+MELATONIN_PEAK_AMPLITUDE   = 210.0  # pg/mL above daytime floor at ~3am peak
+MELATONIN_DAYTIME_FLOOR    = 5.0    # pg/mL — suppressed baseline during daylight
+MELATONIN_PEAK_HOUR        = 2.5    # hour of day — physiological peak (~2–3am)
+MELATONIN_GAUSSIAN_SIGMA   = 2.0    # hours — controls width of secretion window
 
 _CONFIG_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
@@ -195,6 +195,8 @@ REGISTRY: dict[str, ChemicalProfile] = {
         name="cortisol",
         display_name="Cortisol",
         unit="nmol/L",
+        pool="bloodstream",
+        clearance="gap_closure",
         resting_baseline=250.0,
         approach_rate=0.15,
         baseline_fn=_cortisol_baseline_fn,
@@ -204,10 +206,9 @@ REGISTRY: dict[str, ChemicalProfile] = {
         critical_high=1000.0,
         display_min=0.0,
         display_max=800.0,
-        # No saturation ceiling — cortisol is reactive; the system should allow high spikes
-        # Floor saturation: dampening begins mid-DEPLETED, hard stop at CRASHED threshold
         soft_floor=60.0,
         hard_floor=25.0,
+        noise_sigma=8.0,  # high pulsatile variance (~3% CV/min)
         interactions=[
             Interaction("serotonin", "above", 550.0, -0.5,
                         "Chronic stress depletes serotonin baseline"),
@@ -215,6 +216,11 @@ REGISTRY: dict[str, ChemicalProfile] = {
                         "HPA axis suppresses dopamine reward system"),
             Interaction("oxytocin",  "above", 550.0, -0.2,
                         "Sustained stress erodes bonding capacity"),
+        ],
+        notes=[
+            (450.0, "elevated_cortisol", "Cortisol is elevated — stress response active."),
+            (650.0, "acute_stress",      "Acute stress. HPA axis fully engaged."),
+            (800.0, "cortisol_flood",    "Cortisol flooding. Cognitive function compromised."),
         ],
         labels=[
             (25.0,   "CRASHED",      "Adrenal crisis territory. No stress response possible."),
@@ -231,18 +237,21 @@ REGISTRY: dict[str, ChemicalProfile] = {
         name="epinephrine",
         display_name="Epinephrine",
         unit="pg/mL",
+        pool="bloodstream",
+        clearance="exponential",
+        plasma_half_life=2.0,        # minutes — COMT/MAO enzymatic clearance
         resting_baseline=45.0,
-        approach_rate=0.85,         # used only for below-baseline recovery; decay above baseline uses exponential ~2-min half-life in engine.py
+        approach_rate=0.85,          # used only for below-baseline recovery
         resting_low=20.0,
         resting_high=80.0,
         critical_low=0.0,
         critical_high=1500.0,
         display_min=0.0,
         display_max=700.0,
-        soft_ceiling=150.0,   # saturation engages at ELEVATED — prevents SAM stacking in sustained registers
-        hard_ceiling=700.0,   # non-override deltas can't push past SURGE threshold; event_override bypasses this
+        soft_ceiling=150.0,
+        hard_ceiling=700.0,
+        noise_sigma=2.0,
         interactions=[
-            # Co-activation: peripheral surge amplifies central NE arousal
             Interaction("norepinephrine", "above", 200.0, +8.0,
                         "Epinephrine surge amplifies LC norepinephrine arousal signal"),
         ],
@@ -259,6 +268,8 @@ REGISTRY: dict[str, ChemicalProfile] = {
         name="norepinephrine",
         display_name="Norepinephrine",
         unit="pg/mL",
+        pool="bloodstream",
+        clearance="gap_closure",
         resting_baseline=200.0,
         approach_rate=0.20,
         baseline_fn=_norepi_baseline_fn,
@@ -268,6 +279,7 @@ REGISTRY: dict[str, ChemicalProfile] = {
         critical_high=2000.0,
         display_min=50.0,
         display_max=2000.0,
+        noise_sigma=5.0,
         interactions=[],
         labels=[
             (65.0,   "SEDATED",    "Unusually low. Sluggish, difficulty initiating anything."),
@@ -285,6 +297,8 @@ REGISTRY: dict[str, ChemicalProfile] = {
         name="dopamine",
         display_name="Dopamine",
         unit="pg/mL",
+        pool="synaptic",
+        clearance="gap_closure",
         resting_baseline=80.0,
         approach_rate=0.08,
         resting_low=40.0,
@@ -295,6 +309,7 @@ REGISTRY: dict[str, ChemicalProfile] = {
         display_max=300.0,
         soft_ceiling=180.0,
         hard_ceiling=250.0,
+        noise_sigma=3.0,  # ~3% CV, pulsatile VTA firing
         interactions=[],
         labels=[
             (24.0,   "NO DRIVE",       "No pull toward anything. Cannot generate motivation."),
@@ -310,6 +325,8 @@ REGISTRY: dict[str, ChemicalProfile] = {
         name="serotonin",
         display_name="Serotonin",
         unit="ng/mL",
+        pool="synaptic",
+        clearance="gap_closure",
         resting_baseline=22.0,
         approach_rate=0.06,
         baseline_fn=_serotonin_baseline_fn,
@@ -319,8 +336,9 @@ REGISTRY: dict[str, ChemicalProfile] = {
         critical_high=100.0,
         display_min=2.0,
         display_max=60.0,
-        soft_ceiling=30.0,   # SPEC-30: lowered from 40; "VERY STABLE" starts at 38
-        hard_ceiling=40.0,   # SPEC-30: lowered from 55; activity-driven serotonin shouldn't exceed VERY STABLE
+        soft_ceiling=30.0,
+        hard_ceiling=40.0,
+        noise_sigma=0.4,  # smoother tonic release
         interactions=[
             Interaction("cortisol", "above", 32.0, -4.0,
                         "Good serotonin dampens HPA axis reactivity"),
@@ -338,7 +356,9 @@ REGISTRY: dict[str, ChemicalProfile] = {
         name="oxytocin",
         display_name="Oxytocin",
         unit="pg/mL",
-        resting_baseline=4.0,      # low floor — no bond until earned
+        pool="bloodstream",
+        clearance="gap_closure",
+        resting_baseline=4.0,
         approach_rate=0.10,
         resting_low=1.0,
         resting_high=15.0,
@@ -348,6 +368,7 @@ REGISTRY: dict[str, ChemicalProfile] = {
         display_max=80.0,
         soft_ceiling=55.0,
         hard_ceiling=75.0,
+        noise_sigma=0.3,  # slow, low variance
         interactions=[
             Interaction("cortisol", "above", 8.0, -6.0,
                         "Social bonding suppresses HPA axis"),
@@ -366,8 +387,11 @@ REGISTRY: dict[str, ChemicalProfile] = {
         name="endorphins",
         display_name="Endorphins",
         unit="pg/mL",
+        pool="synaptic",
+        clearance="exponential",
+        plasma_half_life=25.0,       # minutes — β-endorphin plasma half-life
         resting_baseline=12.0,
-        approach_rate=0.05,        # recovery rate when below baseline
+        approach_rate=0.05,          # recovery rate when below baseline
         resting_low=5.0,
         resting_high=30.0,
         critical_low=0.0,
@@ -375,7 +399,8 @@ REGISTRY: dict[str, ChemicalProfile] = {
         display_min=0.0,
         display_max=500.0,
         soft_ceiling=60.0,
-        hard_ceiling=120.0,        # hard exercise/laughter ceiling without substances
+        hard_ceiling=120.0,
+        noise_sigma=1.5,
         interactions=[
             Interaction("cortisol", "above", 70.0, -12.0,
                         "Endorphin flood actively suppresses cortisol (runner's high window)"),
@@ -396,6 +421,8 @@ REGISTRY: dict[str, ChemicalProfile] = {
         name="acetylcholine",
         display_name="Acetylcholine",
         unit="nmol/L",
+        pool="synaptic",
+        clearance="gap_closure",
         resting_baseline=38.0,
         approach_rate=0.05,
         baseline_fn=_ach_baseline_fn,
@@ -407,6 +434,7 @@ REGISTRY: dict[str, ChemicalProfile] = {
         display_max=90.0,
         soft_ceiling=75.0,
         hard_ceiling=88.0,
+        noise_sigma=1.0,
         interactions=[],
         labels=[
             (18.0,   "OFFLINE",            "Cannot form memories. Cannot concentrate. Higher functions unavailable."),
@@ -423,8 +451,10 @@ REGISTRY: dict[str, ChemicalProfile] = {
         name="melatonin",
         display_name="Melatonin",
         unit="pg/mL",
-        resting_baseline=5.0,        # placeholder; baseline_fn is authoritative
-        approach_rate=1.0,            # snaps directly to circadian formula (pure formula)
+        pool="bloodstream",
+        clearance="formula",
+        resting_baseline=5.0,
+        approach_rate=1.0,
         baseline_fn=_melatonin_baseline_fn,
         resting_low=2.0,
         resting_high=200.0,
@@ -432,6 +462,7 @@ REGISTRY: dict[str, ChemicalProfile] = {
         critical_high=220.0,
         display_min=0.0,
         display_max=220.0,
+        noise_sigma=0.0,  # formula-driven, no noise
         interactions=[],
         labels=[
             (10.0,   "DAYTIME",       "Circadian signal absent. Full alertness available."),
@@ -447,8 +478,10 @@ REGISTRY: dict[str, ChemicalProfile] = {
         name="glucose",
         display_name="Glucose",
         unit="mg/dL",
-        resting_baseline=0.0,        # no homeostatic baseline — pure decay
-        approach_rate=0.0,            # handled explicitly in advance()
+        pool="bloodstream",
+        clearance="gap_closure",     # metabolic.py manages the effective clearance
+        resting_baseline=0.0,
+        approach_rate=0.0,           # handled by metabolic subsystem
         resting_low=70.0,
         resting_high=100.0,
         critical_low=30.0,
@@ -469,8 +502,10 @@ REGISTRY: dict[str, ChemicalProfile] = {
         name="hydration",
         display_name="Hydration",
         unit="% TBW",
-        resting_baseline=0.0,        # no homeostatic baseline — pure decay
-        approach_rate=0.0,            # handled explicitly in advance()
+        pool="bloodstream",
+        clearance="gap_closure",     # engine handles explicit decay; no homeostatic pull
+        resting_baseline=0.0,
+        approach_rate=0.0,
         resting_low=58.0,
         resting_high=66.0,
         critical_low=45.0,
@@ -491,6 +526,8 @@ REGISTRY: dict[str, ChemicalProfile] = {
         name="gaba",
         display_name="GABA",
         unit="µmol/L",
+        pool="synaptic",
+        clearance="gap_closure",
         resting_baseline=3.0,
         approach_rate=0.12,
         baseline_fn=_gaba_baseline_fn,
@@ -502,6 +539,7 @@ REGISTRY: dict[str, ChemicalProfile] = {
         display_max=10.0,
         soft_ceiling=7.0,
         hard_ceiling=10.0,
+        noise_sigma=0.1,
         interactions=[
             Interaction("cortisol",       "above", 5.0, -3.0,
                         "GABAergic tone suppresses HPA axis"),
@@ -523,6 +561,8 @@ REGISTRY: dict[str, ChemicalProfile] = {
         name="glutamate",
         display_name="Glutamate",
         unit="µmol/L",
+        pool="synaptic",
+        clearance="gap_closure",
         resting_baseline=4.0,
         approach_rate=0.15,
         baseline_fn=_glutamate_baseline_fn,
@@ -534,7 +574,8 @@ REGISTRY: dict[str, ChemicalProfile] = {
         display_max=15.0,
         soft_ceiling=12.0,
         hard_ceiling=16.0,
-        interactions=[],  # cross-tier effects (il6, synaptic_potentiation) handled in amino_acids.py
+        noise_sigma=0.15,
+        interactions=[],
         labels=[
             (1.5,  "DEPLETED",    "Severely under-excited. Dissociation. Inability to form memories."),
             (3.0,  "LOW",         "Slowed. Difficulty concentrating. Ketamine-like blunting."),
@@ -549,6 +590,8 @@ REGISTRY: dict[str, ChemicalProfile] = {
         name="anandamide",
         display_name="Anandamide",
         unit="nM",
+        pool="synaptic",
+        clearance="gap_closure",
         resting_baseline=1.5,
         approach_rate=2.8,          # fast FAAH enzymatic degradation (~15 min half-life)
         baseline_fn=_anandamide_baseline_fn,
@@ -560,7 +603,8 @@ REGISTRY: dict[str, ChemicalProfile] = {
         display_max=10.0,
         soft_ceiling=8.0,
         hard_ceiling=15.0,
-        interactions=[],  # cross-tier effects (pain, cortisol) handled in endocannabinoids.py
+        noise_sigma=0.05,
+        interactions=[],
         labels=[
             (0.5,  "DEPLETED",  "Stress-dominant. Pain amplified. Emotional volatility."),
             (1.5,  "LOW",       "Below baseline. Reduced mood buffer."),
@@ -576,6 +620,8 @@ REGISTRY: dict[str, ChemicalProfile] = {
         name="two_ag",
         display_name="2-AG",
         unit="nM",
+        pool="synaptic",
+        clearance="gap_closure",
         resting_baseline=8.0,
         approach_rate=0.8,          # slower MAGL degradation
         baseline_fn=_two_ag_baseline_fn,
@@ -587,7 +633,8 @@ REGISTRY: dict[str, ChemicalProfile] = {
         display_max=40.0,
         soft_ceiling=35.0,
         hard_ceiling=50.0,
-        interactions=[],  # CB2 immune effects handled in endocannabinoids.py
+        noise_sigma=0.2,
+        interactions=[],
         labels=[
             (3.0,  "LOW",      "Below baseline. Reduced CB2 anti-inflammatory tone."),
             (15.0, "NORMAL",   "Healthy CB1/CB2 tone. Immune and pain balanced."),
@@ -600,15 +647,17 @@ REGISTRY: dict[str, ChemicalProfile] = {
         name="bac",
         display_name="BAC",
         unit="g/dL",
+        pool="bloodstream",
+        clearance="gap_closure",     # driven entirely by substances.py; no homeostatic pull
         resting_baseline=0.0,
-        approach_rate=0.0,           # driven entirely by alcohol level decay; no homeostatic pull
+        approach_rate=0.0,
         resting_low=0.0,
         resting_high=0.05,
         critical_low=0.0,
         critical_high=0.40,
         display_min=0.0,
         display_max=0.35,
-        interactions=[],             # alcohol's chemical effects are handled in substances.py
+        interactions=[],
         labels=[
             (0.02,  "SOBER",          "No measurable impairment."),
             (0.05,  "TRACE",          "Very mild. Slight warmth, minimal loosening."),
@@ -624,8 +673,10 @@ REGISTRY: dict[str, ChemicalProfile] = {
         name="sleep_pressure",
         display_name="Sleep Pressure",
         unit="AU",
-        resting_baseline=0.0,        # no homeostatic baseline — bidirectional
-        approach_rate=0.0,            # handled explicitly in advance()
+        pool="bloodstream",
+        clearance="gap_closure",     # derived from body["adenosine"] via circadian.py
+        resting_baseline=0.0,
+        approach_rate=0.0,
         resting_low=0.0,
         resting_high=100.0,
         critical_low=0.0,

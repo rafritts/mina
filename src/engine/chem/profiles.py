@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, Optional
+from typing import Callable, Literal, Optional
 
 
 @dataclass
@@ -46,3 +46,27 @@ class ChemicalProfile:
     interactions: list[Interaction] = field(default_factory=list)
     labels: list[tuple[float, str, str]] = field(default_factory=list)
     # Each entry: (upper_bound_exclusive, label_name, implication)
+
+    # --- SPEC-53 additions ---
+
+    # Compartment: which side of the blood-brain barrier this chemical lives in.
+    # "bloodstream" = plasma/peripheral; "synaptic" = CNS, behind BBB.
+    # Metadata only in this spec; used by SPEC-54 pool separation.
+    pool: Literal["bloodstream", "synaptic"] = "bloodstream"
+
+    # Clearance model determines how the engine advances this chemical each tick.
+    #   "exponential"  — hepatic/enzymatic first-order kinetics: C(t) = C0 * 0.5^(t/t½)
+    #   "gap_closure"  — homeostatic reuptake/regulation: C += (target - C) * rate * Δt
+    #   "formula"      — circadian or forced value: direct assignment from baseline_fn
+    clearance: Literal["exponential", "gap_closure", "formula"] = "gap_closure"
+
+    # Required when clearance == "exponential": half-life in minutes (plasma).
+    plasma_half_life: Optional[float] = None
+
+    # Threshold-triggered state descriptions collected by the decoder.
+    # Each entry: (threshold, tag, description) — active when concentration >= threshold.
+    notes: list[tuple[float, str, str]] = field(default_factory=list)
+
+    # Gaussian noise applied after clearance each tick (std dev in native units).
+    # 0.0 = no noise. Scaled by global noise_scale in the engine.
+    noise_sigma: float = 0.0

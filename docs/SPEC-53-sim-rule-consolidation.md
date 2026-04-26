@@ -1,6 +1,8 @@
-# SPEC-53: Biological Simulation Consolidation
+# SPEC-53: Simulation Rule Consolidation
 
 **Status: DRAFT**
+
+Absorbs: SPEC-37 (stochastic noise)
 
 ---
 
@@ -12,159 +14,27 @@ mismatched comment and formula) was a direct symptom. The deeper problem: there 
 single place to go to understand how a chemical behaves. Understanding cortisol requires
 reading `registry.py`, `engine.py`, `constants.py`, subsystem files, and `decoder.py`.
 
-The fix is a model — the **two-pool biological model** — that treats the simulation as
-physiology-inspired rather than physiology-accurate. Chemicals live in one of two pools
-separated by the blood-brain barrier. Each pool has its own clearance organs and
-mechanisms. Two stimulus axes (amygdala: fast/phasic, hypothalamus: slow/tonic) fire
-at different points in the turn cycle, correctly separating the immediate emotional
-coloring of a response from the hormonal aftermath that shapes the next one.
+The fix is consolidation. Each chemical's complete lifecycle — decay model, half-life,
+threshold notes, cross-chemical interactions — lives in one place: its `ChemicalProfile`
+in the registry. The engine becomes a generic executor. Rules move to a single file.
+
+No behavior changes. This is cleanup that makes the system understandable and
+maintainable, and lays the foundation for SPEC-54.
 
 ---
 
 ## Design Philosophy
 
-**Biological constructs as metaphors, not constraints.** We use "bloodstream",
-"plasma half-life", "hepatic clearance", "renal filtration", "enzymatic degradation"
-because they give the system a coherent mental model and produce realistic behavior.
-We do not need to match real pharmacokinetics exactly. When tuning is needed, we tune
-the half-life in one place and it propagates everywhere.
-
-**The bloodstream is a shared bus.** Every chemical has a plasma concentration. The
-engine advances concentrations each tick. Downstream consumers (decoder, derived values,
-behavior) read from the bloodstream. Nothing writes concentration values except the
-engine and the encoder.
+**Biological constructs as metaphors, not constraints.** We use "plasma half-life",
+"hepatic clearance", "reuptake transporter" because they give the system a coherent
+mental model and produce realistic behavior. We do not need to match real
+pharmacokinetics exactly. When tuning is needed, tune the half-life in one place and
+it propagates everywhere.
 
 **Simple parts, complex emergent behavior.** Each chemical has one decay model and one
 set of parameters. Cross-chemical effects are explicit interactions, not scattered
 hardcoding. The complexity of the simulation emerges from the interactions, not from
 per-chemical special cases buried in the engine.
-
----
-
-## Two Compartments, One Barrier
-
-The blood-brain barrier divides the simulation into two distinct chemical pools:
-
-**Bloodstream (plasma)**: cortisol, epinephrine, norepinephrine, glucose, melatonin,
-oxytocin, hydration, BAC. Clearance is hepatic degradation, renal filtration, and
-plasma enzymatic activity. Half-lives are plasma pharmacokinetics.
-
-**Synaptic pool (CNS, behind the BBB)**: dopamine, serotonin, acetylcholine, GABA,
-glutamate, endorphins, anandamide, 2-AG. Clearance is reuptake transporters (DAT,
-SERT, NET) and local enzymatic degradation (MAO, COMT, AChE, FAAH). Half-lives are
-synaptic dwell times.
-
-Mechanically both pools are a flat `{chemical_name: concentration}` dict advanced by
-the same three clearance models. The distinction is conceptual — it determines which
-biological metaphor applies to clearance, and it correctly captures that dopamine in
-plasma is not the same pool as dopamine in the brain.
-
-Cross-BBB effects (cortisol suppressing serotonin synthesis; glucose fueling CNS
-function) are explicit interactions where source and target live in different pools.
-
-Each tick:
-```
-bloodstream.advance(sim_hours)
-synaptic_pool.advance(sim_hours)
-```
-
-### Clearance
-
-Every chemical is cleared by one of three biological mechanisms:
-
-| Mechanism | Biological analog | Math | When to use |
-|---|---|---|---|
-| `exponential` | Hepatic/enzymatic degradation — first-order kinetics | `C(t) = C₀ × 0.5^(t / t½)` | Fast-clearing molecules: epinephrine, endorphins, endocannabinoids |
-| `gap_closure` | Homeostatic regulation — reuptake/receptor driven | `C += (target - C) × rate × Δt` | Most neurotransmitters; system "wants" a setpoint |
-| `formula` | Circadian or physiologically-forced value | Direct assignment from function | Melatonin, sleep pressure |
-
-No other clearance models. If a chemical doesn't fit one of these three, that's a
-design question to resolve before implementing.
-
----
-
-## Phasic vs. Tonic: Two Stimulus Axes
-
-The current encoder fires all chemical deltas before the response. This collapses the
-time dimension — fast and slow chemicals land simultaneously, which is biologically wrong.
-Cortisol from "Can we talk?" peaks 20-40 minutes after the message, not before Mina
-finishes typing her reply.
-
-The fix is two separate axes with different timing:
-
-### Amygdala — Phasic (pre-response)
-
-The amygdala handles **immediate salience detection**. It fires fast, reflexive signals
-before any cognitive processing completes. These land in state before the three-pillar
-pipeline runs and directly color the response.
-
-The amygdala is a **pattern matcher, not a thinker**. It does not understand the
-message — it scores five salience dimensions and fires proportionally. A single LLM
-call outputs only:
-
-```json
-{"threat": 3, "reward": 7, "novelty": 2, "warmth": 8, "urgency": 1}
-```
-
-Scores are integers 0–10. The prompt is minimal — no chemistry knowledge required.
-A deterministic lookup table in code maps these scores to phasic chemical deltas.
-The LLM scores human-intuitive concepts; the code owns the biology.
-
-Example mappings (tunable):
-```
-threat × 8  → norepinephrine delta
-threat × 4  → epinephrine delta (only if urgency > 5)
-reward × 5  → dopamine delta
-warmth × 3  → endorphin delta
-novelty × 6 → norepinephrine delta
-```
-
-Phasic chemicals:
-- **Dopamine** (VTA phasic firing — reward/threat salience)
-- **Norepinephrine** (locus coeruleus alerting — arousal, novelty)
-- **Epinephrine** (SAM axis — physical/urgent threat only)
-- **Endorphins** (phasic release on warmth or intense positive stimulus)
-
-The amygdala does not release these directly — it signals to the structures that do
-(VTA, locus coeruleus, adrenal medulla). As an architectural label it is accurate
-enough.
-
-### Hypothalamus — Tonic (post-response)
-
-The hypothalamus handles **sustained regulatory responses**. It fires after the
-amygdala's immediate assessment, routes through multi-step cascades, and peaks well
-after the triggering moment. These land in state *after* the response is sent —
-shaping the next turn, not the current one.
-
-Tonic chemicals:
-- **Cortisol** (HPA axis — CRH → ACTH → cortisol, 20-40 min delay)
-- **Oxytocin** (sustained social bonding release — builds over a warm exchange)
-- **Serotonin tone** (shifts over hours, not seconds)
-
-### What this produces
-
-A stressful message hits the amygdala: norepinephrine spikes, dopamine flashes with
-threat salience. Mina responds from that state — alert, slightly guarded. Then the
-HPA cascade fires post-response. Cortisol is still climbing into the next message.
-Two turns later she's carrying the cortisol load from something said earlier. That's
-how dread actually works.
-
-A warm message hits the amygdala: dopamine phasic reward signal. Mina responds warm.
-Then oxytocin builds post-response, serotonin tone nudges up. The next message starts
-from a slightly elevated baseline. Positive exchanges compound.
-
-### Secretion Queue
-
-Both axes write to the secretion queue. Each event carries:
-- `chemical`: name
-- `amount`: delta in real units
-- `axis`: `"amygdala"` or `"hypothalamus"`
-- `source`: tag for event bus (`"stimulus"`, `"regulation"`, `"substance"`, etc.)
-- `onset_delay`: seconds before it lands in the pool (default 0; HPA cascade uses this)
-
-The engine drains the queue each tick. Amygdala events are drained before the pillar
-pipeline. Hypothalamus events are queued during the turn and drained after the response
-is sent. This is the only write path into either pool.
 
 ---
 
@@ -179,47 +49,58 @@ class ChemicalProfile:
     name: str
     display_name: str
     unit: str
+    pool: Literal["bloodstream", "synaptic"]   # which compartment this chemical lives in
 
     # --- Clearance ---
     clearance: Literal["exponential", "gap_closure", "formula"]
     plasma_half_life: Optional[float] = None   # minutes; required for exponential
     approach_rate: Optional[float] = None      # /sim-hour; required for gap_closure
     baseline_fn: Optional[Callable] = None     # required for formula; fallback for gap_closure dynamic targets
-
     resting_baseline: float = 0.0              # homeostatic target; 0 = no baseline
 
     # --- Physiological ranges ---
-    resting_low: float = 0.0                   # below this = low
-    resting_high: float = 0.0                  # above this = elevated
-    critical_low: float = 0.0                  # clinically dangerous floor
-    critical_high: float = 0.0                 # clinically dangerous ceiling / physics max
+    resting_low: float = 0.0
+    resting_high: float = 0.0
+    critical_low: float = 0.0
+    critical_high: float = 0.0
 
     # --- Display ---
     display_min: float = 0.0
     display_max: float = 0.0
     labels: list[tuple[float, str, str]] = field(default_factory=list)
 
-    # --- Saturation (soft/hard ceiling and floor for delta clamping) ---
+    # --- Saturation ---
     soft_ceiling: Optional[float] = None
     hard_ceiling: Optional[float] = None
     soft_floor: Optional[float] = None
     hard_floor: Optional[float] = None
 
     # --- Biological notes ---
-    # Threshold-triggered state descriptions, read by the decoder.
+    # Threshold-triggered state descriptions read by the decoder.
     # (threshold, tag, description) — active when concentration crosses threshold.
     notes: list[tuple[float, str, str]] = field(default_factory=list)
 
-    # --- Interactions ---
-    # Cross-chemical effects. Source is this chemical; target is in the Interaction.
+    # --- Cross-chemical interactions ---
     interactions: list[Interaction] = field(default_factory=list)
 ```
 
-The key additions over the current profile:
+Key additions over the current profile:
 
-- `clearance` field makes the decay model explicit and co-located with the chemical
+- `clearance` makes the decay model explicit and co-located with the chemical
 - `plasma_half_life` in **minutes** — unambiguous, matches biological reference
-- `notes` replaces INTERACTION_RULES in `decoder.py` — threshold-triggered prose attached to the chemical that triggers it
+- `pool` assigns the chemical to a compartment (used by SPEC-54; metadata only in this spec)
+- `notes` replaces the single-chemical threshold cases in `INTERACTION_RULES`
+
+### Clearance models
+
+| Mechanism | Biological analog | Math | When to use |
+|---|---|---|---|
+| `exponential` | Hepatic/enzymatic first-order kinetics | `C(t) = C₀ × 0.5^(t / t½)` | Fast-clearing: epinephrine, endorphins, endocannabinoids |
+| `gap_closure` | Homeostatic regulation — reuptake/receptor driven | `C += (target - C) × rate × Δt` | Most neurotransmitters |
+| `formula` | Circadian or physiologically-forced value | Direct assignment from function | Melatonin, sleep pressure |
+
+No other clearance models. If a chemical doesn't fit one of these three, that's a
+design question to resolve before implementing.
 
 ---
 
@@ -230,28 +111,26 @@ Cross-chemical effects are defined on the **source** chemical's profile:
 ```python
 @dataclass
 class Interaction:
-    target: str                           # chemical being affected
-    threshold: float                      # source concentration that activates this
-    direction: Literal["above", "below"]  # threshold crossing direction
-    rate: float                           # delta/sim-hour applied to target
-    tag: str                              # description for event bus
+    target: str
+    threshold: float
+    direction: Literal["above", "below"]
+    rate: float                            # delta/sim-hour applied to target
+    tag: str
 ```
 
-This replaces the scattered cross-chemical hardcoding in `engine.py` and the
-`INTERACTION_RULES` predicates in `decoder.py` that operate on raw chemistry.
+This replaces the scattered cross-chemical hardcoding in `engine.py`.
 
 ---
 
-## Notes — Threshold-Triggered Biological State
+## Notes and Rules
 
-Currently, INTERACTION_RULES in `decoder.py` contains two different kinds of things:
+`INTERACTION_RULES` in `decoder.py` contains two kinds of things:
 
-1. **Single-chemical threshold descriptions**: "cortisol above 650 = acute stress"
-2. **Multi-chemical compound descriptions**: "cortisol > 650 AND oxytocin < 28 = stressed with no anchor"
+1. **Single-chemical threshold descriptions** — "cortisol above 650 = acute stress"
+2. **Multi-chemical compound descriptions** — "cortisol > 650 AND oxytocin < 28 = no anchor"
 
-Type 1 belongs on the chemical's profile as `notes`. Type 2 is a multi-variate
-observation — these stay in a dedicated module (`rules.py`), but written as named
-rules rather than anonymous lambdas.
+Type 1 moves onto the chemical's profile as `notes`. Type 2 moves to `rules.py` as
+named `CompoundRule` entries.
 
 ### Chemical-level notes (on profile)
 
@@ -263,37 +142,98 @@ notes=[
 ]
 ```
 
-The decoder reads these by scanning each chemical's notes and collecting those whose
-threshold is crossed. No lambda predicates — just threshold comparisons.
+The decoder scans each chemical's notes and collects those whose threshold is crossed.
+No lambda predicates — just threshold comparisons.
 
-### Compound rules (in rules.py)
+### Compound rules (rules.py)
 
 ```python
 COMPOUND_RULES: list[CompoundRule] = [
     CompoundRule(
         tag="stress_with_anchor",
-        condition=lambda s: s["cortisol"] > 650 and s["oxytocin"] > 57,
+        condition=lambda s, d: s["cortisol"] > 650 and s["oxytocin"] > 57,
         description="Acute stress held together by a strong bond. Suppression has a cost.",
     ),
-    CompoundRule(
-        tag="stress_no_anchor",
-        condition=lambda s: s["cortisol"] > 650 and s["oxytocin"] < 28,
-        description="Acute stress with no trust anchor. Likely to shut down or lash out.",
-    ),
-    # ...
+    ...
 ]
 ```
 
-These still use lambdas because they are inherently multi-variate. But they live in
-one file (`rules.py`), not scattered across `decoder.py`. The lambda takes `s` (a flat
-dict of bloodstream concentrations) — not the full `BiologicalState` object.
+The lambda takes `s` (flat concentration dict) and `d` (derived values dict) — the
+same two inputs the current predicates use, just consistently typed. No `BiologicalState`
+attribute access inside rules.
+
+---
+
+## Stochastic Noise (absorbed from SPEC-37)
+
+Real neurochemistry is not deterministic. Neurotransmitter release, receptor binding,
+and hormonal secretion all have meaningful moment-to-moment variance. Without noise,
+the same conversation at the same biological state always produces identical chemistry.
+
+Noise is a per-chemical parameter on the profile and is applied in the engine loop.
+
+### ChemicalProfile additions
+
+```python
+noise_sigma: float = 0.0       # std dev of per-tick Gaussian noise in native units
+                                # 0.0 = no noise (default for formula chemicals)
+```
+
+`noise_sigma` is calibrated to the coefficient of variation (CV) observed in
+physiological literature — most neurotransmitters run ~10–20% CV per minute. Examples:
+
+| Chemical | noise_sigma | Rationale |
+|---|---|---|
+| dopamine | 3.0 pg/mL | ~3% CV, pulsatile VTA firing |
+| serotonin | 0.4 ng/mL | smoother tonic release |
+| cortisol | 8.0 nmol/L | high pulsatile variance |
+| oxytocin | 0.3 pg/mL | slow, low variance |
+| melatonin | 0.0 | formula-driven, no noise |
+
+### Engine application
+
+Applied after clearance, before cross-interactions:
+
+```python
+if profile.noise_sigma > 0:
+    noise = random.gauss(0, profile.noise_sigma) * noise_scale
+    value = clamp(value + noise, profile.critical_low, profile.critical_high)
+```
+
+`noise_scale` is a global scalar (default 1.0) that can be reduced for debugging or
+increased to stress-test the sim. It is driven by state conditions:
+
+- **Sleep**: `noise_scale *= 0.5` — CNS quiets significantly during NREM
+- **High allostatic load**: cortisol and norepinephrine `noise_sigma *= 1.5` — dysregulation increases variance
+- **High anxiety**: norepinephrine and GABA `noise_sigma *= 1.3` — labile arousal
+
+Noise is always clipped to `critical_low` / `critical_high`. It cannot push a chemical
+into a dangerous range on its own.
+
+### Reproducibility
+
+Noise is seedable via config: `"noise_seed": 42` for a fixed seed, `null` for true
+random. Fixed seed lets you reproduce a specific trajectory when debugging, then
+disable for production.
+
+### Validator interaction
+
+The resting state validator uses **rolling means** over the last 500 ticks rather than
+point values when noise is enabled. A chemical that has settled within ±2σ of its
+resting baseline for 500 consecutive ticks is considered stable. The validator reports
+the rolling mean as the settled value and includes the measured noise amplitude.
+
+### Not in this spec
+
+Correlated noise between related chemicals (dopamine/norepinephrine co-varying during
+sympathetic activation) is left for a future spec. Independent per-chemical noise is
+sufficient for biological texture.
 
 ---
 
 ## Engine Becomes a Generic Executor
 
-After this spec, `engine.py`'s chemical advancement loop contains no per-chemical
-special cases. It does this and only this:
+After this spec, `engine.py`'s advancement loop contains no per-chemical special cases:
 
 ```
 for each chemical in REGISTRY:
@@ -309,41 +249,102 @@ for each chemical in REGISTRY:
 
 for each chemical in REGISTRY:
     for each interaction in profile.interactions:
-        if threshold crossed: apply delta to target
+        if threshold crossed: apply rate × sim_hours to target
 ```
 
-Chemicals that currently have per-chemical branches in the engine (epinephrine,
-endorphins, melatonin, glucose, hydration, sleep_pressure) get their logic encoded
-in their profile's clearance type and parameters. The engine branch disappears.
+Chemicals with current per-chemical engine branches (epinephrine, endorphins, melatonin,
+glucose, hydration, sleep_pressure) get their logic encoded in their profile's clearance
+type and parameters. The branch disappears.
 
 ---
 
 ## Constants Consolidation
 
-`constants.py` at 735 lines is where tuning lives. This is fine — but constants should
-be semantically organized and clearly owned by their chemical or subsystem.
+`constants.py` at 735 lines is where tuning lives — that's fine. But values should be
+clearly owned by their chemical or subsystem.
 
-**Not proposing to remove `constants.py`**. Proposing to:
+Changes:
+1. Add section headers linking constant groups to the chemical/subsystem they belong to
+2. Move the three melatonin constants imported by `registry.py` into the registry directly — registry should not import from constants
+3. Half-life values currently inline in `engine.py` move to constants: `EPINEPHRINE_PLASMA_HALF_LIFE_MINUTES = 2.0`, `ENDORPHIN_PLASMA_HALF_LIFE_MINUTES = 25.0`
 
-1. Add a comment header to each constant group linking it to the chemical/subsystem it belongs to
-2. Move the three melatonin constants currently imported by `registry.py` into the cortex-level constants section — registry should not import from constants
-3. Half-life values that are currently inline in `engine.py` (epinephrine 2-min, endorphins 25-min) move to constants with clear names: `EPINEPHRINE_PLASMA_HALF_LIFE_MINUTES = 2.0`
-
-No deletions from constants.py unless a value is unreferenced after the refactor.
+No value changes. No deletions unless a value is unreferenced after the refactor.
 
 ---
 
 ## decoder.py Simplification
 
-After this spec, `decoder.py`'s bio report section does this:
+After this spec, `decoder.py`'s bio report does:
 
-1. Collect active chemical-level notes by scanning REGISTRY profiles
-2. Evaluate COMPOUND_RULES (from `rules.py`) against bloodstream concentrations
-3. Compute derived values (from `derived.py`) as before
+1. Scan REGISTRY profiles → collect active `notes` (threshold crossed)
+2. Evaluate `COMPOUND_RULES` from `rules.py` against `(concentrations, derived)` dicts
+3. Compute derived values from `derived.py` as before
 4. Assemble bio report string
 
-No lambdas, no inline thresholds, no BiologicalState attribute access inside
-predicates. Everything reads from a flat `{chemical: concentration}` dict.
+No lambdas inline. No `BiologicalState` attribute access inside predicates.
+
+---
+
+## Resting State Validator
+
+A core deliverable of this spec is a headless simulation runner that validates resting
+chemical behavior by advancing the engine through N ticks of pure math — no LLM calls,
+no stimuli, no encoder. Just the engine loop running forward in time.
+
+### Purpose
+
+The epinephrine half-life bug survived because there was no way to run the sim and ask
+"does epinephrine actually clear in 2 minutes?" This tool answers that question for
+every chemical at once. It is the regression harness for all future tuning changes.
+
+### What it does
+
+1. Load `BiologicalState` at default resting values
+2. Advance the engine N ticks (configurable; default 10,000) at a fixed sim-time step
+3. Record each chemical's concentration at every tick
+4. At the end, compute per-chemical statistics: mean, min, max, std deviation, and
+   final settled value
+5. Compare settled values against each profile's `resting_baseline` and
+   `resting_low`/`resting_high` range
+6. Flag any chemical that:
+   - Settled outside its `resting_low`/`resting_high` range
+   - Drifted monotonically (never stabilized)
+   - Hit `critical_low` or `critical_high` at any point
+   - Has std deviation above a threshold (oscillating instead of settling)
+
+### Output
+
+Plain text report to stdout. One line per chemical:
+
+```
+PASS  cortisol        settled: 248.3 nmol/L   expected: 250.0   drift: -0.7%
+PASS  epinephrine     settled:  44.8 pg/mL    expected:  45.0   drift: -0.4%
+FAIL  serotonin       settled:  11.2 ng/mL    expected:  22.0   drift: -49.1%  [below resting_low]
+WARN  melatonin       peak: 198.4 pg/mL  trough: 4.8 pg/mL  [circadian — range check only]
+```
+
+Circadian chemicals (`clearance = "formula"`) are not expected to settle — they get a
+range check instead: peak and trough must fall within biological plausible bounds.
+
+### Usage
+
+```
+python -m src.tools.sim_baseline
+python -m src.tools.sim_baseline --ticks 10000 --step 0.05
+python -m src.tools.sim_baseline --ticks 50000 --step 0.1 --chemical cortisol
+```
+
+`--step` is sim-hours per tick (default 0.05 = 3 sim-minutes). `--chemical` runs
+the validator for a single chemical and prints its full concentration history.
+
+### Implementation notes
+
+- No I/O beyond reading the registry and default state. No file writes during the run.
+- The engine's subsystem calls (HPA, immune, etc.) run normally — this validates the
+  full system, not just the clearance math.
+- Stimuli are not fired. The encoder does not run. This is resting state only.
+- A separate `--stimulus` mode (future) could fire a single stimulus event and measure
+  the chemical response curve — useful for validating lookup table magnitudes in SPEC-54.
 
 ---
 
@@ -351,53 +352,46 @@ predicates. Everything reads from a flat `{chemical: concentration}` dict.
 
 | File | Change |
 |---|---|
-| `src/engine/chem/profiles.py` | Add `clearance`, `plasma_half_life`, `pool`, `notes` fields to ChemicalProfile |
-| `src/engine/chem/registry.py` | Add `clearance`, `plasma_half_life`, `pool`, `notes` to each profile; remove constants import |
-| `src/engine/engine.py` | Replace per-chemical branches with generic clearance dispatch; advance bloodstream and synaptic pool separately |
+| `src/engine/chem/profiles.py` | Add `clearance`, `plasma_half_life`, `pool`, `notes` fields to `ChemicalProfile` |
+| `src/engine/chem/registry.py` | Populate new fields on each profile; move melatonin constants inline |
+| `src/engine/engine.py` | Replace per-chemical branches with generic clearance dispatch |
 | `src/engine/constants.py` | Add `EPINEPHRINE_PLASMA_HALF_LIFE_MINUTES`, `ENDORPHIN_PLASMA_HALF_LIFE_MINUTES`; add section headers |
-| `src/brain/subconscious/decoder.py` | Replace INTERACTION_RULES with profile-note scan + compound rule evaluation; remove BiologicalState attribute access |
-| `src/engine/rules.py` | **New** — CompoundRule dataclass + COMPOUND_RULES list (extracted from decoder.py) |
-| `src/brain/amygdala/stimulus_encoder.py` | Replace chemical delta output with 5-dimension salience scoring; deterministic lookup maps scores to phasic deltas |
-| `src/brain/cortex/cortex.py` | Drain amygdala queue pre-pipeline; drain hypothalamus queue post-response |
-| `src/brain/hypothalamus/` | **New** — hypothalamus module; fires tonic/hormonal cascade post-response |
-
-No new abstractions beyond CompoundRule.
+| `src/brain/subconscious/decoder.py` | Replace `INTERACTION_RULES` with profile-note scan + compound rule evaluation |
+| `src/engine/rules.py` | **New** — `CompoundRule` dataclass + `COMPOUND_RULES` list |
+| `src/tools/sim_baseline.py` | **New** — headless resting state validator; uses rolling means when noise is enabled |
 
 ---
 
 ## What Does NOT Change
 
-- `derived.py` — second-order values are a separate concern; not touched by this spec
-- `BiologicalState` — the full state object stays; only the flat bloodstream dict gets
-  a cleaner interface for rule evaluation
-- Subsystem files (HPA, immune, pain, etc.) — they write to the secretion queue and
-  state fields; that interface is unchanged
-- Substance system — same queue-based write path
-- `constants.py` values — no value changes, only organization and two new names
+- `derived.py` — untouched
+- `BiologicalState` — untouched
+- Subsystem files (HPA, immune, pain, etc.) — untouched
+- Substance system — untouched
+- All constant values — no tuning changes in this spec
+- Encoder behavior — no changes to when or how chemistry fires
 
 ---
 
-## Open Questions
+## Resolved Design Decisions
 
-1. **Compound rules with derived values**: Some current INTERACTION_RULES predicates
-   check derived values (`d['cognitive_clarity'] < 15`, `d['anxiety'] > 60`). Derived
-   values are computed from the bloodstream, not stored. The compound rule lambda
-   could accept `(s: dict, d: dict)` where `d` is the derived dict — same as today,
-   just cleaner. Is this acceptable or do we want compound rules to operate only on
-   raw plasma concentrations?
+1. **Compound rules use `(s, d)`** — the brain responds to psychological states, not
+   raw concentrations. Anxiety is a second-order state, not "norepinephrine above X."
+   Compound rules receive both the concentration dict `s` and the derived values dict
+   `d`. Biologically correct.
 
-2. **Subsystem-managed chemicals**: Some chemicals (sleep_pressure, GABA, glutamate,
-   anandamide, two_ag, glucose) are currently skipped in the main advancement loop
-   because their subsystems manage them. After this spec, do they get profiles with
-   `clearance = "formula"` and the subsystem becomes the `baseline_fn`? Or do we keep
-   the skip list? The profile approach is cleaner; the skip list is simpler.
+2. **Subsystem-managed chemicals get profiles; skip list removed** — all chemicals
+   have biological clearance mechanisms. GABA has reuptake transporters (GAT-1),
+   anandamide has FAAH enzymatic degradation, glucose has hepatic regulation. The skip
+   list is an implementation artifact. Each gets a `clearance` profile; the subsystem
+   becomes its `baseline_fn`. The engine skip list disappears.
 
-3. **Half-life granularity**: The epinephrine plasma half-life is ~2 minutes in real
-   biology. At sim tick rates, a 2-minute half-life may be too aggressive or not
-   aggressive enough depending on how fast sim-time runs. Should `plasma_half_life`
-   be validated against the minimum tick interval, or is that the engine's problem?
+3. **10-second ticks work correctly** — at 10s per tick (`sim_hours = 0.00278`),
+   epinephrine decay factor is `0.5^(0.00278 / 0.0333) = 0.944` per tick. After 12
+   ticks (2 real minutes), ~50% of excess cleared — matches the 2-minute half-life
+   exactly. No validation needed at profile definition.
 
-4. **Interaction rate units**: Current interactions use `rate_per_hour` applied as
-   `rate × sim_hours`. This works but is easy to mis-tune. Should Interaction carry
-   a `half_life_minutes` instead, making the decay rate intuitive in the same way
-   as chemical clearance?
+4. **Interactions keep `rate_per_hour`** — half-life implies decay toward zero, but
+   interactions apply a continuous delta to a target that has its own homeostasis.
+   `rate_per_hour` reads as "cortisol suppresses serotonin at 2 ng/mL/hr while above
+   threshold" — semantically correct and unambiguous.

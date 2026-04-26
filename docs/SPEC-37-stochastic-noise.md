@@ -71,4 +71,8 @@ The encoder computes deltas from LLM reasoning — those should remain determini
 
 ## Status
 
-Flag planted. Implementation pending. Coordinate with SPEC-36 (telemetry) — noise will add variance to validation traces; validator should use rolling means rather than point values for anomaly detection.
+**Folded into SPEC-53.** The core design (per-chemical `noise_sigma` on `ChemicalProfile`,
+engine application after clearance, state-modulated scaling, seed/reproducibility) is
+fully specified there. The resting state validator in SPEC-53 uses rolling means to
+handle noise correctly. Correlated noise between related chemicals remains an open
+question deferred to a future spec.

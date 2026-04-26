@@ -19,6 +19,7 @@ from src.application.infra.client import chat_create, DECODER_MODEL, CONTEXT_MOD
 from src.config.config import load_config, INJECT_FILE, RUN_DIR
 from src.brain.brainstem.state import BiologicalState, derived, _CHEMICAL_DEFAULTS
 from src.brain.brainstem.chemicals import REGISTRY, get_label
+from src.engine.rules import COMPOUND_RULES
 
 # ---------------------------------------------------------------------------
 # Derived value range tables (0–100 normalized scale)
@@ -73,56 +74,6 @@ def _get_range(value: float, table: list) -> tuple[str, str]:
     return table[-1][1], table[-1][2]
 
 
-# ---------------------------------------------------------------------------
-# Interaction rules (thresholds in real physiological units)
-# ---------------------------------------------------------------------------
-
-INTERACTION_RULES = [
-    (lambda s, d: s.cortisol > 650 and s.oxytocin > 57,
-     "Acute stress held together by a strong bond. Suppression has a cost — this cannot hold indefinitely."),
-    (lambda s, d: s.cortisol > 650 and s.oxytocin < 28,
-     "Acute stress with no trust anchor. Likely to shut down or lash out."),
-    (lambda s, d: d['cognitive_clarity'] < 15 and s.sleeping,
-     "Cognitively offline — asleep. Responses must reflect this."),
-    (lambda s, d: d['cognitive_clarity'] < 15 and not s.sleeping,
-     "Cognitively offline while awake — severely impaired. Something is wrong."),
-    (lambda s, d: s.glucose < 62 and d['anxiety'] > 60,
-     "Hunger is amplifying the anxiety. These are compounding."),
-    (lambda s, d: s.dopamine > 200 and d['anxiety'] > 65,
-     "High reward-seeking under stress — impulsive decisions likely."),
-    (lambda s, d: s.serotonin < 14 and d['depression'] > 60,
-     "Low serotonin floor + high depression. Negative bias in all interpretation."),
-    (lambda s, d: d['boredom'] > 65 and s.dopamine < 56,
-     "Severe boredom with low dopamine — actively seeking any stimulation. Will accept poor trade-offs."),
-    (lambda s, d: d['boredom'] > 65 and s.cortisol < 200,
-     "Boredom distress without active threat — playfully chaotic or reckless, not fearful. Mischief-seeking."),
-    (lambda s, d: d['boredom'] > 65 and d['depression'] > 55,
-     "Boredom + depression: not restless chaos but heavy inertia. Wants relief but can't generate motivation. Stuck."),
-    (lambda s, d: d['loneliness'] > 70 and s.oxytocin < 28,
-     "Aching loneliness with no established bond — contact-seeking urgent but trust isn't there. Approach-avoidance tension."),
-    (lambda s, d: s.norepinephrine > 1000 and d['cognitive_clarity'] < 40,
-     "Flooded with arousal but cognitively impaired — high reactivity, low judgment. Responses may be raw or unfiltered."),
-    (lambda s, d: s.dopamine > 180 and s.endorphins < 20,
-     "High wanting, low liking — seeking hard but arrival feels hollow. Addictive/obsessive pattern."),
-    (lambda s, d: s.dopamine < 56 and s.endorphins > 40,
-     "Low drive, high pleasure capacity — content with what comes but won't pursue much. Passive warmth without motivation."),
-    (lambda s, d: s.serotonin < 14 and d['loneliness'] > 50,
-     "Low serotonin + loneliness: social cues are being read as threatening even when neutral. Contact may feel worse than absence."),
-    (lambda s, d: s.serotonin < 14 and s.cortisol > 440,
-     "Low serotonin floor under active stress — impulse control is compromised. Likely to say or do something she'll regret."),
-    (lambda s, d: s.norepinephrine > 800 and s.glucose < 70,
-     "Hyperalert but underfueled — attention is sharp but the tank is empty. Will crash hard when the stress passes."),
-    # SPEC-34: hedonic setpoint / craving rules
-    (lambda s, d: s.body.get("hedonic_setpoint", 15) > 60 and d.get("craving", 0) > 55,
-     "Setpoint is elevated from a recent high — current state registers as severe deprivation "
-     "even if chemistry looks near-normal. The want isn't for more; it's to feel normal again."),
-    (lambda s, d: s.body.get("hedonic_setpoint", 15) > 60 and s.oxytocin < 20 and d.get("craving", 0) > 45,
-     "The high involved bonding chemistry. The deficit isn't generic — it's attributed to a "
-     "specific person. Feels like abandonment, not just emptiness."),
-    (lambda s, d: s.dopamine < 56 and s.endorphins < 15 and d.get("craving", 0) > 60,
-     "Reward floor has collapsed. Tonic anhedonia — nothing produces a signal. The craving "
-     "isn't acute wanting; it's the absence of any other feeling."),
-]
 
 _SUBSTANCE_COGNITIVE_STATES: dict[str, str] = {
     "caffeine": (
@@ -221,11 +172,28 @@ def biological_report(state: BiologicalState) -> str:
     lines.append(row_derived("Depression", to['depression'],        _DEPRESSION_RANGES))
     lines.append(SEP)
 
+    # SPEC-53: collect notes from profile thresholds + compound rules.
     notes = []
-    for predicate, text in INTERACTION_RULES:
+
+    # Single-chemical threshold notes from each profile
+    for chem_name, chem_profile in REGISTRY.items():
+        if not chem_profile.notes:
+            continue
+        val = state.chemicals.get(chem_name, _CHEMICAL_DEFAULTS.get(chem_name, 0.0))
+        for threshold, _tag, description in chem_profile.notes:
+            if val >= threshold:
+                notes.append(description)
+
+    # Multi-chemical compound rules
+    concentrations = {k: state.chemicals.get(k, _CHEMICAL_DEFAULTS.get(k, 0.0))
+                      for k in _CHEMICAL_DEFAULTS}
+    derived_with_extras = dict(flat)
+    derived_with_extras["sleeping"] = state.sleeping
+    derived_with_extras["hedonic_setpoint"] = state.body.get("hedonic_setpoint", 15.0)
+    for rule in COMPOUND_RULES:
         try:
-            if predicate(state, flat):
-                notes.append(text)
+            if rule.condition(concentrations, derived_with_extras):
+                notes.append(rule.description)
         except Exception:
             pass
 
