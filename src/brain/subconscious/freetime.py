@@ -755,7 +755,7 @@ async def run_freetime(force: bool = False) -> None:
                 {"activity": activity, "description": description},
                 f"You {activity}. {description}".strip(),
                 source="freetime",
-                deltas=do_deltas or {},
+                deltas={},
             )
         except Exception:
             pass

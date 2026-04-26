@@ -381,7 +381,6 @@ async def _mina_turn(
                 })
                 return new_entries, state, image_paths
 
-            tool_deltas: dict = {}
             result, state, extra = call_tool(name, args, state)
             save_state(state)
             log("TOOL/RESULT", str(result))
@@ -392,14 +391,13 @@ async def _mina_turn(
                     evaluate_activity_deltas, state, activity, description
                 )
                 if do_deltas:
-                    tool_deltas = do_deltas
                     state = apply_deltas(state, do_deltas)
                     save_state(state)
                     log("DO/DELTA", str(do_deltas))
 
             try:
                 from src.application.infra.events import emit_tool
-                emit_tool(name, args, str(result), source="cortex", deltas=tool_deltas)
+                emit_tool(name, args, str(result), source="cortex")
             except Exception:
                 pass
 
