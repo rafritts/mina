@@ -44,7 +44,7 @@ Status legend: **DONE** · **IN-PROGRESS** · **TODO** · **DRAFT** (scoped but 
 | 51 | Response Reasoning | DONE | response_reasoner.py with internal_reaction, ResponseStrategy, follow-up queue; wired into cortex |
 | 52 | Three-Pillar Pipeline | DONE | Emotion → Context → Response pipeline live; adjudicator removed; coherence files active |
 | 53 | Sim Rule Consolidation | DONE | ChemicalProfile fields, generic clearance dispatch, stochastic noise, CompoundRule, resting-state validator |
-| 54 | Biological Timing Model | IN-PROGRESS | Two-pool BBB separation; amygdala phasic (pre) + hypothalamus tonic (post) stimulus axes; 4 open questions |
+| 54 | Biological Timing Model | DONE | Two-pool BBB separation; amygdala phasic (pre) + hypothalamus tonic (post) stimulus axes; 4 open questions |
 | 55 | RAG Similarity Tuning | DONE | Add similarity floor (~0.75) to filter low-quality hits; consolidation entries are already good; noise comes from mina_sliding returning loosely-related chunks |
 | 56 | Application Cleanup | DONE | 10-item debt pass: broken imports, dead fields/constants, duplicate state I/O, compat shims, tolerance scalar |
 | 99 | Long-Term Physiological Validation | OBE | Removed; sim_baseline.py (SPEC-53) covers validation needs |
