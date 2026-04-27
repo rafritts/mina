@@ -27,6 +27,11 @@
 
   "rag_ttl_days": 14,
 
+  "attachment_style": {
+    "style": "anxious",
+    "intensity": 65
+  },
+
   "physical_stats": {
     "age":           24,
     "height_cm":     162.56,

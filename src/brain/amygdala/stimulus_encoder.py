@@ -70,7 +70,8 @@ If an external event occurred:
   "acetylcholine": <number>,  // nmol/L delta
   "anandamide": <number>,     // nM delta — activity encoder only (exercise, relaxation)
   "prolactin": <number>,      // ng/mL delta — peak resolution event_override only
-  "event_override": false     // true only for discrete biological events (see below)
+  "event_override": false,    // true only for discrete biological events (see below)
+  "event_category": null      // relationship event type — see SPEC-38 section in stimulus prompt
 }
 
 Only include chemical fields that actually change from the external event."""
@@ -529,21 +530,86 @@ def _apply_personality_scaling(deltas: dict, personality: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# SPEC-38: Attachment style multipliers
+# ---------------------------------------------------------------------------
+
+# Per-style, per-event-category chemical multipliers.
+# Values >1.0 amplify, <1.0 dampen, 0.0 suppresses entirely.
+# Blended by intensity (0–100): effective = 1.0 + (full - 1.0) * (intensity/100)
+_ATTACHMENT_MULTS: dict[tuple[str, str], dict[str, float]] = {
+    ("anxious", "user_silence"):         {"cortisol": 2.0, "oxytocin": 1.5},
+    ("anxious", "perceived_coldness"):   {"cortisol": 1.8, "serotonin": 1.6, "norepinephrine": 1.5},
+    ("anxious", "reassurance_received"): {"oxytocin": 2.2},
+    ("anxious", "conflict"):             {"cortisol": 2.5},
+    ("anxious", "repair_attempt"):       {"oxytocin": 2.0},
+    ("avoidant", "user_silence"):        {"cortisol": 0.5},
+    ("avoidant", "intimacy_escalation"): {"cortisol": 1.6, "norepinephrine": 1.4, "oxytocin": 0.0},
+    ("avoidant", "reassurance_received"):{"oxytocin": 0.5},
+    ("avoidant", "conflict"):            {"cortisol": 0.7},
+    ("avoidant", "repair_attempt"):      {"cortisol": 0.5, "oxytocin": 0.5},
+    ("disorganized", "user_silence"):    {"cortisol": 2.0, "oxytocin": 1.5},
+    ("disorganized", "intimacy_escalation"): {"cortisol": 1.8, "oxytocin": 1.6},
+    ("disorganized", "conflict"):        {"cortisol": 3.0},
+}
+
+_EVENT_CATEGORY_GUIDANCE = """\
+## Relationship event category (SPEC-38)
+
+If this stimulus is a relationship-relevant event, set "event_category" to one of:
+- "user_silence"         — the user has been absent or gone quiet for an extended period
+- "perceived_coldness"   — message reads as flat, short, dismissive, or emotionally withdrawn
+- "reassurance_received" — user explicitly affirms, apologizes, checks in, or repairs
+- "intimacy_escalation"  — emotional or physical closeness is clearly increasing
+- "conflict"             — disagreement, criticism, or interpersonal tension
+- "repair_attempt"       — user de-escalates after conflict or offers to reconnect
+
+Set "event_category": null for all other stimuli (casual conversation, information exchange,
+activity descriptions, etc.). Do not force a category — most messages are null."""
+
+
+def _apply_attachment_style_multipliers(
+    deltas: dict,
+    event_category: str | None,
+) -> dict:
+    """Scale encoder deltas by attachment style for relationship-relevant event categories."""
+    if not event_category:
+        return deltas
+    try:
+        cfg = load_config().get("attachment_style", {})
+        style = cfg.get("style", "secure")
+        intensity = float(cfg.get("intensity", 50)) / 100.0
+    except Exception:
+        return deltas
+    if style == "secure" or intensity <= 0:
+        return deltas
+    mults = _ATTACHMENT_MULTS.get((style, event_category))
+    if not mults:
+        return deltas
+    result = dict(deltas)
+    for chem, full_mult in mults.items():
+        if chem not in result:
+            continue
+        effective = 1.0 + (full_mult - 1.0) * intensity
+        result[chem] = round(result[chem] * effective, 2)
+    return result
+
+
+# ---------------------------------------------------------------------------
 # LLM delta call
 # ---------------------------------------------------------------------------
 
-def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, bool]:
+def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, bool, str | None]:
     """
-    Plain completion returning a delta dict + event_override flag.
+    Plain completion returning a delta dict, event_override flag, and optional event_category.
     On JSON parse failure, retries once with the bad output and error appended.
-    Falls back to ({}, False) on any error — never crashes a turn.
+    Falls back to ({}, False, None) on any error — never crashes a turn.
     """
     from src.application.infra.log import log
     subtag = label.replace("encode_", "").upper()
 
     last_raw: list[str] = [""]  # captures raw LLM output as side effect for retry message
 
-    def _attempt(msgs: list[dict]) -> tuple[dict, bool]:
+    def _attempt(msgs: list[dict]) -> tuple[dict, bool, str | None]:
         response = chat_create(
             model=MODEL,
             messages=msgs,
@@ -572,13 +638,17 @@ def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, 
         reason_str = f" — {reasoning}" if reasoning else ""
         if no_external:
             log(f"ENCODER/{subtag}", f"no_external_deltas{reason_str}")
-            return {}, False
+            return {}, False, None
         event_override = bool(parsed.pop("event_override", False))
+        event_category = parsed.pop("event_category", None)
+        if not isinstance(event_category, str):
+            event_category = None
         deltas = {k: float(v) for k, v in parsed.items() if k in _DELTA_FIELDS}
         override_str = " [EVENT_OVERRIDE]" if event_override else ""
+        cat_str = f" [{event_category.upper()}]" if event_category else ""
         delta_str = ", ".join(f"{k}: {v:+.1f}" for k, v in deltas.items())
-        log(f"ENCODER/{subtag}", f"{override_str}{delta_str or '(no deltas)'}{reason_str}".strip())
-        return deltas, event_override
+        log(f"ENCODER/{subtag}", f"{override_str}{cat_str}{delta_str or '(no deltas)'}{reason_str}".strip())
+        return deltas, event_override, event_category
 
     try:
         return _attempt(messages)
@@ -599,7 +669,7 @@ def _call_delta_json(messages: list[dict], label: str = "delta") -> tuple[dict, 
             log(f"ENCODER/{subtag}/ERROR", str(e2))
     except Exception as e:
         log(f"ENCODER/{subtag}/ERROR", str(e))
-    return {}, False
+    return {}, False, None
 
 
 # ---------------------------------------------------------------------------
@@ -867,9 +937,11 @@ positive deltas for it should be 20–30% of the guidance maximums above.
 
 {_EVENT_OVERRIDE_GUIDANCE}
 
+{_EVENT_CATEGORY_GUIDANCE}
+
 {_DELTA_FORMAT}"""
 
-    raw, event_override = _call_delta_json([{"role": "user", "content": prompt}], label="encode_stimulus")
+    raw, event_override, event_category = _call_delta_json([{"role": "user", "content": prompt}], label="encode_stimulus")
     saturated = _apply_saturation(raw, state)
     try:
         from src.application.infra.stream_bus import stream_bus
@@ -879,7 +951,8 @@ positive deltas for it should be 20–30% of the guidance maximums above.
     if event_override:
         _emit_event("stimulus", stimulus_text, raw, False, event_override=True)
         return saturated  # EVENT_OVERRIDE: bypass queue, apply instantly
-    scaled = _apply_personality_scaling(saturated, _load_personality())
+    attachment_scaled = _apply_attachment_style_multipliers(saturated, event_category)
+    scaled = _apply_personality_scaling(attachment_scaled, _load_personality())
     final = _apply_habituation_and_sensitization(scaled, state, stimulus_text)
     immediate = _post_to_secretion_queue(final, state)
     _emit_event("stimulus", stimulus_text, raw, _is_habituation_dampened(scaled, final), event_override=False)
@@ -947,7 +1020,7 @@ positive deltas for it should be 20–30% of the guidance maximums.
 
 {_DELTA_FORMAT}"""
 
-    raw, event_override = _call_delta_json([{"role": "user", "content": prompt}], label="encode_response")
+    raw, event_override, _ = _call_delta_json([{"role": "user", "content": prompt}], label="encode_response")
     saturated = _apply_saturation(raw, state)
     if event_override:
         _emit_event("response", response_text, raw, False, event_override=True)
@@ -1013,7 +1086,7 @@ positive deltas for it should be 20–30% of the guidance maximums.
 
 {_DELTA_FORMAT}"""
 
-    raw, event_override = _call_delta_json([{"role": "user", "content": prompt}], label="encode_activity")
+    raw, event_override, _ = _call_delta_json([{"role": "user", "content": prompt}], label="encode_activity")
     saturated = _apply_saturation(raw, state)
     if event_override:
         _emit_event("activity", f"{activity}: {description}", raw, False, event_override=True)

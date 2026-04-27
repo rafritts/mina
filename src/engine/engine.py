@@ -162,6 +162,17 @@ def _advance_isolation_pressure(s: BiologicalState, sim_hours: float, now: float
     else:
         # Beyond grace period: pressure accumulates; extroverts feel it more
         rate = ISOLATION_ACCUMULATION_BASE + E * ISOLATION_ACCUMULATION_E_SCALE
+        # SPEC-38: attachment style modulates accumulation rate
+        try:
+            from src.config.config import load_config as _lc
+            _att = _lc().get("attachment_style", {})
+            _style = _att.get("style", "secure")
+            _intensity = float(_att.get("intensity", 50)) / 100.0
+            _style_mults = {"anxious": 1.8, "avoidant": 0.4, "disorganized": 1.2, "secure": 1.0}
+            _full = _style_mults.get(_style, 1.0)
+            rate *= 1.0 + (_full - 1.0) * _intensity
+        except Exception:
+            pass
         new_val = min(100.0, current + rate * sim_hours)
 
     s.body["isolation_pressure"] = new_val

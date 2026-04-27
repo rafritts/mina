@@ -197,6 +197,49 @@ def ei_balance(s) -> float:
     return round(glu_n - gaba_n, 3)
 
 
+def _compute_attachment_activation(s) -> float:
+    """SPEC-38: Attachment system activation 0-100 from isolation pressure + oxytocin deficit."""
+    try:
+        from src.config.config import load_config
+        _full_cfg = load_config()
+        cfg = _full_cfg.get("attachment_style", {})
+        style = cfg.get("style", "secure")
+        intensity = float(cfg.get("intensity", 50)) / 100.0
+        oxy_resting = float(_full_cfg.get("neurochemical_baselines", {}).get("oxytocin_resting", 4.0))
+    except Exception:
+        return 0.0
+    if style == "secure" or intensity <= 0:
+        return 0.0
+
+    isolation = s.body.get("isolation_pressure", 0.0)
+    oxy_current = s.chemicals.get("oxytocin", oxy_resting)
+    oxy_deficit = _clamp(max(0.0, oxy_resting - oxy_current) / max(oxy_resting, 0.01) * 100.0)
+
+    raw = isolation * 0.5 + oxy_deficit * 0.5
+
+    # Bonding damping — established trust reduces anxious activation (same pattern as social_hostility)
+    try:
+        from src.config.config import RELATIONSHIP_DIR as _REL_DIR
+        from src.brain.hippocampus.hippocampus import _get_net_relationship_dimensions
+        import os as _os
+        _bondings = []
+        if _os.path.exists(_REL_DIR):
+            for _fn in _os.listdir(_REL_DIR):
+                if _fn.endswith(".md"):
+                    _dims = _get_net_relationship_dimensions(_fn[:-3])
+                    _bondings.append(float(_dims.get("bonding", 0.0)))
+        _net_bonding = sum(_bondings) / len(_bondings) if _bondings else 0.0
+    except Exception:
+        _net_bonding = 0.0
+    # bonding -2→+2; dampen activation by up to 60% at max bonding
+    bonding_damping = 1.0 - (_net_bonding + 2.0) / 4.0 * 0.6
+
+    # Avoidant deactivates the attachment system; anxious amplifies it slightly
+    style_mult = {"anxious": 1.2, "avoidant": 0.4, "disorganized": 1.0}.get(style, 1.0)
+
+    return _clamp(raw * bonding_damping * style_mult * intensity)
+
+
 def derived(s) -> dict:
     """Compute second and third-order values. Never stored. All outputs 0-100."""
 
@@ -467,6 +510,8 @@ def derived(s) -> dict:
     ) * (1.0 + N * BIG5_N_HOSTILITY_SCALE)
     social_hostility = _clamp(social_hostility)
 
+    attachment_activation = _compute_attachment_activation(s)
+
     return {
         "second_order": {
             "energy":            round(energy, 1),
@@ -477,13 +522,14 @@ def derived(s) -> dict:
             "mood_valence":      round(mood_valence, 1),
         },
         "third_order": {
-            "anxiety":           round(anxiety, 1),
-            "depression":        round(depression, 1),
-            "boredom":           round(boredom, 1),
-            "loneliness":        round(loneliness, 1),
-            "flow":              round(flow, 1),
-            "physical_distress": round(physical_distress, 1),
-            "craving":           round(craving, 1),
-            "social_hostility":  round(social_hostility, 1),
+            "anxiety":                round(anxiety, 1),
+            "depression":             round(depression, 1),
+            "boredom":                round(boredom, 1),
+            "loneliness":             round(loneliness, 1),
+            "flow":                   round(flow, 1),
+            "physical_distress":      round(physical_distress, 1),
+            "craving":                round(craving, 1),
+            "social_hostility":       round(social_hostility, 1),
+            "attachment_activation":  round(attachment_activation, 1),
         },
     }

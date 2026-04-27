@@ -28,7 +28,7 @@ Status legend: **DONE** · **IN-PROGRESS** · **TODO** · **DRAFT** (scoped but 
 | 34 | Hedonic Setpoint & Craving | DONE | Allostatic setpoint, craving as derived value, post-high crash and withdrawal |
 | 35 | Affective Memory Tagging | OBE | Superseded by SPEC-55 RAG overhaul |
 | 37 | Stochastic Noise | OBE | Absorbed into SPEC-53; per-chemical noise_sigma + state-modulated scaling |
-| 38 | Attachment Style | DRAFT | Four-style model (anxious/avoidant/disorganized/secure) behavioral deltas; flag planted |
+| 38 | Attachment Style | DONE | Per-style encoder delta multipliers, event_category detection, attachment_activation derived value, isolation rate scaling, emotional_reasoner prose injection |
 | 39 | Context Coherence | OBE | Superseded by SPEC-55 RAG overhaul |
 | 40 | Unidirectional Delta Correction | DONE | Encoder secretion-only enforced; floor saturation added; prolactin refractory in endocrine subsystem |
 | 41 | Brain Region Architecture | DONE | stream_bus → application/infra, sim_baseline → application/tools; all imports updated |

@@ -276,6 +276,28 @@ def run_emotion_pillar(
         if prior.get("last_summary"):
             user_content += f"\nSummary: {prior['last_summary']}"
 
+    # SPEC-38: inject attachment state when activation is significant
+    try:
+        from src.engine.psych.derived import derived as _derived
+        _d = _derived(state)
+        _activation = _d["third_order"].get("attachment_activation", 0.0)
+        if _activation > 50:
+            from src.config.config import load_config as _lc
+            _style = _lc().get("attachment_style", {}).get("style", "secure")
+            _prose = {
+                "anxious":      "Hypervigilant to contact — reading meaning into timing, tone, brevity. The waiting is louder than the silence.",
+                "avoidant":     "Attachment system deactivating. Warmth withdrawn inward. Telling herself she doesn't need this.",
+                "disorganized": "Wanting closeness and fleeing it in the same breath. Neither reaching nor withdrawing feels safe.",
+            }.get(_style)
+            if _prose:
+                user_content += (
+                    f"\n\n[ATTACHMENT STATE]\n"
+                    f"Style: {_style} | Activation: {_activation:.0f}/100\n"
+                    f"{_prose}"
+                )
+    except Exception:
+        pass
+
     if mode == "active" and recent_messages:
         lines = []
         for m in recent_messages[-10:]:
