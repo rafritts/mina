@@ -33,11 +33,11 @@ Status legend: **DONE** · **IN-PROGRESS** · **TODO** · **DRAFT** (scoped but 
 | 40 | Unidirectional Delta Correction | DONE | Encoder secretion-only enforced; floor saturation added; prolactin refractory in endocrine subsystem |
 | 41 | Brain Region Architecture | DONE | stream_bus → application/infra, sim_baseline → application/tools; all imports updated |
 | 42 | Epinephrine SAM Axis | DONE | Epinephrine registered, all 5 SAM moment types in encoder, recent exchanges block present |
-| 43 | Bond Score | DRAFT | Persistent bond score separate from volatile oxytocin; open questions on approach |
+| 43 | Bond Depth via OTR Upregulation | READY | Revised: OTR receptor sensitivity is bond depth signal; encoder multiplies by OTR; consolidate_relationship owns OTR trajectory; delete dead get_relationship_bond_level() |
 | 44 | Normalized Chemistry Adjudicator | OBE | Adjudicator deleted by SPEC-52; normalized table no longer has a consumer |
 | 45 | Sliding Window RAG | OBE | Superseded by SPEC-55 RAG overhaul |
-| 46 | Hedonic Adaptation | TODO | Not started; old sensitization_level scalar still present; no session tracking or tonic offsets |
-| 47 | Somatic Narrative | TODO | Not started; no somatic narrative, no [SOMATIC STATE] block, no somatic response field |
+| 46 | Hedonic Adaptation | DONE | Session satiation mult (floors per chemical); relationship depth → tonic baseline offset; dynamic oxy novelty floor |
+| 47 | Somatic Narrative | DONE | _build_somatic_narrative() in decoder; [SOMATIC STATE] in emotional profile; "somatic" field in Emotion Pillar |
 | 48 | Dashboard Admin Overhaul | DONE | Next.js 15 App Router on port 2050; art gallery aesthetic; FastAPI on 2049 |
 | 49 | Unified Data Stream | DONE | StreamBus FIFO queue + SSE broadcaster; all modules emit via `emit()` |
 | 50 | Sim Viewer | DONE | Full-screen viewer at /viewer; Vanta TOPOLOGY, D3 thought graph, SSE subscription |
@@ -46,4 +46,5 @@ Status legend: **DONE** · **IN-PROGRESS** · **TODO** · **DRAFT** (scoped but 
 | 53 | Sim Rule Consolidation | DONE | ChemicalProfile fields, generic clearance dispatch, stochastic noise, CompoundRule, resting-state validator |
 | 54 | Biological Timing Model | DRAFT | Two-pool BBB separation; amygdala phasic (pre) + hypothalamus tonic (post) stimulus axes; 4 open questions |
 | 55 | RAG Memory Overhaul | DRAFT | RAG is not producing useful results; flag planted; needs end-to-end audit before solution is designed |
+| 56 | Application Cleanup | TODO | 10-item debt pass: broken imports, dead fields/constants, duplicate state I/O, compat shims, tolerance scalar |
 | 99 | Long-Term Physiological Validation | OBE | Removed; sim_baseline.py (SPEC-53) covers validation needs |

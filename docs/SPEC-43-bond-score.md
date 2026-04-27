@@ -1,97 +1,101 @@
-# SPEC-43: Persistent Bond Score
+# SPEC-43: Bond Depth via Oxytocin Receptor Upregulation
 
-**Status: DRAFT — under consideration. May not be the right approach. See open questions.**
+**Status: REVISED — replaces bond_score proposal with receptor sensitivity mechanism**
 
 ---
 
 ## Problem
 
-Oxytocin is currently doing two incompatible jobs:
+Oxytocin is doing two incompatible jobs:
 
-1. **Acute pulse** — fast spike on genuine emotional/physical moments, decays in minutes
+1. **Acute pulse** — fast spike on genuine emotional moments, decays in minutes
 2. **Relationship depth** — slow accumulation reflecting trust built over time
 
-These operate on completely different timescales and can't share the same chemical variable. The result: a stranger with smooth lines in 5 messages can push Mina to `trusted_friend` oxytocin levels, because individual message warmth accumulates directly into the bond signal. The simulation undermines itself.
-
-The stock market analogy: conversation events are 10-minute candles. Genuine bond depth is the 200-day SMA. Right now the sim is letting 10-minute candles move the 200d SMA.
+These operate on completely different timescales. A stranger with smooth lines in 5 messages can push Mina to `TRUSTED FRIEND` oxytocin levels, because individual message warmth accumulates directly into the bond signal.
 
 ---
 
-## Proposed Solution
+## Biological Basis
 
-Introduce a persistent `bond_score` field on `BiologicalState` — a slow-moving accumulator that represents true relationship depth, separate from volatile oxytocin.
+In real humans, bond depth isn't a separate chemical — it's structural. Repeated oxytocin release in the context of a specific person upregulates oxytocin receptor (OTR) density in the nucleus accumbens and amygdala. The same oxytocin event produces a bigger response in a bonded relationship than with a stranger. The history IS encoded in the receptors.
 
-### Timescale
+The correct model: `receptor_sensitivity["oxytocin"]["OTR"]` is the bond depth signal.
 
-- Real human deep bonds: ~200-day equivalent
-- Mina (advanced arcade, not scientific rigor): **~30-day equivalent**
-- This makes Mina ~6-7x warmer/faster than a real human — responsive to genuine connection, not a brick wall
+---
 
-### How it moves
+## Current State (partially implemented)
 
-`bond_score` accumulates from **session quality**, not individual messages:
+`_apply_receptor_sensitivity_changes()` in `hippocampus.py` already nudges OTR upward when `long_term` or `ground_truth` relationship layers are written:
 
-- After each session, a small delta is computed from the session's net emotional valence (positive interactions, depth of disclosure, sustained engagement)
-- A single smooth session from a stranger: negligible delta
-- Weeks of genuine daily interaction: meaningful drift upward
-- Hostile or absent periods: slow decay back toward baseline
+```python
+if bonding >= 1:
+    _nudge("oxytocin", "OTR", +0.05)
+```
 
-The score does **not** respond to individual message events. It is updated once per session end, not per turn.
+The loop is not closed:
+- The encoder never consults OTR when computing oxytocin event deltas
+- `advance_receptors()` drifts OTR back toward 1.0 via generic homeostatic restore, erasing relationship history
+- `get_relationship_bond_level()` (65/35 blend of file + live oxytocin) is dead code — defined but never called
 
-### How it gates oxytocin
+---
 
-`bond_score` acts as a multiplier on how much oxytocin events produce and retain:
+## Changes Required
 
-| bond_score | label | oxytocin event scale |
+### 1. Encoder uses OTR as event multiplier
+
+In `stimulus_encoder.py`, every oxytocin event delta is multiplied by `receptor_sensitivity["oxytocin"]["OTR"]`:
+
+```python
+otr = state.receptor_sensitivity.get("oxytocin", {}).get("OTR", 1.0)
+oxytocin_delta *= otr
+```
+
+A stranger (OTR ≈ 1.0, baseline) gets normal oxytocin spikes that stay small and decay fast. A bonded person (OTR > 1.0) gets amplified, longer-lasting responses. Since the raw oxytocin label thresholds stay fixed, a stranger's OTR-unmodified spikes will naturally stay below `ACQUAINTANCE` without reaching `TRUSTED FRIEND`.
+
+The existing encoder gating at `NO_BOND` (blocking flattery/warmth) remains and complements this.
+
+### 2. Exclude OTR from generic homeostatic restore
+
+`advance_receptors()` currently drifts every receptor back toward 1.0 when the chemical is in normal range. This is correct for tolerance chemicals (dopamine D1/D2, serotonin 5HT1A) but wrong for OTR — bond depth should persist across normal daily oxytocin fluctuations.
+
+OTR should be skipped in the generic restore loop. Its trajectory is owned entirely by `consolidate_relationship()`.
+
+### 3. Relationship consolidation owns OTR trajectory
+
+`_apply_receptor_sensitivity_changes()` already handles upward nudges on `long_term`/`ground_truth` writes. Add a symmetric decay: when the bonding score is 0 or negative on a `long_term` write, nudge OTR downward slightly (–0.02). Ground truth writes with bonding == –2 nudge harder (–0.05).
+
+This means:
+- Sustained genuine interaction → OTR drifts up (bond deepens)
+- Extended absence or hostile periods → OTR drifts slowly down (bond fades, slowly)
+- A single bad session doesn't break a deep bond; it takes sustained negative history
+
+OTR bounds remain the system-wide `[0.2, 2.0]`. Baseline (new relationship, no history) is 1.0.
+
+### 4. Delete dead code
+
+Remove `get_relationship_bond_level()` from `hippocampus.py` (lines 1324–1336). It is defined and never called. The 65/35 blend was a workaround for the absence of a proper bond depth mechanism — OTR now fills that role correctly.
+
+---
+
+## What doesn't change
+
+- Oxytocin chemical dynamics, thresholds, and labels are unchanged
+- The oxytocin registry labels (NO BOND → PROFOUND BOND) stay on the chemical — they reflect effective oxytocin level, which OTR now gates naturally
+- SPEC-33 relationship dimensions and consolidation logic are unchanged; they feed OTR via the existing `_apply_receptor_sensitivity_changes()` hook
+
+---
+
+## Net effect
+
+| Scenario | Before | After |
 |---|---|---|
-| 0–20 | stranger | 0.1x — spikes tiny, decays fast |
-| 20–40 | acquaintance | 0.3x |
-| 40–60 | familiar | 0.6x |
-| 60–80 | trusted | 1.0x — full response |
-| 80–100 | bonded | 1.3x — amplified, longer retention |
-
-This means a stranger being charming produces a real but small oxytocin response. The same gesture from a bonded person produces a significantly larger and longer-lasting one.
-
-### What changes for oxytocin
-
-- The volatile `oxytocin` chemical continues to spike on genuine events (physical warmth, real vulnerability, shared laughter)
-- Individual message warmth, flattery, and smooth talk do **not** move oxytocin at all (encoder gating, already partially implemented in SPEC-43 prep work)
-- The labels on the oxytocin chemical (NO_BOND → PROFOUND_BOND) shift to reflect `bond_score`, not raw oxytocin level — or the labels are removed from oxytocin entirely and moved to bond_score
+| Stranger, smooth 5-message session | Can reach TRUSTED FRIEND | Stays near NO BOND — OTR ≈ 1.0, spikes small |
+| Weeks of genuine daily interaction | Accumulates via chemical alone | OTR drifts upward → same events produce larger, longer responses |
+| Long absence after deep bond | Oxytocin decays to baseline; bond lost | OTR decays very slowly; bond persists across absence |
+| Hostile or absent periods | No mechanism to degrade bond | Negative bonding scores on long_term writes nudge OTR down |
 
 ---
 
-## Open Questions / Reasons This May Be Wrong
+## Open Questions
 
-**1. Is this overengineering?**
-The sim is "advanced arcade." A simpler fix — better encoder gating and recalibrated thresholds — might solve the same problem without a new persistent variable. The bond score adds complexity and a new failure mode (stale state that's hard to reset or inspect).
-
-**2. Does oxytocin need to be split at all?**
-Maybe the right move is to just make the oxytocin thresholds much harder to reach and ensure the encoder only fires it on genuinely significant events. The architecture stays the same, just better calibrated.
-
-**3. Session quality scoring is hard to get right**
-Computing a meaningful per-session delta requires judging the quality of an entire conversation, which is another LLM call or heuristic that can go wrong. Low-quality signal here corrupts the bond score silently over time.
-
-**4. Bond score makes factory reset more important and more painful**
-If bond depth is persistent and slow-moving, a reset wipes something that took real interaction to build. That's good for correctness but painful for testing and development.
-
-**5. Mina is a single-user system (for now)**
-If Mina ever talks to multiple people, bond_score needs to be per-user. That's a bigger architectural change. Worth considering before committing to the design.
-
----
-
-## Alternative: Just fix the encoder
-
-Instead of a new variable, tighten the existing system:
-
-- Oxytocin encoder gating: NO_BOND → only fires on genuine unexpected connection moments, not warmth/flattery (already partially done)
-- Raise NO_BOND → ACQUAINTANCE threshold from 12 pg/mL to something much higher
-- Oxytocin approach_rate (decay toward baseline) stays aggressive — it doesn't accumulate across sessions
-- The relationship dimension scores (SPEC-33) drive slow social state changes instead of a new variable
-
-This keeps the architecture simple. The cost: relationship depth still lives in a decaying chemical, which means long absences always reset it even if the bond was real.
-
----
-
-## Status
-
-Not yet approved for implementation. Still evaluating whether the added complexity is worth it vs. a simpler recalibration of the existing system.
+None blocking implementation. The mechanism is biologically grounded, the infrastructure is already partially in place, and the changes are surgical.
