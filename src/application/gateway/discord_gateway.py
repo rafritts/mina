@@ -6,64 +6,54 @@ Run via supervisor.py (or directly for development):
 """
 import asyncio
 import base64
-import datetime
 import json
 import logging
-import mimetypes
 import os
 import re
 import sys
-import tempfile
 import time
-
-import base64
-import io
 
 import aiohttp
 import discord
 from discord import app_commands
 from dotenv import load_dotenv, find_dotenv
-from PIL import Image
 
 _DOTENV = find_dotenv(usecwd=True)
 load_dotenv(_DOTENV)
 _PROJECT_ROOT = os.path.dirname(_DOTENV)
 
-from src.brain.cortex.cortex import run_turn, load_history, save_history, touch_last_active, HISTORY_MAX
+from src.brain.cortex.cortex import run_turn, load_history, save_history, touch_last_active
 from src.brain.brainstem.heartbeat import bio_tick_loop
 from src.brain.subconscious.freetime import run_freetime as _run_freetime
 from ..infra.log import log
-from ..infra.text_filter import apply_word_filter, apply_replacements, llm_derive_replacements
 from ..infra import discord_send as _discord_send
+from ..infra.image_utils import normalise_image as _normalise_image
 
 # Suppress noisy-but-harmless WebSocket transport errors on reconnect
 class _SuppressResetError(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        return "Cannot write to closing transport" not in (record.getMessage())
+        return "Cannot write to closing transport" not in record.getMessage()
 
 logging.getLogger("discord.client").addFilter(_SuppressResetError())
 logging.getLogger("discord.gateway").addFilter(_SuppressResetError())
-from src.brain.brainstem.state import load_and_advance, save_state, load_state, apply_deltas, log_state, derived
-from src.brain.hippocampus.hippocampus import build_kag_context, build_rag_context, rag_wipe, rag_fix_word_filter, kag_fix_word_filter, kag_apply_replacements, rag_apply_replacements, sliding_rag_wipe
-_CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
-_RUN_DIR = os.path.join(_PROJECT_ROOT, "run")
-_LOG_FILE = os.path.join(_PROJECT_ROOT, "logs", "mina.log")
-_STOPPED_FLAG = os.path.join(_RUN_DIR, ".stopped")
-_PAUSED_FLAG = os.path.join(_RUN_DIR, ".paused")
-_READY_FILE = os.path.join(_RUN_DIR, "ready")
+
+from src.brain.brainstem.state import load_and_advance, save_state, load_state, apply_deltas, derived
+from src.config.config import PAUSED_FLAG, RUN_DIR, REPO_ROOT
+
+_RUN_DIR              = RUN_DIR
+_READY_FILE           = os.path.join(_RUN_DIR, "ready")
 _RESTART_PENDING_FILE = os.path.join(_RUN_DIR, "restart_pending.json")
-_HOME_CHANNEL_FILE = os.path.join(_RUN_DIR, "home_channel.txt")
+_HOME_CHANNEL_FILE    = os.path.join(_RUN_DIR, "home_channel.txt")
+_DISCORD_API          = "https://discord.com/api/v10"
 
 DISCORD_TOKEN = os.getenv("MINA_BOT_TOKEN", "")
 SEED_MESSAGES = 50
-DEBOUNCE_DELAY = 0.1   # seconds — batch rapid messages
-CHUNK_SIZE = 1950       # max chars per Discord message
-_DEFAULT_AVATAR = os.path.join(_PROJECT_ROOT, "avatar.png")
-_DISCORD_API = "https://discord.com/api/v10"
+DEBOUNCE_DELAY = 0.1
+CHUNK_SIZE = 1950
 
 _IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
-# Register mina.log as a stream bus consumer — drives structured log from the bus
+# Register mina.log as a stream bus consumer
 try:
     from src.application.infra.stream_bus import stream_bus as _stream_bus
     from ..infra.log import log as _log
@@ -76,89 +66,12 @@ try:
 except Exception:
     pass
 
-from ..infra.image_utils import normalise_image as _normalise_image
-
-
-# ---------------------------------------------------------------------------
-# Avatar confirm UI
-# ---------------------------------------------------------------------------
-
-class _AvatarConfirmView(discord.ui.View):
-    def __init__(self, image_path: str, cleanup: bool, cmd_interaction: discord.Interaction):
-        super().__init__(timeout=60)
-        self.image_path = image_path
-        self.cleanup = cleanup
-        self.cmd_interaction = cmd_interaction
-
-    @discord.ui.button(label="Upload", style=discord.ButtonStyle.success)
-    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer()
-        try:
-            result = await _change_avatar(os.path.abspath(self.image_path))
-            await self.cmd_interaction.delete_original_response()
-            await self.cmd_interaction.followup.send(result, ephemeral=True)
-        except Exception as e:
-            await self.cmd_interaction.followup.send(f"Failed: {e}", ephemeral=True)
-        finally:
-            if self.cleanup:
-                try:
-                    os.unlink(self.image_path)
-                except FileNotFoundError:
-                    pass
-        self.stop()
-
-    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
-    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer()
-        await interaction.delete_original_response()
-        if self.cleanup:
-            try:
-                os.unlink(self.image_path)
-            except FileNotFoundError:
-                pass
-        self.stop()
-
-
-async def _change_avatar(image_path: str) -> str:
-    """Change the bot avatar via Discord REST API (PATCH /users/@me)."""
-    token = os.getenv("MINA_BOT_TOKEN", "")
-    if not token:
-        raise RuntimeError("MINA_BOT_TOKEN is not set.")
-
-    mime_type, _ = mimetypes.guess_type(image_path)
-    if mime_type not in {"image/png", "image/jpeg", "image/gif"}:
-        raise ValueError("Unsupported format. Use png, jpg, or gif.")
-
-    with open(image_path, "rb") as f:
-        image_b64 = base64.b64encode(f.read()).decode("ascii")
-
-    async with aiohttp.ClientSession() as session:
-        async with session.patch(
-            f"{_DISCORD_API}/users/@me",
-            headers={"Authorization": f"Bot {token}", "Content-Type": "application/json"},
-            json={"avatar": f"data:{mime_type};base64,{image_b64}"},
-        ) as resp:
-            if not (200 <= resp.status < 300):
-                body = await resp.text()
-                raise RuntimeError(f"Discord API error ({resp.status}): {body}")
-
-    return f"Avatar updated."
-
-
-def _load_config() -> dict:
-    try:
-        with open(_CONFIG_FILE) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
 
 # ---------------------------------------------------------------------------
 # Presence management
 # ---------------------------------------------------------------------------
 
 async def _update_presence(state) -> None:
-    """Set Discord presence to reflect Mina's current sleep/wake state."""
     if not client.is_ready():
         return
     if state.sleeping:
@@ -178,76 +91,45 @@ async def _update_presence(state) -> None:
         )
 
 
-
 def _dynamic_freetime_interval(base_seconds: int) -> int:
-    """
-    Compute next freetime interval based on current biological state.
-
-    Factors (all multiplicative on base_seconds):
-      sleeping        → 4×   (long sleep cycles; don't spam freetime)
-      energy          → 0.6–2.0× (high energy = more active = fire sooner)
-      sleep pressure  → 1.0–2.0× (adenosine building = winding down)
-      melatonin       → 0.7–2.5× (circadian proxy: day vs. night)
-
-    Result is clamped to [base/4, base*6].
-    """
     try:
         state = load_state()
-
         if state.sleeping:
             return min(base_seconds * 4, base_seconds * 6)
 
         d = derived(state)
-        energy       = d["second_order"].get("energy", 50.0)         # 0–100
-        sleep_p      = state.sleep_pressure                           # 0–100 AU
-        melatonin    = state.chemicals.get("melatonin", 5.0)         # pg/mL
+        energy    = d["second_order"].get("energy", 50.0)
+        sleep_p   = state.sleep_pressure
+        melatonin = state.chemicals.get("melatonin", 5.0)
 
-        # Energy: high energy → shorter interval (she's active and doing things)
-        if energy >= 70:
-            energy_factor = 0.6
-        elif energy >= 50:
-            energy_factor = 0.85
-        elif energy >= 30:
-            energy_factor = 1.3
-        else:
-            energy_factor = 2.0
+        if energy >= 70:      energy_factor = 0.6
+        elif energy >= 50:    energy_factor = 0.85
+        elif energy >= 30:    energy_factor = 1.3
+        else:                 energy_factor = 2.0
 
-        # Sleep pressure: tired → longer interval (winding down, less activity)
-        if sleep_p >= 75:
-            sleep_factor = 2.0
-        elif sleep_p >= 55:
-            sleep_factor = 1.4
-        else:
-            sleep_factor = 1.0
+        if sleep_p >= 75:     sleep_factor = 2.0
+        elif sleep_p >= 55:   sleep_factor = 1.4
+        else:                 sleep_factor = 1.0
 
-        # Melatonin as circadian proxy:
-        #   < 15 pg/mL  → full daytime, active window
-        #   15–80       → evening / winding down
-        #   > 80        → night window, high melatonin, should be sleeping
-        if melatonin < 15:
-            melatonin_factor = 0.7
-        elif melatonin < 80:
-            melatonin_factor = 1.2
-        else:
-            melatonin_factor = 2.5
+        if melatonin < 15:    melatonin_factor = 0.7
+        elif melatonin < 80:  melatonin_factor = 1.2
+        else:                 melatonin_factor = 2.5
 
         scale    = energy_factor * sleep_factor * melatonin_factor
         interval = int(base_seconds * scale)
         lo       = max(300, base_seconds // 4)
         hi       = base_seconds * 6
         return max(lo, min(hi, interval))
-
     except Exception:
         return base_seconds
 
 
-async def _gateway_freetime_loop() -> None:
-    """Periodically run Mina's autonomous freetime session.
+# ---------------------------------------------------------------------------
+# Background loops
+# ---------------------------------------------------------------------------
 
-    The interval between sessions is dynamic — shorter when she's alert and
-    active (midday, high energy), longer when she's tired or it's late night.
-    """
-    from src.config.config import PAUSED_FLAG, load_config
+async def _gateway_freetime_loop() -> None:
+    from src.config.config import load_config
     while True:
         cfg      = load_config()
         base     = int(cfg.get("heartbeat_interval_seconds", 1800))
@@ -257,7 +139,7 @@ async def _gateway_freetime_loop() -> None:
         if os.path.exists(PAUSED_FLAG):
             log("FREETIME", "Paused — skipping.")
             continue
-        log("FREETIME", f"Firing...")
+        log("FREETIME", "Firing...")
         try:
             await _run_freetime()
         except Exception as e:
@@ -266,14 +148,22 @@ async def _gateway_freetime_loop() -> None:
 
 
 async def _presence_loop() -> None:
-    """Poll sleep state every 60s so auto-wake transitions update Discord presence."""
     while True:
         await asyncio.sleep(60)
         try:
-            from src.brain.brainstem.state import load_state as _load_state
-            await _update_presence(_load_state())
+            await _update_presence(load_state())
         except Exception as e:
             log("PRESENCE/ERROR", str(e))
+
+
+async def _followup_watcher() -> None:
+    from src.brain.cortex.followup import process_due_followups
+    while True:
+        await asyncio.sleep(60)
+        try:
+            await process_due_followups()
+        except Exception as e:
+            log("FOLLOWUP/ERR", f"Watcher error: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -283,52 +173,55 @@ async def _presence_loop() -> None:
 _pending: dict[int, list[discord.Message]] = {}
 _debounce_tasks: dict[int, asyncio.Task] = {}
 _inflight: dict[int, asyncio.Task] = {}
-_inflight_messages: dict[int, list[discord.Message]] = {}  # messages currently being processed
-_pending_wake: dict[int, list[discord.Message]] = {}       # messages held pending wake confirmation
+_inflight_messages: dict[int, list[discord.Message]] = {}
+_pending_wake: dict[int, list[discord.Message]] = {}
 
-# Matches unambiguous "no, don't wake her" replies
 _WAKE_NO_RE = re.compile(r"^\s*(no+|nope|nah|nevermind|never\s*mind|cancel|don'?t)\s*[.!]?\s*$", re.I)
 
 
 # ---------------------------------------------------------------------------
-# Text chunking
+# Text chunking + delivery
 # ---------------------------------------------------------------------------
 
 def _chunk_text(text: str) -> list[str]:
-    """Split text into ≤CHUNK_SIZE chunks on sentence boundaries."""
     if len(text) <= CHUNK_SIZE:
         return [text]
-
     chunks = []
     remaining = text
     while len(remaining) > CHUNK_SIZE:
-        # Find last sentence boundary before CHUNK_SIZE
         boundary = -1
         for pattern in (". ", "! ", "? ", ".\n", "!\n", "?\n"):
             idx = remaining.rfind(pattern, 0, CHUNK_SIZE)
             if idx > boundary:
                 boundary = idx + len(pattern)
-
         if boundary <= 0:
-            # No sentence boundary — split at last space
             boundary = remaining.rfind(" ", 0, CHUNK_SIZE)
         if boundary <= 0:
             boundary = CHUNK_SIZE
-
         chunks.append(remaining[:boundary].rstrip())
         remaining = remaining[boundary:].lstrip()
-
     if remaining:
         chunks.append(remaining)
     return chunks
 
 
+async def _deliver(channel: discord.abc.Messageable, reply: str, image_paths: list[str]) -> None:
+    if reply:
+        chunks = _chunk_text(reply)
+        for chunk in chunks:
+            await channel.send(chunk)
+            if len(chunks) > 1:
+                await asyncio.sleep(0.15)
+    for path in image_paths:
+        if os.path.exists(path):
+            await channel.send(file=discord.File(path))
+
+
 # ---------------------------------------------------------------------------
-# Channel resolver — used by the discord_send registry
+# Channel resolver + outbox sender
 # ---------------------------------------------------------------------------
 
 async def _resolve_home_channel() -> discord.abc.Messageable | None:
-    """Return the home channel: last-active channel, falling back to config default."""
     channel_id = None
     try:
         with open(_HOME_CHANNEL_FILE) as f:
@@ -337,8 +230,8 @@ async def _resolve_home_channel() -> discord.abc.Messageable | None:
         pass
 
     if channel_id is None:
-        cfg = _load_config()
-        default_id = cfg.get("discord_default_channel_id")
+        from src.config.config import load_config
+        default_id = load_config().get("discord_default_channel_id")
         if default_id:
             channel_id = int(default_id)
 
@@ -372,46 +265,12 @@ async def _do_send(content: str = "", image_path: str = "") -> None:
 
 
 # ---------------------------------------------------------------------------
-# Followup watcher — fires deferred responses Mina scheduled via schedule_followup
-# ---------------------------------------------------------------------------
-
-async def _followup_watcher() -> None:
-    """Check followup queue every 60 seconds and fire any expired entries."""
-    from src.brain.cortex.followup import process_due_followups
-    while True:
-        await asyncio.sleep(60)
-        try:
-            await process_due_followups()
-        except Exception as e:
-            log("FOLLOWUP/ERR", f"Watcher error: {e}")
-
-
-# ---------------------------------------------------------------------------
-# Message delivery
-# ---------------------------------------------------------------------------
-
-async def _deliver(channel: discord.abc.Messageable, reply: str, image_paths: list[str]) -> None:
-    """Send chunked text then any images to the channel."""
-    if reply:
-        for chunk in _chunk_text(reply):
-            await channel.send(chunk)
-            if len(_chunk_text(reply)) > 1:
-                await asyncio.sleep(0.15)
-
-    for path in image_paths:
-        if os.path.exists(path):
-            await channel.send(file=discord.File(path))
-
-
-# ---------------------------------------------------------------------------
 # Turn runner
 # ---------------------------------------------------------------------------
 
 async def _run_turn(channel: discord.abc.Messageable, messages: list[discord.Message]) -> None:
-    """Execute one Mina turn for a batch of Discord messages."""
     touch_last_active()
 
-    # Format batched messages as a single user input
     if len(messages) == 1:
         user_input = messages[0].content
         username = messages[0].author.display_name
@@ -420,7 +279,6 @@ async def _run_turn(channel: discord.abc.Messageable, messages: list[discord.Mes
         lines = [f"{m.author.display_name}: {m.content}" for m in messages]
         user_input = "\n".join(lines)
 
-    # Collect all image attachments across all batched messages
     images: list[tuple[str, str]] = []
     for msg in messages:
         for att in msg.attachments:
@@ -452,8 +310,6 @@ async def _run_turn(channel: discord.abc.Messageable, messages: list[discord.Mes
         return
 
     await _deliver(channel, reply, image_paths)
-
-    # Update presence after turn
     await _update_presence(load_state())
 
 
@@ -470,15 +326,12 @@ async def _debounce_fire(channel: discord.abc.Messageable, channel_id: int) -> N
     if not messages:
         return
 
-    # --- Sleep intercept ---
     _state = load_state()
     if channel_id in _pending_wake:
-        # This message is the user's response to the wake-up prompt.
         held = _pending_wake.pop(channel_id)
         combined = " ".join(m.content for m in messages).strip()
         if _WAKE_NO_RE.match(combined):
-            return  # user declined — silently drop held messages
-        # Wake Mina and run the held messages (ignore the "yes" confirmation text itself)
+            return
         _state.sleeping = False
         _state.sleep_start = None
         _state.sleep_expected_wake = None
@@ -495,9 +348,7 @@ async def _debounce_fire(channel: discord.abc.Messageable, channel_id: int) -> N
             notice = "*[Mina is sleeping. Do you want to wake her up?]*"
         await channel.send(notice)
         return
-    # --- end sleep intercept ---
 
-    # Cancel any inflight turn and rescue its messages
     existing = _inflight.get(channel_id)
     if existing and not existing.done():
         rescued = _inflight_messages.pop(channel_id, [])
@@ -506,7 +357,6 @@ async def _debounce_fire(channel: discord.abc.Messageable, channel_id: int) -> N
             await existing
         except (asyncio.CancelledError, Exception):
             pass
-        # Prepend rescued messages so they aren't lost
         if rescued:
             log("GATEWAY", f"Rescued {len(rescued)} in-flight message(s) for channel {channel_id}")
             messages = rescued + messages
@@ -527,42 +377,28 @@ async def _debounce_fire(channel: discord.abc.Messageable, channel_id: int) -> N
 # ---------------------------------------------------------------------------
 
 async def _seed_channel(channel: discord.TextChannel) -> int:
-    """
-    Fetch recent Discord history and append to conversation.json.
-    Returns number of messages seeded.
-    """
     history = load_history()
-
-    # Collect recent messages (oldest first)
     messages = []
     async for msg in channel.history(limit=SEED_MESSAGES, oldest_first=False):
-        if msg.author.bot:
-            continue
-        if not msg.content:
+        if msg.author.bot or not msg.content:
             continue
         messages.append(msg)
-    messages.reverse()  # chronological order
+    messages.reverse()
 
     if not messages:
         return 0
 
-    # Deduplication: check if the last message is already in history
     last_content = f"{messages[-1].author.display_name}: {messages[-1].content}"
     for entry in reversed(history):
         content = entry.get("content", "")
         if isinstance(content, list):
             content = " ".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
         if entry.get("role") == "user" and content.endswith(messages[-1].content):
-            return 0  # Already seeded
+            return 0
 
-    # Append seed marker + messages
     history.append({"role": "system", "content": "[DISCORD_SEED]"})
     for msg in messages:
-        history.append({
-            "role": "user",
-            "content": f"{msg.author.display_name}: {msg.content}",
-        })
-
+        history.append({"role": "user", "content": f"{msg.author.display_name}: {msg.content}"})
     save_history(history)
     return len(messages)
 
@@ -578,18 +414,28 @@ intents.guilds = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
+# Register slash commands
+from .discord_commands import setup as _setup_commands
+_setup_commands(
+    tree, client,
+    pending=_pending,
+    debounce_tasks=_debounce_tasks,
+    inflight=_inflight,
+    update_presence=_update_presence,
+)
+
 
 @client.event
 async def on_ready():
     from ..infra import token_stats
     token_stats.reset()
 
-    cfg = _load_config()
+    from src.config.config import load_config
+    cfg = load_config()
     allowlist = [c.lstrip("#") for c in cfg.get("discord_channel_allowlist", [])]
 
     log("GATEWAY", f"Logged in as {client.user}")
 
-    # Seed history from Discord for all accessible channels
     seeded_total = 0
     for guild in client.guilds:
         for channel in guild.text_channels:
@@ -603,29 +449,22 @@ async def on_ready():
             except discord.Forbidden:
                 pass
 
-    # Sync slash commands
     await tree.sync()
     log("GATEWAY", "Slash commands synced.")
 
-    # Set initial presence
     await _update_presence(load_state())
-
-    # Register direct Discord sender (replaces file-based outbox)
     _discord_send.register(_do_send)
 
-    # Start background loops
     asyncio.create_task(bio_tick_loop())
     asyncio.create_task(_gateway_freetime_loop())
     asyncio.create_task(_followup_watcher())
     asyncio.create_task(_presence_loop())
     log("GATEWAY", "Bio tick, freetime, followup watcher, and presence loop started.")
 
-    # Write ready file (supervisor/CLI uses this to detect startup)
     os.makedirs(_RUN_DIR, exist_ok=True)
     with open(_READY_FILE, "w") as f:
         f.write(str(time.time()))
 
-    # If a /restart was pending, update the ephemeral message now that we're back
     if os.path.exists(_RESTART_PENDING_FILE):
         try:
             with open(_RESTART_PENDING_FILE) as f:
@@ -644,9 +483,7 @@ async def on_ready():
             except FileNotFoundError:
                 pass
 
-    # If messages were seeded, run a turn so Mina can respond to what she missed
     if seeded_total > 0:
-        cfg = _load_config()
         default_id = cfg.get("discord_default_channel_id")
         if default_id:
             ch = client.get_channel(int(default_id))
@@ -657,8 +494,7 @@ async def on_ready():
 
 
 async def _run_catchup_turn(channel: discord.abc.Messageable) -> None:
-    """Run a turn after seeding so Mina responds to messages she missed."""
-    await asyncio.sleep(1)  # Brief pause after on_ready settles
+    await asyncio.sleep(1)
     async with channel.typing():
         try:
             reply, image_paths = await run_turn(
@@ -673,23 +509,19 @@ async def _run_catchup_turn(channel: discord.abc.Messageable) -> None:
 
 @client.event
 async def on_message(message: discord.Message) -> None:
-    if message.author == client.user:
+    if message.author == client.user or message.author.bot:
         return
-    if message.author.bot:
-        return
-    # Allow image-only messages (no text content) — attachments are handled downstream
     if not message.content and not message.attachments:
         return
 
-    cfg = _load_config()
+    from src.config.config import load_config
+    cfg = load_config()
     allowlist = [c.lstrip("#") for c in cfg.get("discord_channel_allowlist", [])]
 
-    # Channel filter
     if allowlist and isinstance(message.channel, discord.TextChannel):
         if message.channel.name not in allowlist:
             return
 
-    # DM filter
     if isinstance(message.channel, discord.DMChannel):
         if not cfg.get("discord_enable_dms", True):
             return
@@ -697,600 +529,15 @@ async def on_message(message: discord.Message) -> None:
     channel_id = message.channel.id
     _pending.setdefault(channel_id, []).append(message)
 
-    # Track home channel for _resolve_home_channel
     with open(_HOME_CHANNEL_FILE, "w") as _f:
         _f.write(str(channel_id))
 
-    # Cancel existing debounce, start fresh
     existing = _debounce_tasks.get(channel_id)
     if existing and not existing.done():
         existing.cancel()
 
     task = asyncio.create_task(_debounce_fire(message.channel, channel_id))
     _debounce_tasks[channel_id] = task
-
-
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# Wipe helper (used by /reset and /factory-reset)
-# ---------------------------------------------------------------------------
-
-def _wipe_user_data() -> list[str]:
-    wiped = []
-    # Wipe conversation history (legacy + SPEC-27 + SPEC-32 formats), decoder trajectory, and adjudicator state
-    import glob as _glob
-    conv_daily_files = _glob.glob(os.path.join(_PROJECT_ROOT, "run", "conversation-*.jsonl"))
-    spec32_paths = [os.path.relpath(p, _PROJECT_ROOT).replace(os.sep, "/") for p in conv_daily_files]
-
-    for rel_path in [
-        "run/conversation.json",
-        "run/conversation.json.archived",
-        "run/decoder_window.json",
-        "run/decoder_history.jsonl",
-        "run/bio_snapshots.jsonl",
-        "run/last_search.json",
-        "run/consolidation_state.json",
-        "run/bio_history.jsonl",
-        "run/events.jsonl",
-        "run/token_stats.json",
-        "run/followup_queue.json",
-        "run/sliding_seq.json",
-    ] + spec32_paths:
-        dst = os.path.join(_PROJECT_ROOT, rel_path)
-        if os.path.exists(dst):
-            os.remove(dst)
-            wiped.append(rel_path)
-    kag_dir = os.path.join(_PROJECT_ROOT, "memory", "kag")
-    if os.path.exists(kag_dir):
-        for root, dirs, files in os.walk(kag_dir):
-            for fname in files:
-                full = os.path.join(root, fname)
-                os.remove(full)
-                wiped.append(os.path.relpath(full, _PROJECT_ROOT).replace(os.sep, "/"))
-    os.makedirs(kag_dir, exist_ok=True)
-    try:
-        rag_wipe()  # imported from hippocampus at top of file
-        wiped.append("memory/rag/ (RAG wiped)")
-    except Exception as e:
-        wiped.append(f"memory/rag/ (wipe failed: {e})")
-    return wiped
-
-
-# ---------------------------------------------------------------------------
-# Slash commands
-# ---------------------------------------------------------------------------
-
-@tree.command(name="new", description="Clear conversation history and start fresh.")
-async def cmd_new(interaction: discord.Interaction):
-    save_history([])
-    from ..infra import token_stats
-    token_stats.reset()
-    await interaction.response.send_message("History cleared.", ephemeral=True)
-
-
-@tree.command(name="reset", description="Wipe Mina's memory, state, and history.")
-async def cmd_reset(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-    try:
-        wiped = _wipe_user_data()
-        os.makedirs(_RUN_DIR, exist_ok=True)
-        with open(_RESTART_PENDING_FILE, "w") as f:
-            json.dump({"token": interaction.token, "application_id": interaction.application_id}, f)
-        await interaction.followup.send(f"Reset complete. Restarting...\nWiped: {', '.join(wiped)}", ephemeral=True)
-        os._exit(42)
-    except Exception as e:
-        await interaction.followup.send(f"Reset failed: {e}", ephemeral=True)
-
-
-@tree.command(name="factory-reset", description="Nuclear reset: wipe everything including biomarkers.")
-async def cmd_factory_reset(interaction: discord.Interaction):
-    from src.brain.brainstem.state import BiologicalState, save_state
-    await interaction.response.defer(ephemeral=True)
-    try:
-        wiped = _wipe_user_data()
-        save_state(BiologicalState())
-        wiped.append("state.json (biomarkers reset to defaults)")
-        os.makedirs(_RUN_DIR, exist_ok=True)
-        with open(_RESTART_PENDING_FILE, "w") as f:
-            json.dump({"token": interaction.token, "application_id": interaction.application_id}, f)
-        await interaction.followup.send(f"Factory reset complete. Restarting...\nWiped: {', '.join(wiped)}", ephemeral=True)
-        os._exit(42)
-    except Exception as e:
-        await interaction.followup.send(f"Factory reset failed: {e}", ephemeral=True)
-
-
-@tree.command(name="history", description="Show recent conversation history.")
-@app_commands.describe(n="Number of entries to show (default 10)")
-async def cmd_history(interaction: discord.Interaction, n: int = 10):
-    history = load_history()
-    entries = [e for e in history if e.get("role") in ("user", "assistant")][-n:]
-    if not entries:
-        await interaction.response.send_message("No history yet.", ephemeral=True)
-        return
-    lines = []
-    for e in entries:
-        role = "Mina" if e["role"] == "assistant" else "User"
-        content = e.get("content", "")[:200]
-        lines.append(f"**{role}:** {content}")
-    await interaction.response.send_message("\n".join(lines)[:1900], ephemeral=True)
-
-
-@tree.command(name="actions", description="Show Mina's recent tool calls and their effects.")
-@app_commands.describe(n="Number of actions to show (default 10)")
-async def cmd_actions(interaction: discord.Interaction, n: int = 10):
-    from ..infra.events import read_events
-    all_events = read_events(limit=300)
-    tool_events = [e for e in all_events if e.get("type") == "tool"][:n]
-    if not tool_events:
-        await interaction.response.send_message("No tool calls recorded yet.", ephemeral=True)
-        return
-
-    lines = []
-    for e in tool_events:
-        tool = e.get("tool", "?")
-        args = e.get("args", {})
-        result = e.get("result", "")
-        deltas = e.get("deltas", {})
-        source = e.get("source", "")
-        ts = e.get("ts", 0)
-
-        delta = time.time() - ts
-        if delta < 60:    age = "just now"
-        elif delta < 3600: age = f"{int(delta/60)}m ago"
-        elif delta < 86400: age = f"{int(delta/3600)}h ago"
-        else:              age = f"{int(delta/86400)}d ago"
-
-        # Format args as a readable summary
-        if tool == "do_action":
-            summary = args.get("activity", "")
-        elif tool == "sleep":
-            summary = f"{args.get('duration_hours', '?')}h"
-        elif tool in ("web_search", "x_search"):
-            summary = args.get("query", "")
-        else:
-            summary = ", ".join(f"{k}={v}" for k, v in args.items()) if args else ""
-
-        # Format deltas
-        delta_str = ""
-        if deltas:
-            CHEM_SHORT = {
-                "cortisol": "cort", "norepinephrine": "norepi", "dopamine": "dopa",
-                "serotonin": "sero", "oxytocin": "oxy", "endorphins": "endo",
-                "acetylcholine": "ach", "melatonin": "mela", "glucose": "gluc",
-                "hydration": "hydr", "sleep_pressure": "sleep",
-            }
-            parts = []
-            for k, v in deltas.items():
-                short = CHEM_SHORT.get(k, k)
-                sign = "+" if v > 0 else ""
-                parts.append(f"{short}{sign}{v:.1f}")
-            delta_str = f" `{' '.join(parts)}`"
-
-        src_tag = f" _{source}_" if source else ""
-        lines.append(f"**{tool}** {summary}{src_tag} · {age}{delta_str}")
-        if result:
-            lines.append(f"  ↳ {result[:120]}")
-
-    await interaction.response.send_message("\n".join(lines)[:1900], ephemeral=True)
-
-
-@tree.command(name="state", description="Show Mina's current biological state.")
-async def cmd_state(interaction: discord.Interaction):
-    from src.brain.brainstem.state import derived as _derived
-    s = load_and_advance()
-    d = _derived(s)
-    so = d["second_order"]
-    to = d["third_order"]
-
-    lines = [
-        "**First-order**",
-        f"sleep_pressure={s.sleep_pressure:.1f}  glucose={s.glucose:.1f}  hydration={s.hydration:.1f}",
-        f"cortisol={s.cortisol:.1f}  dopamine={s.dopamine:.1f}  serotonin={s.serotonin:.1f}",
-        f"norepi={s.norepinephrine:.1f}  oxytocin={s.oxytocin:.1f}  endorphins={s.endorphins:.1f}",
-        f"acetylcholine={s.acetylcholine:.1f}  melatonin={s.melatonin:.1f}  sleeping={s.sleeping}",
-        "",
-        "**Second-order**",
-        f"energy={so['energy']}  clarity={so['cognitive_clarity']}  hedonic={so['hedonic_tone']}",
-        f"warmth={so['social_warmth']}  arousal={so['arousal']}  valence={so['mood_valence']}",
-        "",
-        "**Third-order**",
-        f"anxiety={to['anxiety']}  depression={to['depression']}  boredom={to['boredom']}",
-        f"loneliness={to['loneliness']}  flow={to['flow']}",
-    ]
-    await interaction.response.send_message("\n".join(lines), ephemeral=True)
-
-
-@tree.command(name="bioreport", description="Show Mina's current biological state.")
-async def cmd_bioreport(interaction: discord.Interaction):
-    from src.engine.chem.units import get_label
-    from src.brain.brainstem.state import derived as _derived
-    s = load_and_advance()
-    d = _derived(s)
-    so = d["second_order"]
-    to = d["third_order"]
-
-    def lbl(name: str) -> str:
-        val = s.chemicals.get(name, 0.0)
-        label, _ = get_label(name, val)
-        return label.title()
-
-    sleeping_str = " — sleeping" if s.sleeping else ""
-    now_str = time.strftime("%a %b %-d  %-I:%M %p")
-
-    lines = [
-        f"**{now_str}{sleeping_str}**",
-        "",
-        "**Body**",
-        f"Glucose: {lbl('glucose')}",
-        f"Hydration: {lbl('hydration')}",
-        f"Sleep pressure: {lbl('sleep_pressure')}",
-        "",
-        "**Chemistry**",
-        f"Cortisol: {lbl('cortisol')}",
-        f"Dopamine: {lbl('dopamine')}",
-        f"Serotonin: {lbl('serotonin')}",
-        f"Norepinephrine: {lbl('norepinephrine')}",
-        f"Oxytocin: {lbl('oxytocin')}",
-        f"Endorphins: {lbl('endorphins')}",
-        f"Acetylcholine: {lbl('acetylcholine')}",
-        f"Melatonin: {lbl('melatonin')}",
-        "",
-        "**State**",
-        f"Energy: {so['energy']:.0f}  Clarity: {so['cognitive_clarity']:.0f}  Mood: {so['mood_valence']:.0f}",
-        f"Anxiety: {to['anxiety']:.0f}  Depression: {to['depression']:.0f}  Loneliness: {to['loneliness']:.0f}",
-        f"Boredom: {to['boredom']:.0f}  Flow: {to['flow']:.0f}",
-    ]
-
-    if s.substances:
-        from src.engine.neuro.substances import SUBSTANCE_DEFS
-        lines.append("")
-        lines.append("**Active substances**")
-        for name, dose in s.substances.items():
-            sub = SUBSTANCE_DEFS.get(name, {})
-            level = dose.get("level", 0)
-            lines.append(f"{sub.get('display_name', name)}: {level:.0f}/100")
-
-    await interaction.response.send_message("\n".join(lines), ephemeral=True)
-
-
-@tree.command(name="compress", description="Set time compression factor.")
-@app_commands.describe(factor="Multiplier (e.g. 10 = 10x faster biological time)")
-async def cmd_compress(interaction: discord.Interaction, factor: float):
-    cfg = _load_config()
-    cfg["time_compression_factor"] = factor
-    with open(_CONFIG_FILE, "w") as f:
-        json.dump(cfg, f, indent=2)
-    await interaction.response.send_message(
-        f"Time compression set to {factor}x.", ephemeral=True
-    )
-
-
-@tree.command(name="sleep", description="Put Mina to sleep.")
-@app_commands.describe(hours="How many simulated hours to sleep")
-async def cmd_sleep(interaction: discord.Interaction, hours: float = 8.0):
-    from src.brain.cortex.tools import handle_sleep
-    s = load_and_advance()
-    _, s = handle_sleep({"duration_hours": hours}, s)
-    save_state(s)
-    await _update_presence(s)
-    await interaction.response.send_message(
-        f"Mina is going to sleep for {hours:.1f} simulated hours.", ephemeral=True
-    )
-
-
-@tree.command(name="wake", description="Force-wake Mina (she'll be groggy).")
-async def cmd_wake(interaction: discord.Interaction):
-    s = load_and_advance()
-    s.sleeping = False
-    s.sleep_start = None
-    s.sleep_expected_wake = None
-    # Groggy waking — cortisol spike, suppressed acetylcholine
-    s = apply_deltas(s, {"cortisol": 20, "norepinephrine": 12, "acetylcholine": -15})
-    save_state(s)
-    await _update_presence(s)
-    await interaction.response.send_message("Mina has been woken up.", ephemeral=True)
-
-
-@tree.command(name="heartbeat", description="Manually trigger one heartbeat cycle.")
-async def cmd_heartbeat(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-    from src.brain.subconscious.freetime import run_freetime
-    try:
-        await run_freetime()
-        await interaction.followup.send("Heartbeat complete.", ephemeral=True)
-    except Exception as e:
-        await interaction.followup.send(f"Heartbeat error: {e}", ephemeral=True)
-
-
-@tree.command(name="cancel", description="Cancel current turn in this channel.")
-async def cmd_cancel(interaction: discord.Interaction):
-    channel_id = interaction.channel_id
-    stopped = False
-
-    dbt = _debounce_tasks.get(channel_id)
-    if dbt and not dbt.done():
-        dbt.cancel()
-        _pending.pop(channel_id, None)
-        _debounce_tasks.pop(channel_id, None)
-        stopped = True
-
-    inf = _inflight.get(channel_id)
-    if inf and not inf.done():
-        inf.cancel()
-        stopped = True
-
-    msg = "Cancelled." if stopped else "Nothing to cancel."
-    await interaction.response.send_message(msg, ephemeral=True)
-
-
-@tree.command(name="cancel-all", description="Cancel all running turns.")
-async def cmd_cancel_all(interaction: discord.Interaction):
-    count = 0
-    for task in list(_debounce_tasks.values()):
-        if not task.done():
-            task.cancel()
-            count += 1
-    _debounce_tasks.clear()
-    _pending.clear()
-
-    for task in list(_inflight.values()):
-        if not task.done():
-            task.cancel()
-            count += 1
-
-    await interaction.response.send_message(
-        f"Cancelled {count} task(s)." if count else "Nothing to cancel.",
-        ephemeral=True,
-    )
-
-
-@tree.command(name="set-avatar", description="Set Mina's avatar. Attach an image, or leave blank to use avatar.png.")
-@app_commands.describe(image="Image to upload (png, jpg, gif). Leave blank to use avatar.png in the repo.")
-async def cmd_set_avatar(interaction: discord.Interaction, image: discord.Attachment = None):
-    cleanup = False
-    if image is not None:
-        suffix = os.path.splitext(image.filename)[1] or ".png"
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-        async with aiohttp.ClientSession() as http:
-            async with http.get(image.url) as resp:
-                tmp.write(await resp.read())
-        tmp.close()
-        actual_path = tmp.name
-        cleanup = True
-    else:
-        if not os.path.exists(_DEFAULT_AVATAR):
-            await interaction.response.send_message(
-                f"No `avatar.png` found in the repo root. Attach an image instead.", ephemeral=True
-            )
-            return
-        actual_path = _DEFAULT_AVATAR
-
-    view = _AvatarConfirmView(actual_path, cleanup, interaction)
-    await interaction.response.send_message(
-        "Upload this as Mina's avatar?",
-        file=discord.File(actual_path, filename=os.path.basename(actual_path)),
-        view=view,
-        ephemeral=True,
-    )
-
-
-@tree.command(name="pause", description="Pause biological updating (no time decay, no heartbeat).")
-async def cmd_pause(interaction: discord.Interaction):
-    os.makedirs(_RUN_DIR, exist_ok=True)
-    open(_PAUSED_FLAG, "w").close()
-    await interaction.response.send_message("Biological updates paused.", ephemeral=True)
-
-
-@tree.command(name="resume", description="Resume biological updating.")
-async def cmd_resume(interaction: discord.Interaction):
-    try:
-        os.remove(_PAUSED_FLAG)
-    except FileNotFoundError:
-        pass
-    await interaction.response.send_message("Biological updates resumed.", ephemeral=True)
-
-
-@tree.command(name="stop", description="Stop Mina (supervisor will not restart until 'mina unstop').")
-async def cmd_stop(interaction: discord.Interaction):
-    try:
-        await interaction.response.send_message(
-            "Stopping. Run `mina unstop` then `mina start` to bring her back.", ephemeral=True
-        )
-    except Exception:
-        pass
-    os.makedirs(_RUN_DIR, exist_ok=True)
-    open(_STOPPED_FLAG, "w").close()
-    os._exit(0)
-
-
-@tree.command(name="restart", description="Restart Mina.")
-async def cmd_restart(interaction: discord.Interaction):
-    try:
-        await interaction.response.send_message("Restarting... this message will update when she's back.", ephemeral=True)
-        os.makedirs(_RUN_DIR, exist_ok=True)
-        with open(_RESTART_PENDING_FILE, "w") as f:
-            json.dump({"token": interaction.token, "application_id": interaction.application_id}, f)
-    except Exception:
-        pass
-    os._exit(42)
-
-
-
-@tree.command(name="clean", description="Delete Mina's messages in this channel.")
-@app_commands.describe(n="Number of messages to delete (default: all)")
-async def cmd_clean(interaction: discord.Interaction, n: int = 0):
-    await interaction.response.defer(ephemeral=True)
-    channel = interaction.channel or await client.fetch_channel(interaction.channel_id)
-
-    scan_limit = (n * 5) if n > 0 else 500
-    deleted_count = 0
-
-    # Collect matching messages first, then delete in bulk where possible.
-    # Discord bulk delete handles up to 100 messages per call but only works
-    # for messages under 14 days old — fall back to individual delete for older ones.
-    cutoff = discord.utils.utcnow() - datetime.timedelta(days=14)
-    bulk_batch: list[discord.Message] = []
-    old_msgs:   list[discord.Message] = []
-
-    try:
-        async for msg in channel.history(limit=scan_limit, oldest_first=False):
-            if msg.author != client.user:
-                continue
-            if msg.created_at > cutoff:
-                bulk_batch.append(msg)
-            else:
-                old_msgs.append(msg)
-            if n > 0 and (len(bulk_batch) + len(old_msgs)) >= n:
-                break
-
-        # Bulk delete in chunks of 100 (guild channels only — DMChannel lacks this)
-        can_bulk = hasattr(channel, "delete_messages")
-        for i in range(0, len(bulk_batch), 100):
-            chunk = bulk_batch[i:i + 100]
-            if can_bulk:
-                await channel.delete_messages(chunk)
-                deleted_count += len(chunk)
-            else:
-                old_msgs = chunk + old_msgs  # fall through to individual deletion
-
-        # Individual delete for messages older than 14 days (or all messages in DMs)
-        for msg in old_msgs:
-            await msg.delete()
-            deleted_count += 1
-            await asyncio.sleep(1.1)  # stay safely under the per-route rate limit
-
-    except discord.HTTPException as e:
-        await interaction.followup.send(f"Deleted {deleted_count} before error: {e}", ephemeral=True)
-        return
-
-    await interaction.followup.send(f"Deleted {deleted_count} message(s).", ephemeral=True)
-
-
-@tree.command(name="context", description="Show Mina's context window, bio state, and config.")
-async def cmd_context(interaction: discord.Interaction):
-    cfg = _load_config()
-    s = load_state()
-    d = derived(s)
-    to = d["third_order"]
-
-    # --- Conversation stats ---
-    history = load_history()
-    # HISTORY_MAX already imported from cortex at top of file
-    total_msgs = len(history)
-    role_counts: dict[str, int] = {}
-    for m in history:
-        role = m.get("role", "?")
-        role_counts[role] = role_counts.get(role, 0) + 1
-    pct = (total_msgs / HISTORY_MAX * 100) if HISTORY_MAX else 0
-    bar_filled = min(20, int(pct / 5))
-    bar = "\u2588" * bar_filled + "\u2591" * (20 - bar_filled)
-    role_str = "  ".join(f"{r}: {c}" for r, c in sorted(role_counts.items()))
-
-    # --- Reflection ---
-    from src.brain.hippocampus.hippocampus import read_kag
-    reflection_text = read_kag("REFLECTION.md") or ""
-    reflection_words = len(reflection_text.split()) if reflection_text else 0
-    reflection_preview = (
-        reflection_text[:120].replace("\n", " ") + ("…" if len(reflection_text) > 120 else "")
-        if reflection_text else "(empty)"
-    )
-
-    # --- Bio state ---
-    so = d["second_order"]
-    sleep_str = (
-        f"sleeping (wakes {time.strftime('%H:%M', time.localtime(s.sleep_expected_wake))})"
-        if s.sleeping and s.sleep_expected_wake
-        else ("sleeping" if s.sleeping else "awake")
-    )
-
-    lines = [
-        "**Mina — Context**",
-        "```",
-        "Conversation",
-        f"  Messages:  {total_msgs} / {HISTORY_MAX}  ({pct:.1f}%)",
-        f"  Progress:  [{bar}]",
-        f"  Breakdown: {role_str}",
-        "",
-        "Reflection",
-        f"  Words:     {reflection_words}",
-        f"  Preview:   {reflection_preview}",
-        "",
-        "Biological State",
-        f"  Status:    {sleep_str}",
-        f"  First:     cortisol={s.cortisol:.0f}  dopamine={s.dopamine:.0f}  serotonin={s.serotonin:.0f}  "
-        f"oxytocin={s.oxytocin:.0f}",
-        f"  Second:    energy={so['energy']}  clarity={so['cognitive_clarity']}  "
-        f"valence={so['mood_valence']}",
-        f"  Third:     anxiety={to['anxiety']}  depression={to['depression']}  "
-        f"boredom={to['boredom']}  loneliness={to['loneliness']}",
-        "",
-        "Config",
-        f"  Compression: {cfg.get('time_compression_factor', 1.0)}x  "
-        f"Heartbeat: {cfg.get('heartbeat_interval_seconds', 1800)}s  "
-        f"Paused: {os.path.exists(_PAUSED_FLAG)}",
-        "```",
-    ]
-    await interaction.response.send_message("\n".join(lines), ephemeral=True)
-
-
-@tree.command(name="fix-false-positive", description="Scrub age-ambiguous language triggering Grok's CSAM filter from history, KAG, and RAG.")
-async def cmd_fix_false_positive(interaction: discord.Interaction):
-    # Grok's CSAM filter flags words or phrases it reads as referencing a minor —
-    # age-ambiguous language, infantilizing descriptors, "girl" in adult contexts, etc.
-    # This command gives the full conversation to an LLM to identify exactly what
-    # triggered the filter, then applies the derived replacements everywhere it's stored.
-    await interaction.response.defer(ephemeral=True)
-    try:
-        history = load_history()
-
-        # LLM pass: identify what needs to change
-        replacements = await asyncio.to_thread(llm_derive_replacements, history)
-        if not replacements:
-            await interaction.followup.send("LLM found nothing to replace.", ephemeral=True)
-            return
-
-        # Apply to history
-        def _fix_content(content):
-            if isinstance(content, str):
-                fixed = apply_replacements(content, replacements)
-                return fixed, fixed != content
-            if isinstance(content, list):
-                changed = False
-                result = []
-                for item in content:
-                    if isinstance(item, dict) and item.get("type") == "text":
-                        fixed = apply_replacements(item["text"], replacements)
-                        changed = changed or fixed != item["text"]
-                        result.append({**item, "text": fixed})
-                    else:
-                        result.append(item)
-                return result, changed
-            return content, False
-
-        history_hits = 0
-        new_history = []
-        for entry in history:
-            content, changed = _fix_content(entry.get("content", ""))
-            if changed:
-                history_hits += 1
-            new_history.append({**entry, "content": content})
-        if history_hits:
-            save_history(new_history)
-
-        # Apply to KAG and RAG
-        kag_modified = await asyncio.to_thread(kag_apply_replacements, replacements)
-        rag_hits = await asyncio.to_thread(rag_apply_replacements, replacements)
-
-        repl_summary = ", ".join(f'"{r["find"]}" → "{r["replace"]}"' for r in replacements)
-        parts = [
-            f"Replacements derived: {repl_summary}",
-            f"History messages patched: {history_hits}",
-        ]
-        parts.append(f"KAG files patched: {', '.join(kag_modified)}" if kag_modified else "KAG files: none needed patching")
-        parts.append(f"RAG entries re-embedded: {rag_hits}")
-        await interaction.followup.send("\n".join(parts), ephemeral=True)
-    except Exception as e:
-        await interaction.followup.send(f"fix-false-positive failed: {e}", ephemeral=True)
 
 
 # ---------------------------------------------------------------------------
