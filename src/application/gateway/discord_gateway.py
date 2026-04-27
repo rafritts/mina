@@ -65,7 +65,7 @@ _IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 # Register mina.log as a stream bus consumer — drives structured log from the bus
 try:
-    from src.infrastructure.stream_bus import stream_bus as _stream_bus
+    from src.application.infra.stream_bus import stream_bus as _stream_bus
     from ..infra.log import log as _log
 
     def _stream_log_handler(event) -> None:

@@ -333,7 +333,7 @@ def run_emotion_pillar(
     )
 
     try:
-        from src.infrastructure.stream_bus import stream_bus
+        from src.application.infra.stream_bus import stream_bus
         stream_bus.emit("emotion_pillar", {
             "dominant_affect": result["dominant_affect"],
             "trend": result["trend"],

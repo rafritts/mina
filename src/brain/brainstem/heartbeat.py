@@ -81,7 +81,7 @@ async def bio_tick_loop() -> None:
             _append_bio_history(state)
             snap = _snapshot(state)
             try:
-                from src.infrastructure.stream_bus import stream_bus
+                from src.application.infra.stream_bus import stream_bus
                 stream_bus.emit("state_snapshot", {
                     "chemicals": snap["chemicals"],
                     "second_order": snap["second_order"],

@@ -213,7 +213,7 @@ def build_kag_context(query: str = "") -> str:
         if content:
             parts.append(f"## Knowledge: {fname}\n{content}")
             try:
-                from src.infrastructure.stream_bus import stream_bus
+                from src.application.infra.stream_bus import stream_bus
                 stream_bus.emit("kag_selection", {"filename": fname, "excerpt": content})
             except Exception:
                 pass
@@ -456,7 +456,7 @@ def build_rag_context(query: str, n_results: int = 5) -> str:
     if not memories:
         return ""
     try:
-        from src.infrastructure.stream_bus import stream_bus
+        from src.application.infra.stream_bus import stream_bus
         for i, mem in enumerate(memories):
             stream_bus.emit("rag_hit", {"index": i, "excerpt": mem, "bucket": "default"})
     except Exception:
@@ -515,7 +515,7 @@ def build_rag_context_bucketed(query: str, n_results: int = 4) -> tuple[str, str
     historical_docs  = _query_bucket({"timestamp": {"$lt": cutoff_semi}})
 
     try:
-        from src.infrastructure.stream_bus import stream_bus
+        from src.application.infra.stream_bus import stream_bus
         for bucket, docs in (("recent", recent_docs), ("semi_recent", semi_recent_docs), ("historical", historical_docs)):
             for i, doc in enumerate(docs):
                 stream_bus.emit("rag_hit", {"index": i, "excerpt": doc, "bucket": bucket})

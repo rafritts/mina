@@ -451,7 +451,7 @@ async def run_turn(
     log("USER", f"{username}: {user_input}{img_tag}")
 
     try:
-        from src.infrastructure.stream_bus import stream_bus as _stream_bus
+        from src.application.infra.stream_bus import stream_bus as _stream_bus
         _stream_bus.new_trace()
     except Exception:
         pass
@@ -706,7 +706,7 @@ async def run_turn(
         _ts.increment_turns()
 
         try:
-            from src.infrastructure.stream_bus import stream_bus as _stream_bus
+            from src.application.infra.stream_bus import stream_bus as _stream_bus
             _stream_bus.emit("response_complete", {
                 "text": reply[:300] if reply else "",
                 "token_count": _ts.get().get("total", {}).get("completion_tokens", 0),

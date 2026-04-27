@@ -214,7 +214,7 @@ def reason_response(
             json.dump({"ts": time.time(), "thoughts": thoughts}, f, indent=2)
 
     try:
-        from src.infrastructure.stream_bus import stream_bus
+        from src.application.infra.stream_bus import stream_bus
         stream_bus.emit("reasoning", {
             "approach": result["approach"],
             "tone": result.get("tone", ""),

@@ -6,9 +6,9 @@ no stimuli, no encoder — and checks that every chemical settles near its
 resting baseline.
 
 Usage:
-    python -m src.tools.sim_baseline
-    python -m src.tools.sim_baseline --ticks 10000 --step 0.05
-    python -m src.tools.sim_baseline --ticks 50000 --step 0.1 --chemical cortisol
+    python -m src.application.tools.sim_baseline
+    python -m src.application.tools.sim_baseline --ticks 10000 --step 0.05
+    python -m src.application.tools.sim_baseline --ticks 50000 --step 0.1 --chemical cortisol
 
 --step     sim-hours per tick (default 0.05 = 3 sim-minutes)
 --ticks    number of ticks to run (default 10000)

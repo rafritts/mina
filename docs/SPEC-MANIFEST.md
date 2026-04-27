@@ -9,7 +9,7 @@ Status legend: **DONE** · **IN-PROGRESS** · **TODO** · **DRAFT** (scoped but 
 | 11 | Vital Signs | DONE | Derived vitals with formulas that prevent lethal states from raw chemistry |
 | 12 | Social Expression Register | DONE | Expression filter by familiarity level with bleed-through mechanism |
 | 13 | Personality Architecture | DONE | Big 5 as mechanical modifiers wired to neurochemistry; personality.json |
-| 14 | Psychiatric States | DRAFT | Mood episodes and medication profiles defined; implementation deferred |
+| 14 | Psychiatric States | MOTHBALLED | Episode-layer and medication profiles; not needed for current direction |
 | 15 | Project Refactor | DONE | Structural refactor from flat root to `src/` package |
 | 20 | Simulation Architecture Overhaul | DONE | BiologicalState v3, EventBus, label system, engine orchestration |
 | 21 | Neurotransmitter Dynamics | DONE | GABA, glutamate, adenosine, anandamide, 2-AG + receptor sensitivity |
@@ -26,18 +26,18 @@ Status legend: **DONE** · **IN-PROGRESS** · **TODO** · **DRAFT** (scoped but 
 | 32 | Single Source Truths | DONE | conversation.jsonl + hippocampus + bio_history.jsonl as three canonical stores |
 | 33 | Relationship Knowledge | DONE | Cascading compaction hierarchy; six dimension scores feed relationship modifiers |
 | 34 | Hedonic Setpoint & Craving | DONE | Allostatic setpoint, craving as derived value, post-high crash and withdrawal |
-| 35 | Affective Memory Tagging | TODO | Attach affect/valence/arousal metadata to messages for RAG; path defined |
+| 35 | Affective Memory Tagging | OBE | Superseded by SPEC-55 RAG overhaul |
 | 37 | Stochastic Noise | OBE | Absorbed into SPEC-53; per-chemical noise_sigma + state-modulated scaling |
 | 38 | Attachment Style | DRAFT | Four-style model (anxious/avoidant/disorganized/secure) behavioral deltas; flag planted |
-| 39 | Context Coherence | TODO | Split context injection into window + RAG passes with hard time buckets |
-| 40 | Unidirectional Delta Correction | TODO | Encoder models secretion only (no negative deltas); replace peak resolution resolution with prolactin |
-| 41 | Brain Region Architecture | TODO | Restructure packages from func-based to neuroscience-based (biology/, application/) |
-| 42 | Epinephrine SAM Axis | TODO | Teach encoder SAM axis moment-types; add trajectory context block (registry part done in SPEC-53) |
+| 39 | Context Coherence | OBE | Superseded by SPEC-55 RAG overhaul |
+| 40 | Unidirectional Delta Correction | DONE | Encoder secretion-only enforced; floor saturation added; prolactin refractory in endocrine subsystem |
+| 41 | Brain Region Architecture | PARTIAL | Brain regions correctly placed; stragglers: src/infrastructure/, src/memory/, src/tools/ |
+| 42 | Epinephrine SAM Axis | PARTIAL | Epinephrine registered, recent exchanges present; SAM moment-type guidance less explicit than spec |
 | 43 | Bond Score | DRAFT | Persistent bond score separate from volatile oxytocin; open questions on approach |
 | 44 | Normalized Chemistry Adjudicator | OBE | Adjudicator deleted by SPEC-52; normalized table no longer has a consumer |
-| 45 | Sliding Window RAG | TODO | Per-message 10-message sliding chunks to RAG with sequence tracking |
-| 46 | Hedonic Adaptation | TODO | Split sensitization into relationship-depth tonic baseline + per-message satiation multiplier |
-| 47 | Somatic Narrative | TODO | `_build_somatic_narrative()` → [SOMATIC STATE] block in adjudicator; new "somatic" response field |
+| 45 | Sliding Window RAG | OBE | Superseded by SPEC-55 RAG overhaul |
+| 46 | Hedonic Adaptation | TODO | Not started; old sensitization_level scalar still present; no session tracking or tonic offsets |
+| 47 | Somatic Narrative | TODO | Not started; no somatic narrative, no [SOMATIC STATE] block, no somatic response field |
 | 48 | Dashboard Admin Overhaul | DONE | Next.js 15 App Router on port 2050; art gallery aesthetic; FastAPI on 2049 |
 | 49 | Unified Data Stream | DONE | StreamBus FIFO queue + SSE broadcaster; all modules emit via `emit()` |
 | 50 | Sim Viewer | DONE | Full-screen viewer at /viewer; Vanta TOPOLOGY, D3 thought graph, SSE subscription |
@@ -45,4 +45,5 @@ Status legend: **DONE** · **IN-PROGRESS** · **TODO** · **DRAFT** (scoped but 
 | 52 | Three-Pillar Pipeline | DONE | Emotion → Context → Response pipeline live; adjudicator removed; coherence files active |
 | 53 | Sim Rule Consolidation | DONE | ChemicalProfile fields, generic clearance dispatch, stochastic noise, CompoundRule, resting-state validator |
 | 54 | Biological Timing Model | DRAFT | Two-pool BBB separation; amygdala phasic (pre) + hypothalamus tonic (post) stimulus axes; 4 open questions |
-| 99 | Long-Term Physiological Validation | DRAFT | Telemetry snapshots + 7-day anomaly validation script; flag planted |
+| 55 | RAG Memory Overhaul | DRAFT | RAG is not producing useful results; flag planted; needs end-to-end audit before solution is designed |
+| 99 | Long-Term Physiological Validation | OBE | Removed; sim_baseline.py (SPEC-53) covers validation needs |

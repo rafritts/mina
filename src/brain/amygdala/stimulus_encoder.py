@@ -565,7 +565,7 @@ def _emit_event(
     except Exception:
         pass
     try:
-        from src.infrastructure.stream_bus import stream_bus
+        from src.application.infra.stream_bus import stream_bus
         stream_bus.emit("delta", {
             "source": type,
             "preview": preview[:120],
@@ -817,7 +817,7 @@ positive deltas for it should be 20–30% of the guidance maximums above.
     raw, event_override = _call_delta_json([{"role": "user", "content": prompt}], label="encode_stimulus")
     saturated = _apply_saturation(raw, state)
     try:
-        from src.infrastructure.stream_bus import stream_bus
+        from src.application.infra.stream_bus import stream_bus
         stream_bus.emit("stimulus_land", {"preview": stimulus_text})
     except Exception:
         pass
