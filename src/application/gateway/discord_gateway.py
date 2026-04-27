@@ -902,7 +902,7 @@ async def cmd_state(interaction: discord.Interaction):
 
 @tree.command(name="bioreport", description="Show Mina's current biological state.")
 async def cmd_bioreport(interaction: discord.Interaction):
-    from src.brain.brainstem.chemicals import get_label
+    from src.engine.chem.units import get_label
     from src.brain.brainstem.state import derived as _derived
     s = load_and_advance()
     d = _derived(s)

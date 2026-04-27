@@ -33,7 +33,7 @@ Status legend: **DONE** · **IN-PROGRESS** · **TODO** · **DRAFT** (scoped but 
 | 40 | Unidirectional Delta Correction | DONE | Encoder secretion-only enforced; floor saturation added; prolactin refractory in endocrine subsystem |
 | 41 | Brain Region Architecture | DONE | stream_bus → application/infra, sim_baseline → application/tools; all imports updated |
 | 42 | Epinephrine SAM Axis | DONE | Epinephrine registered, all 5 SAM moment types in encoder, recent exchanges block present |
-| 43 | Bond Depth via OTR Upregulation | READY | Revised: OTR receptor sensitivity is bond depth signal; encoder multiplies by OTR; consolidate_relationship owns OTR trajectory; delete dead get_relationship_bond_level() |
+| 43 | Bond Depth via OTR Upregulation | DONE | OTR receptor sensitivity is bond depth signal; encoder multiplies by OTR; consolidate_relationship owns OTR trajectory; dead get_relationship_bond_level() removed |
 | 44 | Normalized Chemistry Adjudicator | OBE | Adjudicator deleted by SPEC-52; normalized table no longer has a consumer |
 | 45 | Sliding Window RAG | OBE | Superseded by SPEC-55 RAG overhaul |
 | 46 | Hedonic Adaptation | DONE | Session satiation mult (floors per chemical); relationship depth → tonic baseline offset; dynamic oxy novelty floor |
@@ -44,7 +44,7 @@ Status legend: **DONE** · **IN-PROGRESS** · **TODO** · **DRAFT** (scoped but 
 | 51 | Response Reasoning | DONE | response_reasoner.py with internal_reaction, ResponseStrategy, follow-up queue; wired into cortex |
 | 52 | Three-Pillar Pipeline | DONE | Emotion → Context → Response pipeline live; adjudicator removed; coherence files active |
 | 53 | Sim Rule Consolidation | DONE | ChemicalProfile fields, generic clearance dispatch, stochastic noise, CompoundRule, resting-state validator |
-| 54 | Biological Timing Model | DRAFT | Two-pool BBB separation; amygdala phasic (pre) + hypothalamus tonic (post) stimulus axes; 4 open questions |
+| 54 | Biological Timing Model | IN-PROGRESS | Two-pool BBB separation; amygdala phasic (pre) + hypothalamus tonic (post) stimulus axes; 4 open questions |
 | 55 | RAG Memory Overhaul | DRAFT | RAG is not producing useful results; flag planted; needs end-to-end audit before solution is designed |
-| 56 | Application Cleanup | TODO | 10-item debt pass: broken imports, dead fields/constants, duplicate state I/O, compat shims, tolerance scalar |
+| 56 | Application Cleanup | IN-PROGRESS | 10-item debt pass: broken imports, dead fields/constants, duplicate state I/O, compat shims, tolerance scalar |
 | 99 | Long-Term Physiological Validation | OBE | Removed; sim_baseline.py (SPEC-53) covers validation needs |

@@ -37,7 +37,7 @@ def test_heart_rate_cannot_reach_dangerous_level_without_substances():
     fatal vital sign readings. The only path to dangerous territory is through substances.
     """
     # Max out every stimulating chemical to natural limits
-    from src.brain.brainstem.chemicals import REGISTRY
+    from src.engine.chem.registry import REGISTRY
     state = BiologicalState()
     for name in ["norepinephrine", "cortisol", "dopamine"]:
         if name in REGISTRY and REGISTRY[name].hard_ceiling is not None:

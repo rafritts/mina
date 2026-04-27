@@ -39,11 +39,10 @@ ADENOSINE_BUILD_RATE_BASE      = 3.0     # nmol/L/hr — metabolic byproduct of 
 ADENOSINE_FLOOR_SLEEP          = 15.0    # nmol/L — minimum achievable during sleep
 # Typical adenosine at in-window sleep-onset threshold (AUTO_SLEEP_PROPENSITY_IN_WINDOW=70 AU):
 #   adenosine = threshold * ADENOSINE_SLEEP_DRIVE_DIVISOR + ADENOSINE_SLEEP_DRIVE_MIN
-#             = 70 * 0.70 + 20 = 69 nmol/L
+#             = 70 * 0.60 + 20 = 62 nmol/L
 # Used to calibrate the clearance rate from sleep_hours_needed config.
-ADENOSINE_SLEEP_ONSET_NMOL     = 69.0    # nmol/L — adenosine at typical sleep-onset
+ADENOSINE_SLEEP_ONSET_NMOL     = 62.0    # nmol/L — adenosine at typical sleep-onset
 
-SLEEP_PRESSURE_BUILD_RATE      = 1.8     # AU/hr — legacy; derived from adenosine when needed
 SLEEP_PRESSURE_CLEAR_RATE      = 24.0    # AU/hr — during sleep
 
 ENDORPHIN_FAST_DECAY_RATE      = 18.0    # pg/mL/hr — decay when above baseline
@@ -131,7 +130,6 @@ HYDRATION_CORTISOL_DELTA            = 60.0   # nmol/L added to cortisol baseline
 HYDRATION_NOREPI_DELTA              = 30.0   # pg/mL added to norepinephrine baseline
 
 # Sleep pressure / adenosine effects
-ADENOSINE_SEROTONIN_DRAIN_THRESHOLD = 50.0   # AU (legacy sleep_pressure scale)
 ADENOSINE_SEROTONIN_DRAIN_RATE      = 0.3    # ng/mL/hr
 ADENOSINE_DOPAMINE_DRAIN_THRESHOLD  = 70.0   # AU
 ADENOSINE_DOPAMINE_DRAIN_RATE       = 1.0    # pg/mL/hr
@@ -330,10 +328,9 @@ SLEEP_PROPENSITY_S_PROCESS_WEIGHT     = 0.6
 SLEEP_PROPENSITY_C_PROCESS_WEIGHT     = 0.4
 SLEEP_PROPENSITY_OREXIN_OPPOSITION    = 0.6    # orexin × this opposes melatonin drive
 ADENOSINE_SLEEP_DRIVE_MIN             = 20.0   # nmol/L — maps to 0 AU
-ADENOSINE_SLEEP_DRIVE_DIVISOR         = 0.70   # (adenosine - min) / this → 0-100 AU
+ADENOSINE_SLEEP_DRIVE_DIVISOR         = 0.60   # (adenosine - min) / this → 0-100 AU
 MELATONIN_SLEEP_PROPENSITY_DIVISOR    = 220.0  # normalizes melatonin to 0-100
 OREXIN_SLEEP_PROPENSITY_DIVISOR       = 400.0  # normalizes orexin to 0-100
-MELATONIN_AUTO_SLEEP_LEGACY_THRESHOLD = 195.0  # pg/mL — kept for backward compat
 
 GLUCOSE_HYPOGLYCEMIC_WAKE_THRESHOLD   = 55.0   # mg/dL — forces awakening
 

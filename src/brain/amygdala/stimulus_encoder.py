@@ -418,7 +418,7 @@ def _apply_saturation(deltas: dict, state: BiologicalState) -> dict:
     Uses quadratic decay in the soft→hard zone — aggressive near the boundary.
     Substances bypass this; only encoder-issued deltas are saturated.
     """
-    from src.brain.brainstem.chemicals import REGISTRY
+    from src.engine.chem.registry import REGISTRY
     # SPEC-30: anandamide is body-stored, not in state.chemicals
     _body_stored = {"anandamide"}
     result = {}

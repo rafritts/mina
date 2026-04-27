@@ -77,7 +77,6 @@ def _safe_reason_response(state, stimulus, emotion_result=None, context_result=N
 # Backward-compat constants — gateway imports these for display/checks
 HISTORY_MAX      = DECODER_WINDOW_SIZE      # used by /context display
 HISTORY_FORCE_AT = DECODER_WINDOW_SIZE + 1  # disables gateway force-compact check
-HISTORY_KEEP     = MINA_IMMEDIATE_WINDOW    # no longer used for compaction
 
 
 # ---------------------------------------------------------------------------
@@ -723,8 +722,3 @@ async def run_turn(
         # carry the full rescued message batch) encodes from a clean baseline.
         save_state(BiologicalState.from_dict(_pre_encoder_state))
         raise
-
-
-async def compact_history_if_needed() -> None:
-    """No-op — compaction replaced by RAG aging in SPEC-27. Kept for gateway compat."""
-    pass

@@ -29,7 +29,7 @@ def make_state(**chem_overrides) -> BiologicalState:
 # ---------------------------------------------------------------------------
 
 def test_saturation_drops_delta_to_zero_above_hard_ceiling():
-    from src.brain.brainstem.chemicals import REGISTRY
+    from src.engine.chem.registry import REGISTRY
     hard = REGISTRY["dopamine"].hard_ceiling
     state = make_state(dopamine=hard)
     result = _apply_saturation({"dopamine": 50.0}, state)
@@ -37,7 +37,7 @@ def test_saturation_drops_delta_to_zero_above_hard_ceiling():
 
 
 def test_saturation_scales_quadratically_in_soft_to_hard_zone():
-    from src.brain.brainstem.chemicals import REGISTRY
+    from src.engine.chem.registry import REGISTRY
     soft = REGISTRY["dopamine"].soft_ceiling
     hard = REGISTRY["dopamine"].hard_ceiling
     midpoint = soft + (hard - soft) * 0.5
@@ -50,7 +50,7 @@ def test_saturation_scales_quadratically_in_soft_to_hard_zone():
 
 
 def test_saturation_passes_delta_unchanged_below_soft_ceiling():
-    from src.brain.brainstem.chemicals import REGISTRY
+    from src.engine.chem.registry import REGISTRY
     soft = REGISTRY["dopamine"].soft_ceiling
     state = make_state(dopamine=soft * 0.5)  # well below soft
     result = _apply_saturation({"dopamine": 20.0}, state)

@@ -118,7 +118,8 @@ def _flatten_receptors(rs: dict) -> dict:
 
 def _build_state_response(s) -> dict:
     """Build the full v3 state response dict from a BiologicalState."""
-    from src.brain.brainstem.chemicals import REGISTRY, normalize, get_label
+    from src.engine.chem.registry import REGISTRY
+    from src.engine.chem.units import normalize, get_label
     from src.engine.psych.derived import derived
 
     d = derived(s)
@@ -273,7 +274,8 @@ class StatePatch(BaseModel):
 def patch_state(body: StatePatch, request: Request):
     _check_auth(request)
     from src.brain.brainstem.state import load_state, save_state, advance
-    from src.brain.brainstem.chemicals import REGISTRY, clamp_chemical
+    from src.engine.chem.registry import REGISTRY
+    from src.engine.chem.units import clamp_chemical
 
     s = advance(load_state())
     updates = {k: v for k, v in body.model_dump(exclude_none=True).items()

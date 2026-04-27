@@ -18,7 +18,8 @@ import time
 from src.application.infra.client import chat_create, DECODER_MODEL, CONTEXT_MODEL
 from src.config.config import load_config, INJECT_FILE, RUN_DIR
 from src.brain.brainstem.state import BiologicalState, derived, _CHEMICAL_DEFAULTS
-from src.brain.brainstem.chemicals import REGISTRY, get_label
+from src.engine.chem.registry import REGISTRY
+from src.engine.chem.units import get_label
 from src.engine.rules import COMPOUND_RULES
 
 # ---------------------------------------------------------------------------
@@ -1258,17 +1259,6 @@ def build_rag_context(
         out_parts.append(llm_context)
     return "\n\n---\n\n".join(out_parts)
 
-
-def build_memory_context(
-    query: str,
-    kag_context: str,
-    rag_recent: str,
-    rag_historical: str,
-    decoder_window: list[dict] | None = None,
-    mina_immediate: int = 4,
-) -> str:
-    """Legacy shim — kept for freetime/consolidation callers. Delegates to build_rag_context."""
-    return build_rag_context(query, kag_context, rag_recent, "", rag_historical)
 
 
 _DECODER_SYSTEM_FREETIME = """\

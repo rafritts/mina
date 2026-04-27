@@ -52,7 +52,7 @@ def process_events(s: BiologicalState, events: list[BiologicalEvent],
     for event in kag_candidates:
         text = _format_rag_event(s, event, context_hint)
         try:
-            from hippocampus import rag_add
+            from src.brain.hippocampus.hippocampus import rag_add
             rag_add(text, metadata={
                 "type":      "biological_event",
                 "chemical":  event.chemical,
@@ -68,7 +68,7 @@ def process_events(s: BiologicalState, events: list[BiologicalEvent],
     if len(significant) >= MULTI_EVENT_THRESHOLD and len(significant) > len(kag_candidates):
         text = _format_composite_rag_event(s, significant, context_hint)
         try:
-            from hippocampus import rag_add
+            from src.brain.hippocampus.hippocampus import rag_add
             rag_add(text, metadata={
                 "type":  "biological_composite_event",
                 "count": len(significant),

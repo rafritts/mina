@@ -53,7 +53,7 @@ async def fire_followup(entry: dict) -> None:
     from src.application.infra.client import chat_create, MODEL
     from src.brain.amygdala.stimulus_encoder import encode_response
     from src.brain.brainstem.state import apply_deltas
-    from src.brain.subconscious.decoder import build_memory_context
+    from src.brain.subconscious.decoder import build_rag_context
     from src.brain.cortex.emotional_reasoner import run_emotion_pillar, format_emotional_state_block
 
     context = entry.get("context", "")
@@ -80,10 +80,11 @@ async def fire_followup(entry: dict) -> None:
 
     _emotion_result, memory_context = await asyncio.gather(
         asyncio.to_thread(run_emotion_pillar, state, stimulus, "active"),
-        asyncio.to_thread(build_memory_context,
+        asyncio.to_thread(build_rag_context,
                           context,
                           kag_context,
                           rag_recent,
+                          "",
                           rag_historical),
     )
 

@@ -37,7 +37,7 @@ def test_biological_report_includes_all_chemicals():
 
 
 def test_biological_report_labels_cortisol_at_known_ranges():
-    from src.brain.brainstem.chemicals import get_label
+    from src.engine.chem.units import get_label
     state = make_state(cortisol=800.0)
     report = biological_report(state)
     label, _ = get_label("cortisol", 800.0)

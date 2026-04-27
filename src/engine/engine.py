@@ -498,7 +498,7 @@ def advance(state: BiologicalState,
         s.chemicals[name] = new_val
 
     # --- Phase 2: cross-interactions from REGISTRY ---
-    # TODO SPEC-22: extend for neuroendocrine tier targets
+    # Neuroendocrine cross-interactions are handled by advance_hpa and advance_endocrine above.
 
     for name, profile in REGISTRY.items():
         if name in _SUBSYSTEM_MANAGED and name not in ("gaba", "glutamate"):

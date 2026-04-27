@@ -26,7 +26,7 @@ from src.application.infra import discord_send as _discord_send
 from src.application.infra.client import chat_create, MODEL
 from src.brain.cortex.cortex import apply_ts_label
 from src.application.infra.log import log as _log_raw
-from src.brain.subconscious.decoder import biological_report, build_memory_context, needs_summary
+from src.brain.subconscious.decoder import biological_report, needs_summary, build_rag_context
 from src.brain.cortex.emotional_reasoner import run_emotion_pillar, format_emotional_state_block
 from src.brain.amygdala.stimulus_encoder import encode_stimulus, encode_response, evaluate_activity_deltas
 from src.brain.hippocampus.hippocampus import (
@@ -696,9 +696,8 @@ async def run_freetime(force: bool = False) -> None:
     _emotion_result, memory_context = await asyncio.gather(
         asyncio.to_thread(run_emotion_pillar, state, stimulus_text, "freetime", _ft_time_context),
         asyncio.to_thread(
-            build_memory_context,
-            stimulus_text, kag_context, rag_recent, rag_historical,
-            decoder_window, mina_immediate,
+            build_rag_context,
+            stimulus_text, kag_context, rag_recent, "", rag_historical,
         ),
     )
 

@@ -26,7 +26,7 @@ def make_state(**chem_overrides) -> BiologicalState:
 def test_apply_deltas_clamps_to_critical_high():
     # apply_deltas uses critical_high (the absolute physiological ceiling),
     # not hard_ceiling (the encoder saturation threshold).
-    from src.brain.brainstem.chemicals import REGISTRY
+    from src.engine.chem.registry import REGISTRY
     critical_high = REGISTRY["dopamine"].critical_high
     state = make_state(dopamine=critical_high - 5)
     result = apply_deltas(state, {"dopamine": 100.0})

@@ -277,11 +277,8 @@ def derived(s) -> dict:
     effective_serotonin = _n("serotonin", s) * serotonin_mult * (2.0 - ht1a_sens)
     effective_serotonin = _clamp(effective_serotonin)
 
-    # Old substance tolerance scalar — kept for backward compat during transition
-    tol_d = s.tolerance.get("dopamine", 0.0)
-
-    effective_dopamine_reward    = _n("dopamine", s) * d2_sens * (1.0 - tol_d)
-    effective_dopamine_cognitive = _n("dopamine", s) * d1_sens * (1.0 - tol_d)
+    effective_dopamine_reward    = _n("dopamine", s) * d2_sens
+    effective_dopamine_cognitive = _n("dopamine", s) * d1_sens
     effective_gaba               = gaba_n * gaba_a_sens
 
     # Vasopressin and anandamide (normalized)

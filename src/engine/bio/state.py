@@ -25,6 +25,7 @@ from src.engine.bio.defaults import (
     CHEMICAL_DEFAULTS,
 )
 from src.engine.bio.migration import _migrate_v1_to_v2, migrate_v2_to_v3, migrate_v3_to_v4
+from src.engine.constants import ADENOSINE_SLEEP_DRIVE_MIN, ADENOSINE_SLEEP_DRIVE_DIVISOR
 
 
 @dataclass
@@ -152,7 +153,7 @@ class BiologicalState:
         Adenosine receptor sensitivity modulates the effective sleep signal:
         caffeine blocks A1/A2A so adenosine builds but doesn't register as sleepiness.
         """
-        raw = (self.body["adenosine"] - 20.0) / 0.60
+        raw = (self.body["adenosine"] - ADENOSINE_SLEEP_DRIVE_MIN) / ADENOSINE_SLEEP_DRIVE_DIVISOR
         raw = min(100.0, max(0.0, raw))
 
         # Caffeine receptor block: A1/A2A sensitivity is transiently reduced

@@ -32,13 +32,18 @@ Two things change:
 
 The blood-brain barrier divides all chemicals into two compartments:
 
-**Bloodstream (plasma)**: cortisol, epinephrine, norepinephrine, glucose, melatonin,
-oxytocin, hydration, BAC. Clearance is hepatic degradation, renal filtration, plasma
+**Bloodstream (plasma)**: cortisol, epinephrine, glucose, melatonin,
+hydration, BAC. Clearance is hepatic degradation, renal filtration, plasma
 enzymatic activity.
 
-**Synaptic pool (CNS, behind the BBB)**: dopamine, serotonin, acetylcholine, GABA,
-glutamate, endorphins, anandamide, 2-AG. Clearance is reuptake transporters (DAT,
-SERT, NET) and local enzymatic degradation (MAO, COMT, AChE, FAAH).
+**Synaptic pool (CNS, behind the BBB)**: dopamine, serotonin, norepinephrine,
+acetylcholine, GABA, glutamate, endorphins, anandamide, 2-AG, oxytocin. Clearance
+is reuptake transporters (DAT, SERT, NET) and local enzymatic degradation (MAO, COMT,
+AChE, FAAH).
+
+> **Note**: Norepinephrine is synaptic-only for now (locus coeruleus → CNS effects).
+> Adrenal medulla NE drives peripheral cardiovascular effects; move it to both pools
+> if physical arousal modeling is added later.
 
 Mechanically both pools are flat `{chemical: concentration}` dicts advanced by the
 same three clearance models from SPEC-53. The distinction determines which biological
@@ -128,7 +133,7 @@ def salience_to_tonic(scores) -> dict:
 
 Tonic chemicals (bloodstream / synaptic):
 - **Cortisol** (bloodstream) — HPA axis; `onset_delay` in the secretion queue models the CRH → ACTH → cortisol cascade delay
-- **Oxytocin** (bloodstream) — builds over warm exchanges
+- **Oxytocin** (synaptic) — builds over warm exchanges
 - **Serotonin** (synaptic) — tonic tone shift, hours not seconds
 
 ### What This Produces

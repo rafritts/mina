@@ -105,16 +105,13 @@ def migrate_v2_to_v3(old: dict) -> dict:
 def migrate_v3_to_v4(old: dict) -> dict:
     """
     SPEC-29: add stimulus_window, sensitization, secretion_queue.
-    Rename encoder_momentum → habituation (retained but unused in v4+).
     """
     result = dict(old)
     result["schema_version"] = 4
 
-    # Rename encoder_momentum → habituation
-    if "encoder_momentum" in result and "habituation" not in result:
-        result["habituation"] = result.pop("encoder_momentum")
-    elif "habituation" not in result:
-        result["habituation"] = {}
+    # Drop legacy encoder_momentum / habituation — no longer a field
+    result.pop("encoder_momentum", None)
+    result.pop("habituation", None)
 
     if "stimulus_window" not in result:
         result["stimulus_window"] = []
