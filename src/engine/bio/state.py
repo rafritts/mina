@@ -96,9 +96,6 @@ class BiologicalState:
     # Each entry: {"chemical": str, "remaining": float, "rate_per_sim_hour": float, "posted_at": float}
     secretion_queue: list = field(default_factory=list)
 
-    # habituation: renamed from encoder_momentum (SPEC-29); retained for migration compat but no longer used.
-    habituation: dict = field(default_factory=dict)
-
     # ---------------------------------------------------------------------------
     # Convenience read-only accessors — allow old call sites to work
     # ---------------------------------------------------------------------------
