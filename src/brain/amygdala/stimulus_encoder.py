@@ -113,9 +113,10 @@ _HABITUATION_WINDOWS: dict[str, float | None] = {
 }
 
 # Maximum sensitization multiplier per chemical. None = not sensitized.
+# SPEC-46: these are no longer used as per-message multipliers; kept for future reference.
 _SENSITIZATION_MAX: dict[str, float | None] = {
     "dopamine":       2.0,
-    "epinephrine":    1.3,    # mild sensitization — same as NE
+    "epinephrine":    1.3,
     "oxytocin":       2.5,
     "endorphins":     1.5,
     "norepinephrine": 1.3,
@@ -123,6 +124,21 @@ _SENSITIZATION_MAX: dict[str, float | None] = {
     "serotonin":      None,
     "cortisol":       None,
 }
+
+# SPEC-46: session satiation floors — per-chemical minimum reactivity multiplier.
+# Dopamine habituates most aggressively (novelty-driven); ACh least.
+_SESSION_SATIATION_FLOORS: dict[str, float] = {
+    "dopamine":       0.30,
+    "oxytocin":       0.45,
+    "norepinephrine": 0.50,
+    "endorphins":     0.50,
+    "epinephrine":    0.60,
+    "acetylcholine":  0.70,
+}
+
+SESSION_BREAK_SECONDS = 14400   # 4-hour gap resets satiation
+SATIATION_RATE        = 150.0   # contact count at which mult reaches floor
+_SATIATION_RECOVERY_HALF_LIFE_HOURS = 2.0  # partial recovery half-life during gaps
 
 # Secretion rates (units/sim_hour) — controls rise time in advance() drip loop.
 # Chemicals not listed here are applied immediately by the caller.
@@ -233,6 +249,39 @@ def _update_sensitization(sensitization: dict, valence: float) -> dict:
     return s
 
 
+def _get_effective_session_count(satiation: dict, now: float) -> float:
+    """SPEC-46: effective session contact count with exponential partial recovery."""
+    count = satiation.get("session_contact_count", 0.0)
+    last_ts = satiation.get("last_contact_ts")
+    if last_ts is None or count == 0:
+        return 0.0
+    elapsed_secs = now - last_ts
+    if elapsed_secs >= SESSION_BREAK_SECONDS:
+        return 0.0
+    elapsed_hours = elapsed_secs / 3600.0
+    decay = 0.5 ** (elapsed_hours / _SATIATION_RECOVERY_HALF_LIFE_HOURS)
+    return count * decay
+
+
+def _session_mult(chem: str, effective_count: float) -> float:
+    """SPEC-46: per-message reactivity multiplier based on session satiation."""
+    floor = _SESSION_SATIATION_FLOORS.get(chem)
+    if floor is None:
+        return 1.0
+    satiation_factor = effective_count / SATIATION_RATE
+    return max(floor, 1.0 - satiation_factor)
+
+
+def _update_session_satiation(satiation: dict, now: float) -> dict:
+    """SPEC-46: increment session contact count (after computing effective count)."""
+    effective_count = _get_effective_session_count(satiation, now)
+    return {
+        "session_contact_count": effective_count + 1,
+        "last_contact_ts":       now,
+        "session_start_ts":      satiation.get("session_start_ts") if effective_count > 0 else now,
+    }
+
+
 def _apply_habituation_and_sensitization(
     deltas: dict,
     state: BiologicalState,
@@ -247,8 +296,12 @@ def _apply_habituation_and_sensitization(
     # Layer 1a: content novelty via embedding
     embedding = _get_embedding(stimulus_text)
 
-    # Layer 1b: source sensitization level (single user)
+    # Layer 1b: source sensitization level (single user) — retained for cortisol safety signal
     sens_level = state.sensitization.get("sensitization_level", 1.0)
+
+    # SPEC-46: session satiation — per-message reactivity multiplier
+    now = time.time()
+    effective_count = _get_effective_session_count(state.session_satiation, now)
 
     result: dict[str, float] = {}
     total_positive_valence = 0.0
@@ -272,20 +325,22 @@ def _apply_habituation_and_sensitization(
             continue
 
         window_hours = _HABITUATION_WINDOWS.get(chem)
-        max_mult     = _SENSITIZATION_MAX.get(chem)
 
         if delta > 0:
-            # Positive deltas: apply habituation then sensitization
+            # Positive deltas: apply content novelty then session satiation
             if embedding and window_hours:
                 novelty = _compute_content_novelty(embedding, state.stimulus_window, window_hours)
             else:
                 novelty = 1.0  # embedding unavailable or no window → no dampening
 
             if chem == "oxytocin":
-                novelty = max(0.7, novelty)  # oxytocin never fully habituates within-session
+                # SPEC-46: dynamic floor — drops from 0.7 toward 0.3 over ~120 contacts
+                oxy_floor = max(0.30, 0.70 - (effective_count / 300.0))
+                novelty = max(oxy_floor, novelty)
 
-            sensitization_mult = min(max_mult, sens_level) if max_mult else 1.0
-            final = round(delta * novelty * sensitization_mult, 3)
+            # SPEC-46: session satiation replaces sensitization_mult
+            s_mult = _session_mult(chem, effective_count)
+            final = round(delta * novelty * s_mult, 3)
             total_positive_valence += final
         else:
             # Negative deltas pass through unchanged
@@ -297,8 +352,7 @@ def _apply_habituation_and_sensitization(
     if sens_level > 1.2 and "cortisol" not in result:
         result["cortisol"] = round(-2.0 * (sens_level - 1.0), 3)
 
-    # Layer 1c: update stimulus_window and sensitization record
-    now = time.time()
+    # Layer 1c: update stimulus_window, sensitization, and session satiation
     if embedding:
         state.stimulus_window = [
             e for e in state.stimulus_window if e.get("ts", 0) > now - 86400
@@ -309,7 +363,8 @@ def _apply_habituation_and_sensitization(
             "summary":   stimulus_text[:60],
         })
 
-    state.sensitization = _update_sensitization(state.sensitization, total_positive_valence)
+    state.sensitization    = _update_sensitization(state.sensitization, total_positive_valence)
+    state.session_satiation = _update_session_satiation(state.session_satiation, now)
 
     # Log if habituation meaningfully dampened anything
     dampened = [
@@ -318,7 +373,7 @@ def _apply_habituation_and_sensitization(
         if c in deltas and deltas[c] > 0 and result[c] < deltas[c] - 0.01
     ]
     if dampened:
-        log("ENCODER/HAB", f"sens={sens_level:.2f} " + ", ".join(dampened))
+        log("ENCODER/HAB", f"count={effective_count:.0f} " + ", ".join(dampened))
 
     return result
 

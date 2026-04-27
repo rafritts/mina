@@ -280,6 +280,30 @@ def _apply_isolation_recovery(
     return state
 
 
+def _apply_relationship_depth_offsets(s: BiologicalState, sim_hours: float) -> BiologicalState:
+    """
+    SPEC-46: lift oxytocin, serotonin, and endorphins toward a tonic target derived
+    from relationship depth. Represents the background warmth of a valued bond.
+    Nudges upward at 2 units/sim-hour; only applies when current < target.
+    """
+    depth = s.sensitization.get("sensitization_level", 1.0)
+    if depth <= 1.0:
+        return s
+    excess = depth - 1.0  # 0.0 to 1.5
+
+    targets = {
+        "oxytocin":   CHEMICAL_DEFAULTS.get("oxytocin",   4.0)  + excess * 4.0,
+        "serotonin":  CHEMICAL_DEFAULTS.get("serotonin",  22.0) + excess * 2.0,
+        "endorphins": CHEMICAL_DEFAULTS.get("endorphins", 12.0) + excess * 1.5,
+    }
+    for chem, target in targets.items():
+        current = s.chemicals.get(chem, CHEMICAL_DEFAULTS.get(chem, 0.0))
+        if current < target:
+            nudge = min(target - current, 2.0 * sim_hours)
+            s.chemicals[chem] = clamp_chemical(chem, current + nudge)
+    return s
+
+
 def _advance_hedonic_setpoint(s: BiologicalState, sim_hours: float) -> BiologicalState:
     """
     SPEC-34: Hedonic setpoint drifts up fast toward sustained reward peaks and decays
@@ -586,6 +610,8 @@ def advance(state: BiologicalState,
                     e["ts"] = 2.0 * e["ts"] - now
                     fresh.append(e)
                 s.stimulus_window = fresh
+            # SPEC-46: session satiation resets on sleep — fresh reactivity each day.
+            s.session_satiation = {}
 
     # --- Auto-sleep onset (SPEC-24: two-process propensity model) ---
     # Replaces the old melatonin >= 195 threshold with a physiologically grounded
@@ -644,6 +670,9 @@ def advance(state: BiologicalState,
     elif stage >= 2:
         # Beyond Stage 1: chronic neurochemical deterioration
         s = _apply_isolation_stage_effects(s, isolation_days, sim_hours)
+
+    # --- SPEC-46: relationship depth tonic offsets ---
+    s = _apply_relationship_depth_offsets(s, sim_hours)
 
     # --- SPEC-34: hedonic setpoint drift ---
     s = _advance_hedonic_setpoint(s, sim_hours)

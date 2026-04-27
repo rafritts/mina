@@ -86,6 +86,11 @@ class BiologicalState:
     #  "sensitization_level": float, "last_contact_ts": float, "first_contact_ts": float}
     sensitization: dict = field(default_factory=dict)
 
+    # SPEC-46: session satiation — within-session reactivity multiplier state.
+    # {"session_contact_count": float, "last_contact_ts": float, "session_start_ts": float}
+    # Reset on sleep wake. Partial exponential recovery (2h half-life) during gaps.
+    session_satiation: dict = field(default_factory=dict)
+
     # secretion_queue: pending neurotransmitter drip entries processed by advance().
     # Each entry: {"chemical": str, "remaining": float, "rate_per_sim_hour": float, "posted_at": float}
     secretion_queue: list = field(default_factory=list)
