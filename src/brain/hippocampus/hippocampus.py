@@ -383,6 +383,9 @@ _RAG_HALF_LIFE_RECENT_HOURS  = 0.33   # 20 min; entries from 20min ago score ~50
 _RAG_HALF_LIFE_HISTORY_HOURS = 48.0   # 2 days; yesterday scores ~50%, last week ~1%
 # Relational pool: half-life of 30 days — cosine-dominant, keeps old in-jokes/dynamics accessible.
 _RAG_HALF_LIFE_RELATIONAL_HOURS = 720.0  # 30 days; a week ago scores ~86%, a month ago ~50%
+# Minimum raw cosine similarity before a result is considered. Filters noise aggressively;
+# tune down toward 0.70 if Mina stops recalling things she clearly should remember.
+_RAG_SIMILARITY_FLOOR = 0.75
 
 
 def _rag_query_with_half_life(query: str, n_results: int, half_life_hours: float) -> list[str]:
@@ -413,6 +416,8 @@ def _rag_query_with_half_life(query: str, n_results: int, half_life_hours: float
         scored = []
         for doc, dist, meta in zip(docs, distances, metas):
             similarity  = 1.0 - dist
+            if similarity < _RAG_SIMILARITY_FLOOR:
+                continue
             age_s       = now - float((meta or {}).get("timestamp", now))
             decay       = 0.5 ** (age_s / half_life_s)
             scored.append((similarity * decay, doc))
@@ -655,11 +660,14 @@ def sliding_rag_query(query: str, expand_radius: int = 3) -> str:
         results = collection.query(
             query_texts=[query],
             n_results=1,
-            include=["documents", "metadatas"],
+            include=["documents", "metadatas", "distances"],
         )
-        docs  = results.get("documents", [[]])[0]
-        metas = results.get("metadatas", [[]])[0]
+        docs      = results.get("documents", [[]])[0]
+        metas     = results.get("metadatas", [[]])[0]
+        distances = results.get("distances", [[]])[0]
         if not docs:
+            return ""
+        if (1.0 - distances[0]) < _RAG_SIMILARITY_FLOOR:
             return ""
 
         match_seq = int((metas[0] or {}).get("seq", 0))
