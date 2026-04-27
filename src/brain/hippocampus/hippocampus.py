@@ -1321,21 +1321,6 @@ def _get_net_relationship_dimensions(owner_name: str) -> dict[str, float]:
     return net
 
 
-def get_relationship_bond_level(state: BiologicalState, owner_name: str) -> float:
-    """
-    SPEC-33: Stable bond level blending relationship file (stable across absences)
-    with current oxytocin (volatile). Range 0.0–1.0.
-
-    65% from relationship file net bonding so deep history survives multi-day absence;
-    35% from live oxytocin so recent warmth still matters.
-    """
-    net_dims = _get_net_relationship_dimensions(owner_name)
-    net_bonding = net_dims.get("bonding", 0.0)  # -2 to +2
-    bonding_from_file = (net_bonding + 2.0) / 4.0  # normalize to 0–1
-    oxytocin_norm = min(1.0, state.chemicals.get("oxytocin", 4.0) / 40.0)
-    return round(0.65 * bonding_from_file + 0.35 * oxytocin_norm, 3)
-
-
 def _parse_relationship_output(raw: str) -> tuple[str, dict[str, int]]:
     """Parse LLM relationship output: blockquote prose + dimension scores."""
     prose_lines = []
@@ -1461,6 +1446,9 @@ def _apply_receptor_sensitivity_changes(
 
     if bonding >= 1:
         _nudge("oxytocin", "OTR", +0.05)
+    elif bonding <= -1:
+        # Bond fades with sustained negative/absent history
+        _nudge("oxytocin", "OTR", -0.02)
 
     if tension >= 1:
         _nudge("cortisol", "GR", -0.05)  # glucocorticoid receptor blunting
@@ -1468,6 +1456,8 @@ def _apply_receptor_sensitivity_changes(
     if layer_name == "ground_truth":
         if bonding == 2:
             _nudge("dopamine", "D1", +0.05)
+        elif bonding == -2:
+            _nudge("oxytocin", "OTR", -0.05)  # deep rupture; extra OTR decay
 
     if layer_name == "long_term":
         if security <= -1:

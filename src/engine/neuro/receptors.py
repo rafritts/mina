@@ -53,6 +53,10 @@ def advance_receptors(s: BiologicalState, sim_hours: float) -> BiologicalState:
         s.receptor_sensitivity = {}
 
     for chem_name, subtypes in RECEPTOR_DEFAULTS.items():
+        # OTR trajectory is owned by consolidate_relationship(), not chemical homeostasis
+        if chem_name == "oxytocin":
+            continue
+
         # Get current level and relevant thresholds
         if chem_name in s.chemicals:
             level = s.chemicals[chem_name]

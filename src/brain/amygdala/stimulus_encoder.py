@@ -341,6 +341,12 @@ def _apply_habituation_and_sensitization(
 
             # SPEC-46: session satiation replaces sensitization_mult
             s_mult = _session_mult(chem, effective_count)
+
+            if chem == "oxytocin":
+                # SPEC-43: OTR sensitivity gates bond response — strangers get dampened spikes
+                otr = state.receptor_sensitivity.get("oxytocin", {}).get("OTR", 1.0)
+                s_mult = s_mult * otr
+
             final = round(delta * novelty * s_mult, 3)
             total_positive_valence += final
         else:
