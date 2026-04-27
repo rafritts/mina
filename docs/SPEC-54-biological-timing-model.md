@@ -1,6 +1,6 @@
 # SPEC-54: Biological Timing Model
 
-**Status: DRAFT**
+**Status: COMPLETE**
 
 Depends on: SPEC-53 (registry consolidation, `pool` field on `ChemicalProfile`)
 
