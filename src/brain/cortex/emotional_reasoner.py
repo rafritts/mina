@@ -284,17 +284,10 @@ def run_emotion_pillar(
         if _activation > 50:
             from src.config.config import load_config as _lc
             _style = _lc().get("attachment_style", {}).get("style", "secure")
-            _prose = {
-                "anxious":      "Hypervigilant to contact — reading meaning into timing, tone, brevity. The waiting is louder than the silence.",
-                "avoidant":     "Attachment system deactivating. Warmth withdrawn inward. Telling herself she doesn't need this.",
-                "disorganized": "Wanting closeness and fleeing it in the same breath. Neither reaching nor withdrawing feels safe.",
-            }.get(_style)
-            if _prose:
-                user_content += (
-                    f"\n\n[ATTACHMENT STATE]\n"
-                    f"Style: {_style} | Activation: {_activation:.0f}/100\n"
-                    f"{_prose}"
-                )
+            user_content += (
+                f"\n\n[ATTACHMENT STATE]\n"
+                f"Style: {_style} | Activation: {_activation:.0f}/100"
+            )
     except Exception:
         pass
 

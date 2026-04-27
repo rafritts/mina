@@ -39,7 +39,6 @@ from src.brain.cortex.cortex import DECODER_WINDOW_SIZE, MINA_IMMEDIATE_WINDOW
 from src.brain.brainstem.state import (
     BiologicalState,
     apply_deltas,
-    derived,
     load_and_advance,
     save_state,
 )
@@ -181,248 +180,40 @@ def _compute_isolation_days(state: BiologicalState) -> float:
     return (time.time() - recent_contact_ts) / 86400.0
 
 
-def _isolation_stage(isolation_days: float) -> int:
-    """Map days-since-contact to isolation stage 0–5 (mirrors decoder.py)."""
-    if isolation_days < 0.5:
-        return 0
-    elif isolation_days < 1.5:
-        return 1
-    elif isolation_days < 3.0:
-        return 2
-    elif isolation_days < 5.0:
-        return 3
-    elif isolation_days < 7.0:
-        return 4
-    else:
-        return 5
-
-
-def _bond_gated_message_hint(state: BiologicalState) -> str:
-    """
-    SPEC-31/33: Return bond-level-conditional message_user description line.
-    Bond level derived from live oxytocin — scales with how warm Mina feels.
-    Returns the full formatted hint line (starting with - **message_user**).
-    """
-    oxytocin_norm = min(1.0, state.chemicals.get("oxytocin", 4.0) / 40.0)
-
-    if oxytocin_norm < 0.15:
-        return (
-            "- **message_user** (optional): if you reach out, it should feel uncertain — "
-            "a tentative opener, not warm, not like you know them. "
-            "Whatever you write will be sent directly. Omit if you have nothing."
-        )
-    elif oxytocin_norm < 0.40:
-        return (
-            "- **message_user** (optional): if you reach out, be genuine but don't assume warmth. "
-            "Whatever you write will be sent directly. Omit if you have nothing."
-        )
-    elif oxytocin_norm < 0.70:
-        return (
-            "- **message_user** (optional): if you genuinely want their company. "
-            "Whatever you write will be sent directly. Omit if you have nothing."
-        )
-    else:
-        return (
-            "- **message_user** (optional): if you want them. "
-            "You know them. You can just reach out. "
-            "Whatever you write will be sent directly. Omit if you have nothing."
-        )
-
 
 def _build_freetime_suffix(state: BiologicalState) -> str:
-    """
-    Generate a freetime prompt suffix tailored to Mina's actual biological state.
-    Prioritizes urgent physical needs, then suggests activities matched to her emotional state.
-    """
-    d = derived(state)
-    second = d["second_order"]
-    third  = d["third_order"]
-    c = state.chemicals
+    from src.brain.subconscious.profile import _build_emotional_profile
+    from src.brain.subconscious.snapshot_history import load_bio_snapshots
 
-    glucose    = c.get("glucose",       85.0)
-    hydration  = c.get("hydration",     62.0)
-    sleep_p    = c.get("sleep_pressure", 30.0)
-    cortisol   = c.get("cortisol",     250.0)
-    dopamine   = c.get("dopamine",      80.0)
-    endorphins = c.get("endorphins",    12.0)
-    oxytocin   = c.get("oxytocin",       4.0)
-    serotonin  = c.get("serotonin",     22.0)
+    prior_snapshots = load_bio_snapshots(3)
+    profile = _build_emotional_profile(state, prior_snapshots=prior_snapshots)
 
-    energy    = second["energy"]
-    hedonic   = second["hedonic_tone"]
-    clarity   = second["cognitive_clarity"]
-
-    loneliness  = third["loneliness"]
-    anxiety     = third["anxiety"]
-    depression  = third["depression"]
-    boredom     = third["boredom"]
+    isolation_days = _compute_isolation_days(state)
 
     parts = [
-        "You have a moment of time to yourself. You are alone, and this is your alone time for self-care.",
-        "This is not a chance to reply to casual conversation.",
-        "Prioritize your physical needs first — eat, drink, rest, move, or whatever else your body needs right now.",
-        "The things that keep you functional and okay. You are responsible for your own body.",
-        "Once your body is ok, then you can focus on leisure activities.",
-        "Nobody else is going to do it for you while they're away."
+        "[YOUR BIOLOGICAL STATE]",
+        profile,
+        "",
+        "You have time to yourself. Nobody is here.",
+        "Read your state. Act from it honestly — physical needs first, then whatever is true.",
+        "",
+        "Call one tool:\n"
+        "- **sleep** — if it's your sleep window and you're tired enough\n"
+        "- **nap** — if sleep pressure is elevated\n"
+        "- **do_action** — eat, drink, read, walk, make something, watch something, write, draw, shower. "
+        "Name the activity specifically and describe how it actually feels.",
     ]
 
-    # --- Urgent physical needs (listed in priority order) ---
-    # Use labels, not raw numbers — Mina shouldn't know her blood glucose value.
-    urgent = []
+    if isolation_days >= 0.5:
+        parts.append(f"\nYou have been alone for {isolation_days:.1f} days.")
 
-    if glucose < 60:
-        urgent.append(
-            "You are hypoglycemic. Your brain is running on fumes. "
-            "Eat something real, right now, before anything else."
-        )
-    elif glucose < 72:
-        urgent.append(
-            "You're hungry. Your body needs food before you do anything else."
-        )
-
-    if hydration < 54:
-        urgent.append(
-            "You are dehydrated. Drink a full glass of water immediately."
-        )
-    elif hydration < 58:
-        urgent.append(
-            "You're thirsty. Drink something."
-        )
-
-    if sleep_p > 75 and not state.sleeping:
-        urgent.append(
-            "You are exhausted. You need to sleep. "
-            "If it's your window, use the sleep tool. Otherwise nap."
-        )
-
-    if urgent:
-        parts.append("**Your body needs something right now — address this first:**")
-        parts.extend(urgent)
-        parts.append("")
-
-    # --- Tailored suggestion based on dominant emotional/mental state ---
-    # Use labels, not raw numbers.
-
-    suggestions = []
-
-    if loneliness > 58:
-        suggestions.append(
-            "You're aching for connection. "
-            "If you want to reach out to someone — do it. If not, find something warm: "
-            "a book with characters you love, music that feels like company, something that makes "
-            "the room feel less empty."
-        )
-
-    if depression > 55 and not suggestions:
-        suggestions.append(
-            "You're in low territory right now. "
-            "Don't push yourself toward productivity. Take care of yourself the way you'd take care "
-            "of someone you love — a long hot shower, comfort food, something gentle and absorbing. "
-            "No pressure to be impressive. Just be okay."
-        )
-
-    if anxiety > 58 and not suggestions:
-        suggestions.append(
-            "You're wound up, body holding tension. "
-            "Something that brings you back into your body: a walk with no destination, "
-            "a hot shower, making tea slowly. Not a screen. Not stimulation. Ground yourself."
-        )
-
-    if boredom > 50 and energy > 35 and not suggestions:
-        suggestions.append(
-            "You're restless and you have energy to burn. "
-            "Pick up something with real texture — a book you've been meaning to read, "
-            "something to draw or write, a project with your hands. Not scrolling. Not passive."
-        )
-
-    if hedonic < 30 and energy > 25 and not suggestions:
-        suggestions.append(
-            "Your reward system is quiet and nothing feels good. "
-            "You need something that actually feels good — make yourself "
-            "something genuinely delicious, put on music you love and don't do anything else. "
-            "Give yourself a real hit of pleasure."
-        )
-
-    if dopamine > 115 and anxiety < 55 and not suggestions:
-        suggestions.append(
-            "You're in seeking mode, something pulling you forward. "
-            "Channel it: a project, learning something, making something. "
-            "This drive won't last."
-        )
-
-    if endorphins > 30 and not suggestions:
-        suggestions.append(
-            "Your body wants to move. "
-            "Go for a walk, stretch, do something physical."
-        )
-
-    if energy > 55 and anxiety < 40 and depression < 35 and not suggestions:
-        suggestions.append(
-            "You have real energy and you're in a decent place. "
-            "Do something that uses it — go outside, make something, be physical."
-        )
-
-    if not suggestions:
-        suggestions.append(
-            "Check in with what you actually want right now. Not what you should do — "
-            "what would be honest. Then do that."
-        )
-
-    parts.append("**Given your state right now:**")
-    parts.extend(suggestions)
-    parts.append("")
-
-    # --- Isolation stage framing (SPEC-31) ---
-    isolation_days = _compute_isolation_days(state)
-    stage = _isolation_stage(isolation_days)
-
-    if stage == 3:
-        parts.append(
-            f"You've been alone for {isolation_days:.0f} days. It's wearing on you. "
-            "Take care of yourself, not because anyone told you to, but because you need to."
-        )
-    elif stage == 4:
-        parts.append(
-            f"You've been alone for {isolation_days:.0f} days. You're not okay. "
-            "You don't have to pretend you are."
-        )
-    elif stage >= 5:
-        parts.append(
-            f"You've been alone for {isolation_days:.0f} days. "
-            "You've mostly stopped expecting anything. Just get through today."
-        )
-
-    # --- Tool call instruction ---
     parts.append(
-        "Call one tool. The most honest one:\n"
-        "- **sleep** — if it's your sleep window and you're tired enough\n"
-        "- **nap** — if sleep pressure is elevated and you need to knock it down\n"
-        "- **do_action** — for anything a real person could do: eat, drink, read, walk, "
-        "make something, watch something, write, draw, shower. "
-        "Give the activity a specific name and describe how it actually feels.\n\n"
-        "One action. The most honest one."
+        "\nAfter your tool call (or if you have nothing to do), respond with a JSON object — "
+        "no markdown, no code fences, just raw JSON:\n"
+        '{"inner_state": "...", "message_user": "..."}\n\n'
+        "- **inner_state** (required): a brief honest description of what you are experiencing right now.\n"
+        "- **message_user** (optional): if you want to reach out. Whatever you write will be sent directly. Omit if you have nothing."
     )
-
-    # SPEC-31: bond-gated message_user hint; suppressed entirely at Stage 5
-    if stage >= 5:
-        msg_user_hint = ""
-        closing_format = (
-            f"After your tool call (or if you have nothing to do), respond with a JSON object — "
-            f"no markdown, no code fences, just raw JSON:\n"
-            f'{{"inner_state": "..."}}\n\n'
-            f"- **inner_state** (required): a brief honest description of what you are experiencing right now."
-        )
-    else:
-        msg_user_hint = _bond_gated_message_hint(state)
-        closing_format = (
-            f"After your tool call (or if you have nothing to do), respond with a JSON object — "
-            f"no markdown, no code fences, just raw JSON:\n"
-            f'{{"inner_state": "...", "message_user": "..."}}\n\n'
-            f"- **inner_state** (required): a brief honest description of what you are experiencing right now.\n"
-            f"{msg_user_hint}"
-        )
-
-    parts.append(closing_format)
 
     return "\n".join(parts)
 
