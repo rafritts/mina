@@ -22,7 +22,7 @@ EMOTIONAL_STATE_FILE = os.path.join(RUN_DIR, "emotional_state.json")
 _REQUIRED_FIELDS = (
     "emotional_summary", "dominant_affect", "trend",
     "emotional_response_texturing", "arousal", "valence",
-    "availability", "dominant_drive", "regulation",
+    "availability", "dominant_drive", "somatic", "regulation",
 )
 
 _VALID_TRENDS = frozenset({"rising", "falling", "stable", "shifting"})
@@ -91,6 +91,14 @@ trend field:
 
 ---
 
+## STEP 3 — Read the somatic state
+
+If a [SOMATIC STATE] section is present, it is what the body is physically doing right now, \
+already translated into felt-sense language. It is ground truth — do not contradict it. \
+Let it inform the "somatic" output field.
+
+---
+
 ## REGULATION
 
 If a recent biological event was clearly disproportionate — a false alarm, an overcorrection — \
@@ -117,6 +125,9 @@ Return a JSON object with exactly these fields. No markdown, no fences, no pream
 "valence"                      — integer 0-100 (0 = dysphoric, 100 = elated)
 "availability"                 — one of: fully_open | open | neutral | guarded | closed
 "dominant_drive"               — what she is oriented toward right now, one short phrase
+"somatic"                      — one sentence in felt-sense language: what the body is doing
+                                 right now. Drawn from [SOMATIC STATE] if present. First person
+                                 optional. If the body is unremarkable, say so plainly.
 "regulation"                   — null, or {"chemical": "...", "amount": -4.2, "rationale": "..."}
                                  amount must be negative (dampening only)"""
 
@@ -159,6 +170,14 @@ trend field: rising | falling | stable | shifting
 
 ---
 
+## STEP 3 — Read the somatic state
+
+If a [SOMATIC STATE] section is present, it is what the body is physically doing right now, \
+already translated into felt-sense language. It is ground truth — do not contradict it. \
+Let it inform the "somatic" output field.
+
+---
+
 ## REGULATION
 
 Same rules as active mode. Most passes: null. Only if clearly disproportionate.
@@ -179,6 +198,9 @@ Return a JSON object with exactly these fields. No markdown, no fences, no pream
 "valence"                      — integer 0-100 (0 = dysphoric, 100 = elated)
 "availability"                 — one of: fully_open | open | neutral | guarded | closed
 "dominant_drive"               — what she is oriented toward right now, one short phrase
+"somatic"                      — one sentence in felt-sense language: what the body is doing
+                                 right now. Drawn from [SOMATIC STATE] if present. First person
+                                 optional. If the body is unremarkable, say so plainly.
 "regulation"                   — null, or {"chemical": "...", "amount": -4.2, "rationale": "..."}"""
 
 

@@ -445,6 +445,7 @@ async def run_turn(
     state = load_state() if paused else load_and_advance()
     if paused:
         log("STATE", "Biological updates paused — time not advanced.")
+    state.body["current_activity"] = None
     img_count = len(images) if images else 0
     img_tag = f" [{img_count} image(s)]" if img_count else ""
     print("=" * 20 + "MESSAGE START" + "=" * 20, flush=True)

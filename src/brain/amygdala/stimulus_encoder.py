@@ -909,6 +909,7 @@ def evaluate_activity_deltas(state: BiologicalState, activity: str, description:
     Determine biological deltas from a do_action activity.
     Used by both cortex.py and freetime.py after a do_action tool call.
     """
+    state.body["current_activity"] = activity
     from src.brain.subconscious.decoder import biological_report
     report = biological_report(state)
 

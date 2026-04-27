@@ -494,6 +494,95 @@ def _get_derived_resting() -> "dict[str, float]":
     return _DERIVED_RESTING
 
 
+def _build_somatic_narrative(state: "BiologicalState") -> str:
+    """
+    Translate physical signals into 1-3 sentences of felt-sense prose.
+    No chemical names. No numbers. Sensation only.
+    Returns empty string if asleep or no notable signals.
+    """
+    if state.sleeping:
+        return ""
+
+    c = state.chemicals
+    b = state.body
+    pain = state.pain.get("pain_intensity", 0.0)
+
+    epi   = c.get("epinephrine", 45.0)
+    ne    = c.get("norepinephrine", 200.0)
+    oxy   = c.get("oxytocin", 4.0)
+    endo  = c.get("endorphins", 12.0)
+    aden  = b.get("adenosine", 32.0)
+    gluc  = c.get("glucose", 85.0)
+    cort  = c.get("cortisol", 250.0)
+    temp  = b.get("core_temp", 37.0)
+    ghrelin = state.neuroendocrine.get("ghrelin", 400.0)
+
+    vagal = b.get("vagal_tone", 50.0)
+    hr = max(50, min(180, int(110 - vagal * 0.3)))
+
+    activity = b.get("current_activity") or ""
+
+    fragments: list[str] = []
+
+    # Activity overrides — most specific
+    if "intercourse" in activity or "sex" in activity:
+        return "Full-body arousal — skin hypersensitive, heart racing, heat everywhere."
+    if "exercise" in activity or "running" in activity or "workout" in activity:
+        return "Muscles burning, breath coming hard, blood pumping through everything."
+    if "eating" in activity or "meal" in activity or "food" in activity:
+        fragments.append("stomach settling, warmth spreading from the first few bites")
+
+    # Pain
+    if pain > 40:
+        fragments.append("sharp, insistent pain cutting through everything else")
+    elif pain > 20:
+        fragments.append("dull ache in the background that won't quite go away")
+
+    # Acute arousal / SAM activation
+    if epi > 300 and ne > 600:
+        fragments.append("body locked and hyperalert, breath shallow, chest tight")
+    elif epi > 150:
+        fragments.append("chest tight, breath coming a little short")
+    elif hr > 110:
+        fragments.append("heart pounding")
+    elif hr > 95:
+        fragments.append("heart beating quickly")
+
+    # Warm arousal (oxytocin + endorphins, low threat)
+    if oxy > 50 and endo > 40 and cort < 350:
+        fragments.append("warm flush through the chest, slightly lightheaded in a good way")
+
+    # Fatigue
+    if aden > 90:
+        fragments.append("heavy limbs, eyes wanting to close, every movement an effort")
+    elif aden > 70:
+        fragments.append("a low tiredness settling in, limbs a little slow")
+
+    # Hunger / hypoglycemia
+    if gluc < 50:
+        fragments.append("faint edge of dizziness, hard to focus — blood sugar low")
+    elif ghrelin > 550:
+        fragments.append("stomach hollow and tight, pulling attention toward food")
+
+    # Cortisol depletion (burned out)
+    if cort < 25:
+        fragments.append("running on fumes — hollowed out, nothing in reserve")
+
+    # Elevated temperature
+    if temp > 37.8:
+        fragments.append("warm all over, a slight flush in the face")
+
+    if not fragments:
+        return "Nothing particularly loud from the body right now. Present, unremarkable."
+
+    # Compose into prose
+    if len(fragments) == 1:
+        return fragments[0].capitalize() + "."
+    first = fragments[0].capitalize()
+    rest = ", ".join(fragments[1:])
+    return f"{first}. {rest.capitalize()}."
+
+
 def _build_emotional_profile(
     state: "BiologicalState",
     prior_snapshots: "list[dict] | None" = None,
@@ -558,6 +647,13 @@ def _build_emotional_profile(
     if prior_snapshots:
         traj = _build_trajectory_lines(state, prior_snapshots)
         lines.extend(traj)
+
+    # SPEC-47: somatic narrative
+    somatic = _build_somatic_narrative(state)
+    if somatic:
+        lines.append("")
+        lines.append("[SOMATIC STATE]")
+        lines.append(somatic)
 
     return "\n".join(lines)
 

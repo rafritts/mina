@@ -31,8 +31,8 @@ Status legend: **DONE** · **IN-PROGRESS** · **TODO** · **DRAFT** (scoped but 
 | 38 | Attachment Style | DRAFT | Four-style model (anxious/avoidant/disorganized/secure) behavioral deltas; flag planted |
 | 39 | Context Coherence | OBE | Superseded by SPEC-55 RAG overhaul |
 | 40 | Unidirectional Delta Correction | DONE | Encoder secretion-only enforced; floor saturation added; prolactin refractory in endocrine subsystem |
-| 41 | Brain Region Architecture | PARTIAL | Brain regions correctly placed; stragglers: src/infrastructure/, src/memory/, src/tools/ |
-| 42 | Epinephrine SAM Axis | PARTIAL | Epinephrine registered, recent exchanges present; SAM moment-type guidance less explicit than spec |
+| 41 | Brain Region Architecture | DONE | stream_bus → application/infra, sim_baseline → application/tools; all imports updated |
+| 42 | Epinephrine SAM Axis | DONE | Epinephrine registered, all 5 SAM moment types in encoder, recent exchanges block present |
 | 43 | Bond Score | DRAFT | Persistent bond score separate from volatile oxytocin; open questions on approach |
 | 44 | Normalized Chemistry Adjudicator | OBE | Adjudicator deleted by SPEC-52; normalized table no longer has a consumer |
 | 45 | Sliding Window RAG | OBE | Superseded by SPEC-55 RAG overhaul |

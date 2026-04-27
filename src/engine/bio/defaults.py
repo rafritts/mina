@@ -108,6 +108,8 @@ def body_defaults(sleep_pressure_au: float = 30.0) -> dict[str, float]:
         "hedonic_setpoint":       15.0,   # 0-100 AU — drifts toward recent peaks, decays to floor
         # SPEC-31: highest isolation stage reached since last contact (0–5)
         "peak_isolation_stage":    0,     # reset to 0 on contact; used for recovery-context adjudication
+        # SPEC-47: current physical activity — set by evaluate_activity_deltas, cleared at turn start
+        "current_activity":       None,
     }
 
 
