@@ -418,7 +418,13 @@ def _rag_query_with_half_life(query: str, n_results: int, half_life_hours: float
             scored.append((similarity * decay, doc))
 
         scored.sort(key=lambda x: x[0], reverse=True)
-        return [doc for _, doc in scored[:n_results]]
+        seen: set[str] = set()
+        deduped = []
+        for score, doc in scored:
+            if doc not in seen:
+                seen.add(doc)
+                deduped.append(doc)
+        return deduped[:n_results]
 
     except Exception as e:
         if "does not exist" in str(e):

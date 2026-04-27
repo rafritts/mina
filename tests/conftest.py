@@ -35,7 +35,9 @@ def pytest_collection_modifyitems(config, items):
 
 @pytest.fixture(autouse=True)
 def mock_token_stats():
-    """Prevent any test from writing to the real token_stats.json file."""
+    """Prevent any test from writing to the real token_stats.json or events.jsonl files."""
     with patch("src.application.infra.token_stats.record_response"), \
-         patch("src.application.infra.token_stats.increment_turns"):
+         patch("src.application.infra.token_stats.increment_turns"), \
+         patch("src.application.infra.events.emit"), \
+         patch("src.application.infra.events.emit_tool"):
         yield
