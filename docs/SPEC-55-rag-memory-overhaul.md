@@ -1,6 +1,6 @@
 # SPEC-55: RAG Similarity Tuning
 
-**Status**: IN-PROGRESS  
+**Status**: DONE  
 **Depends on**: SPEC-27 (stateless decoder), SPEC-33 (relationship knowledge)
 
 ---
