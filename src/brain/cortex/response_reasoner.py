@@ -28,7 +28,7 @@ VALID_APPROACHES = frozenset({
 _REQUIRED_FIELDS = (
     "internal_reaction", "approach", "tone", "lead_with",
     "subtext_detected", "lean_into_subtext", "strategy_rationale",
-    "follow_up_thoughts", "follow_up_questions", "ask_now",
+    "follow_up_thoughts", "follow_up_questions",
 )
 
 _SYSTEM = """\
@@ -54,13 +54,7 @@ Required fields:
   "lean_into_subtext"   — true or false
   "strategy_rationale"  — why this approach; can reference the reaction
   "follow_up_thoughts"  — list of things she keeps thinking about after (may be empty)
-  "follow_up_questions" — list of questions she genuinely wants to ask in future turns (may be empty)
-  "ask_now"             — a single specific question to ask in THIS response, or null.
-                          Use this when a question arises naturally from the current exchange —
-                          something she's genuinely curious about right now, not a generic check-in.
-                          null means she doesn't ask anything this turn.
-                          "ask_now" and approach="question" are independent: approach drives the
-                          overall response shape; ask_now decides whether a question is embedded."""
+  "follow_up_questions" — list of questions she wants to ask when the moment is right (may be empty)"""
 
 
 def _compute_normalized(state: BiologicalState, name: str) -> float:
@@ -237,12 +231,9 @@ def format_strategy_block(result: dict, queued_question: str | None = None) -> s
     Serialize the reasoning result into a [Response Strategy] system prompt block.
     cortex.py calls this and appends the output to the assembled system prompt.
     """
-    approach = result["approach"]
-    ask_now = result.get("ask_now") or None
-
     lines = [
         "[Response Strategy]",
-        f"Approach: {approach}",
+        f"Approach: {result['approach']}",
         f"Tone: {result['tone']}",
         f"Lead with: {result['lead_with']}",
         f"Internal reaction (do not express directly): {result['internal_reaction']}",
@@ -250,32 +241,6 @@ def format_strategy_block(result: dict, queued_question: str | None = None) -> s
     if result.get("subtext_detected"):
         lines.append(f"Subtext detected: {result['subtext_detected']}")
         lines.append(f"Lean into subtext: {'yes' if result.get('lean_into_subtext') else 'no'}")
-
-    if ask_now:
-        if approach == "question":
-            lines.append(
-                f"Ask this: {ask_now}\n"
-                "This can be your entire response — a question doesn't need a statement first. "
-                "If you do say something before it, keep it short; the question is the point."
-            )
-        else:
-            lines.append(
-                f"Question to weave in: {ask_now}\n"
-                "Embed this where it fits — after you've said what you have to say, or mid-thought "
-                "if that's more natural. It should feel like it just occurred to you, not like a "
-                "checklist item appended at the end."
-            )
-    elif queued_question:
-        lines.append(
-            f"Question from earlier (only surface if it flows naturally from this exchange): {queued_question}\n"
-            "Skip it entirely if it would feel forced. Do not append it mechanically."
-        )
-
-    lines.append(
-        "Anti-patterns — never do these:\n"
-        "- End with a generic check-in ('What do you think?', 'What about you?', 'What's next?', 'How are you?')\n"
-        "- Append a question to a complete statement just to seem engaged\n"
-        "- Ask a question you don't actually care about the answer to"
-    )
-
+    if queued_question:
+        lines.append(f"Queued question (surface if the moment is right): {queued_question}")
     return "\n".join(lines)
