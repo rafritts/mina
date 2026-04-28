@@ -11,8 +11,9 @@ const GROUPS: { label: string; chemicals: string[] }[] = [
   { label: 'Bonding & Social', chemicals: ['oxytocin', 'endorphins'] },
   { label: 'Modulators', chemicals: ['acetylcholine', 'anandamide', 'two_ag'] },
   { label: 'Excitatory / Inhibitory', chemicals: ['glutamate', 'gaba'] },
-  { label: 'Stress', chemicals: ['cortisol'] },
-  { label: 'Circadian', chemicals: ['melatonin', 'sleep_pressure', 'glucose', 'hydration'] },
+  { label: 'Stress', chemicals: ['cortisol', 'epinephrine'] },
+  { label: 'Circadian', chemicals: ['melatonin', 'sleep_pressure'] },
+  { label: 'Physiological', chemicals: ['glucose', 'hydration'] },
 ]
 
 export default function NeuroPage() {
