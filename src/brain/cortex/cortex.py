@@ -24,7 +24,7 @@ from src.brain.hippocampus.hippocampus import build_kag_context, build_rag_conte
 from src.brain.amygdala.stimulus_encoder import encode_stimulus, encode_response, evaluate_activity_deltas, compute_relationship_modifier, regulate
 from src.brain.brainstem.state import BiologicalState, apply_deltas, load_and_advance, load_state, save_state
 from .tools import TOOLS, call_tool
-from .response_reasoner import reason_response, format_strategy_block, pop_queued_question
+from .response_reasoner import reason_response, format_strategy_block
 from .emotional_reasoner import run_emotion_pillar, format_emotional_state_block
 from .context_reasoner import run_context_pillar, format_situational_context_block
 
@@ -417,7 +417,7 @@ async def run_turn(
     user_input: str,
     username: str = "user",
     images: "list[tuple[str, str]] | None" = None,
-) -> tuple[str, list[str]]:
+) -> tuple[str, list[str], list[str]]:
     """
     Execute one full Mina turn.
 
@@ -615,12 +615,16 @@ async def run_turn(
         if _context_result:
             system_prompt_parts.append(format_situational_context_block(_context_result))
         if _reasoning_result:
-            _queued_q: str | None = None
-            if _reasoning_result.get("approach") in ("question", "warm"):
-                _queued_q = pop_queued_question()
-            system_prompt_parts.append(format_strategy_block(_reasoning_result, _queued_q))
+            system_prompt_parts.append(format_strategy_block(_reasoning_result))
 
         system_prompt = _sep.join(system_prompt_parts) if system_prompt_parts else "You are Mina. Respond naturally."
+
+        # Extract follow-up plan from reasoner before the cortex call
+        _follow_up_messages: list[str] = [
+            m for m in (_reasoning_result or {}).get("follow_up_messages", [])
+            if isinstance(m, str) and m.strip()
+        ]
+        _skip_primary = bool((_reasoning_result or {}).get("skip_primary_response"))
 
         # Emotion Pillar result stored as adj (replaces adjudicator JSON — SPEC-52)
         _adj_json: dict | None = _emotion_result
@@ -648,30 +652,34 @@ async def run_turn(
                 _state_note_parts.append("[" + " ".join(_cog_lines) + "]")
         state_note = "\n".join(_state_note_parts)
 
-        # [4] Mina responds — she only sees the immediate window, not the full decoder window
+        # [4] Mina responds — skipped if reasoner decided follow-ups are the full output
         immediate_slice = decoder_window[-mina_immediate:] if mina_immediate > 0 else []
-        new_entries, state, image_paths = await _mina_turn(
-            system_prompt, immediate_slice, state, state_note
-        )
-        save_state(state)
+        image_paths: list[str] = []
+        new_entries: list[dict] = []
 
-        # Strip emoji from all assistant entries before storing in decoder window / history
-        for entry in new_entries:
-            if entry.get("role") == "assistant" and isinstance(entry.get("content"), str):
-                entry["content"] = _strip_emoji(entry["content"])
+        if _skip_primary:
+            log("MINA", "[primary response suppressed — follow-ups only]")
+        else:
+            new_entries, state, image_paths = await _mina_turn(
+                system_prompt, immediate_slice, state, state_note
+            )
+            save_state(state)
+
+            for entry in new_entries:
+                if entry.get("role") == "assistant" and isinstance(entry.get("content"), str):
+                    entry["content"] = _strip_emoji(entry["content"])
+
+            if _adj_json:
+                for entry in reversed(new_entries):
+                    if entry.get("role") == "assistant" and entry.get("content"):
+                        entry["adj"] = _adj_json
+                        break
 
         reply = ""
         for entry in reversed(new_entries):
             if entry.get("role") == "assistant" and entry.get("content"):
                 reply = entry["content"]
                 break
-
-        # SPEC-35: attach adjudicator JSON to the final assistant entry
-        if _adj_json:
-            for entry in reversed(new_entries):
-                if entry.get("role") == "assistant" and entry.get("content"):
-                    entry["adj"] = _adj_json
-                    break
 
         if reply:
             log("MINA", reply)
@@ -692,7 +700,6 @@ async def run_turn(
 
         # SPEC-32: append user message + final reply to the append-only conversation record
         user_content = user_content if not images else (
-            # Strip images from stored entry — store text only
             next((b.get("text", "") for b in user_content if isinstance(b, dict) and b.get("type") == "text"), user_input)
             if isinstance(user_content, list) else user_content
         )
@@ -723,7 +730,7 @@ async def run_turn(
 
         print("=" * 21 + "MESSAGE END" + "=" * 21, flush=True)
         touch_last_active()
-        return reply, image_paths
+        return reply, _follow_up_messages, image_paths
 
     except asyncio.CancelledError:
         # Rewind bio state to pre-encoder snapshot so the next turn (which will

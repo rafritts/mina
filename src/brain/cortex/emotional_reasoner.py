@@ -23,6 +23,7 @@ _REQUIRED_FIELDS = (
     "emotional_summary", "dominant_affect", "trend",
     "emotional_response_texturing", "arousal", "valence",
     "availability", "dominant_drive", "somatic", "regulation",
+    "interpretation_bias",
 )
 
 _VALID_TRENDS = frozenset({"rising", "falling", "stable", "shifting"})
@@ -129,7 +130,14 @@ Return a JSON object with exactly these fields. No markdown, no fences, no pream
                                  right now. Drawn from [SOMATIC STATE] if present. First person
                                  optional. If the body is unremarkable, say so plainly.
 "regulation"                   — null, or {"chemical": "...", "amount": -4.2, "rationale": "..."}
-                                 amount must be negative (dampening only)"""
+                                 amount must be negative (dampening only)
+"interpretation_bias"          — one short directive for the response reasoner: how her current
+                                 biology should color her reading of incoming messages.
+                                 Examples: "read ambiguity as threat", "generous, low guard",
+                                 "easily irritated, low tolerance for small talk",
+                                 "warm and open, assume good faith".
+                                 Ground this in the actual chemistry — cortisol, oxytocin,
+                                 serotonin, norepinephrine. One sentence, directive form."""
 
 _SYSTEM_FREETIME = """\
 You are reasoning about Mina's emotional state during her free time — alone, no social filter, \
@@ -201,7 +209,13 @@ Return a JSON object with exactly these fields. No markdown, no fences, no pream
 "somatic"                      — one sentence in felt-sense language: what the body is doing
                                  right now. Drawn from [SOMATIC STATE] if present. First person
                                  optional. If the body is unremarkable, say so plainly.
-"regulation"                   — null, or {"chemical": "...", "amount": -4.2, "rationale": "..."}"""
+"regulation"                   — null, or {"chemical": "...", "amount": -4.2, "rationale": "..."}
+"interpretation_bias"          — one short directive for the response reasoner: how her current
+                                 biology should color her reading of incoming messages.
+                                 Examples: "read ambiguity as threat", "generous, low guard",
+                                 "easily irritated, low tolerance for small talk",
+                                 "warm and open, assume good faith".
+                                 Ground this in the actual chemistry. One sentence, directive form."""
 
 
 def _load_emotional_state() -> dict:
@@ -389,4 +403,6 @@ def format_emotional_state_block(result: dict) -> str:
         result["emotional_summary"],
         f"Emotional register: {result['emotional_response_texturing']}",
     ]
+    if result.get("interpretation_bias"):
+        lines.append(f"Interpretation bias: {result['interpretation_bias']}")
     return "\n".join(lines)

@@ -7,18 +7,12 @@ should handle the incoming message: raw first-person reaction first, then strate
 Output is structured JSON. cortex.py owns serialization into the system prompt.
 """
 import json
-import os
 import re
-import time
 
 from src.application.infra.client import chat_create, MODEL
 from src.application.infra import token_stats
 from src.application.infra.log import log
 from src.brain.brainstem.state import BiologicalState, derived
-from src.config.config import RUN_DIR
-
-_QUESTION_QUEUE_FILE = os.path.join(RUN_DIR, "question_queue.json")
-_FOLLOW_UP_THOUGHTS_FILE = os.path.join(RUN_DIR, "follow_up_thoughts.json")
 
 VALID_APPROACHES = frozenset({
     "banter", "sincere", "question", "deflect",
@@ -28,7 +22,7 @@ VALID_APPROACHES = frozenset({
 _REQUIRED_FIELDS = (
     "internal_reaction", "approach", "tone", "lead_with",
     "subtext_detected", "lean_into_subtext", "strategy_rationale",
-    "follow_up_thoughts", "follow_up_questions",
+    "skip_primary_response", "follow_up_messages",
 )
 
 _SYSTEM = """\
@@ -43,18 +37,51 @@ Not what she'll say. What she actually thinks when she reads it.
 Second, her strategy — given that reaction, how does she handle it?
 These are coupled. A bad reaction doesn't mean a cold response. A warm reaction doesn't mean she shows it.
 
+## Biological interpretation
+
+The emotion pillar provides an "interpretation_bias" — let it shape how you read this message.
+If bias says "read ambiguity as threat", a vague or probing message should feel suspicious.
+If bias says "generous, low guard", give the benefit of the doubt.
+
+## Pattern detection
+
+Consider the full exchange context, not just this message in isolation.
+Is this the third question about the same topic? Is the person probing? Being aggressive?
+Over-explaining? These patterns matter as much as the content of this specific message.
+
+## Follow-up messages
+
+After her primary response (or instead of it), Mina can send additional messages as separate
+Discord messages — real text, in her voice, sent a few seconds later.
+
+Use follow_up_messages when:
+- She thought of something after she already responded
+- She wants to ask something and it should land separately, not tacked onto a statement
+- She's pushing back and the pushback is the point ("wait, why do you keep asking about this?")
+- Something landed and she wants to react to it after a beat
+
+These are ACTUAL messages she will send verbatim. Write them in her voice.
+Keep each one short — one thought per message, like a real person texting.
+Empty list means no follow-ups.
+
+## skip_primary_response
+
+If the follow-up messages ARE the response — she doesn't want to answer, she wants to ask —
+set skip_primary_response: true. The primary response will be suppressed entirely.
+Only use this when the follow-ups fully replace what she'd say. Not when she wants both.
+
 Return only a JSON object. No markdown, no fences, no extra commentary.
 
 Required fields:
-  "internal_reaction"   — raw first-person thought, her voice, lowercase, unpolished
-  "approach"            — one of: banter, sincere, question, deflect, ignore, vulnerable, warm, brief
-  "tone"                — one-line tone descriptor
-  "lead_with"           — what to open with: a question, observation, or reaction
-  "subtext_detected"    — any innuendo, leading question, or unstated thing (or null)
-  "lean_into_subtext"   — true or false
-  "strategy_rationale"  — why this approach; can reference the reaction
-  "follow_up_thoughts"  — list of things she keeps thinking about after (may be empty)
-  "follow_up_questions" — list of questions she wants to ask when the moment is right (may be empty)"""
+  "internal_reaction"     — raw first-person thought, her voice, lowercase, unpolished
+  "approach"              — one of: banter, sincere, question, deflect, ignore, vulnerable, warm, brief
+  "tone"                  — one-line tone descriptor
+  "lead_with"             — what to open with: a question, observation, or reaction
+  "subtext_detected"      — any innuendo, leading question, or unstated thing (or null)
+  "lean_into_subtext"     — true or false
+  "strategy_rationale"    — why this approach; can reference the reaction and any pattern detected
+  "skip_primary_response" — true if follow_up_messages replace the primary response, false otherwise
+  "follow_up_messages"    — list of actual message strings to send after the primary response (may be empty)"""
 
 
 def _compute_normalized(state: BiologicalState, name: str) -> float:
@@ -89,32 +116,6 @@ def _state_summary(state: BiologicalState) -> str:
         f"mood {mood:.2f}, energy {energy:.2f}, anxiety {anxiety:.2f}."
     )
 
-
-def _load_question_queue() -> list[str]:
-    try:
-        with open(_QUESTION_QUEUE_FILE) as f:
-            data = json.load(f)
-        if isinstance(data, list):
-            return [q for q in data if isinstance(q, str)]
-    except (FileNotFoundError, json.JSONDecodeError):
-        pass
-    return []
-
-
-def _save_question_queue(queue: list[str]) -> None:
-    os.makedirs(os.path.dirname(_QUESTION_QUEUE_FILE), exist_ok=True)
-    with open(_QUESTION_QUEUE_FILE, "w") as f:
-        json.dump(queue, f, indent=2)
-
-
-def pop_queued_question() -> str | None:
-    """Pop the oldest queued follow-up question. Returns None if queue is empty."""
-    queue = _load_question_queue()
-    if not queue:
-        return None
-    question = queue.pop(0)
-    _save_question_queue(queue)
-    return question
 
 
 def reason_response(
@@ -195,21 +196,6 @@ def reason_response(
 
     log("REASONER", json.dumps(result))
 
-    # Append new questions to the queue (accumulated across turns)
-    new_questions = [q for q in (result.get("follow_up_questions") or []) if isinstance(q, str)]
-    if new_questions:
-        queue = _load_question_queue()
-        queue.extend(new_questions)
-        _save_question_queue(queue)
-        log("REASONER/QUEUE", f"queued {len(new_questions)} question(s)")
-
-    # Persist follow-up thoughts (overwrite — decay after one heartbeat cycle)
-    thoughts = [t for t in (result.get("follow_up_thoughts") or []) if isinstance(t, str)]
-    if thoughts:
-        os.makedirs(os.path.dirname(_FOLLOW_UP_THOUGHTS_FILE), exist_ok=True)
-        with open(_FOLLOW_UP_THOUGHTS_FILE, "w") as f:
-            json.dump({"ts": time.time(), "thoughts": thoughts}, f, indent=2)
-
     try:
         from src.application.infra.stream_bus import stream_bus
         stream_bus.emit("reasoning", {
@@ -223,7 +209,7 @@ def reason_response(
     return result
 
 
-def format_strategy_block(result: dict, queued_question: str | None = None) -> str:
+def format_strategy_block(result: dict) -> str:
     """
     Serialize the reasoning result into a [Response Strategy] system prompt block.
     cortex.py calls this and appends the output to the assembled system prompt.
@@ -238,6 +224,4 @@ def format_strategy_block(result: dict, queued_question: str | None = None) -> s
     if result.get("subtext_detected"):
         lines.append(f"Subtext detected: {result['subtext_detected']}")
         lines.append(f"Lean into subtext: {'yes' if result.get('lean_into_subtext') else 'no'}")
-    if queued_question:
-        lines.append(f"Queued question (surface if the moment is right): {queued_question}")
     return "\n".join(lines)

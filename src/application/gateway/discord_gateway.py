@@ -311,7 +311,7 @@ async def _run_turn(channel: discord.abc.Messageable, messages: list[discord.Mes
 
     try:
         async with channel.typing():
-            reply, image_paths = await run_turn(
+            reply, follow_ups, image_paths = await run_turn(
                 user_input, username=username,
                 images=images or None,
             )
@@ -323,6 +323,13 @@ async def _run_turn(channel: discord.abc.Messageable, messages: list[discord.Mes
 
     await _deliver(channel, reply, image_paths)
     await _update_presence(load_state())
+
+    for msg in follow_ups:
+        await asyncio.sleep(3)
+        async with channel.typing():
+            await asyncio.sleep(1)
+        await channel.send(msg)
+        log("MINA/FOLLOWUP", msg)
 
 
 # ---------------------------------------------------------------------------
@@ -509,7 +516,7 @@ async def _run_catchup_turn(channel: discord.abc.Messageable) -> None:
     await asyncio.sleep(1)
     async with channel.typing():
         try:
-            reply, image_paths = await run_turn(
+            reply, _, image_paths = await run_turn(
                 "[Mina just came back online and is reading messages she missed]",
                 username="system",
             )
