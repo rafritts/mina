@@ -58,7 +58,11 @@ try:
     from src.application.infra.stream_bus import stream_bus as _stream_bus
     from ..infra.log import log as _log
 
+    _SKIP_LOG_EVENTS = frozenset({"state_snapshot"})
+
     def _stream_log_handler(event) -> None:
+        if event.type in _SKIP_LOG_EVENTS:
+            return
         import json as _json
         _log(event.type.upper(), _json.dumps(event.payload))
 
