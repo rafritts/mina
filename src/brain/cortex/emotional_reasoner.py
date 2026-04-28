@@ -357,11 +357,7 @@ def run_emotion_pillar(
     if result is None:
         raise RuntimeError("Emotion Pillar failed after 3 attempts")
 
-    log("EMOTION_PILLAR", (
-        f"[{result['dominant_affect']}] trend={result['trend']} "
-        f"arousal={result['arousal']} valence={result['valence']} "
-        f"availability={result['availability']}"
-    ))
+    log("EMOTION_PILLAR", json.dumps(result))
 
     _save_emotional_state(
         result["dominant_affect"],

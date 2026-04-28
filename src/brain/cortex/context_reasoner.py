@@ -159,10 +159,7 @@ def run_context_pillar(
     if result is None:
         raise RuntimeError("Context Pillar failed after 3 attempts")
 
-    log("CONTEXT_PILLAR", (
-        f"[{result['social_context']}] urgency={result['urgency']}"
-        + (f" notable: {result['notable']}" if result.get("notable") else "")
-    ))
+    log("CONTEXT_PILLAR", json.dumps(result))
 
     # Infer trend for coherence tracking
     prior_social = prior.get("last_state", "")

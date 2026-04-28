@@ -193,10 +193,7 @@ def reason_response(
     if result is None:
         raise RuntimeError("Reasoning pass failed after 3 attempts")
 
-    log("REASONER", (
-        f"[{result['approach']}] {result['internal_reaction']} "
-        f"→ {result['strategy_rationale']}"
-    ))
+    log("REASONER", json.dumps(result))
 
     # Append new questions to the queue (accumulated across turns)
     new_questions = [q for q in (result.get("follow_up_questions") or []) if isinstance(q, str)]

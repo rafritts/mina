@@ -64,7 +64,6 @@ try:
         "context_pillar",   # duplicate of [CONTEXT_PILLAR] log line
         "reasoning",        # duplicate of [REASONER] log line
         "stimulus_land",    # redundant with [ENCODER/STIMULUS]
-        "delta",            # redundant with encoder logs
         "rag_hit",          # verbose per-hit noise
         "kag_selection",    # verbose per-file noise
     })
