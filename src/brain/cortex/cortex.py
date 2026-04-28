@@ -29,7 +29,7 @@ from .emotional_reasoner import run_emotion_pillar, format_emotional_state_block
 from .context_reasoner import run_context_pillar, format_situational_context_block
 
 DECODER_WINDOW_SIZE   = 20  # sliding window depth (~10 exchanges)
-MINA_IMMEDIATE_WINDOW = 4   # messages Mina receives directly (2 exchanges)
+MINA_IMMEDIATE_WINDOW = 0   # messages Mina receives directly; 0 = rely entirely on context summary
 
 _EMOJI_RE = re.compile(
     "["
@@ -649,8 +649,9 @@ async def run_turn(
         state_note = "\n".join(_state_note_parts)
 
         # [4] Mina responds — she only sees the immediate window, not the full decoder window
+        immediate_slice = decoder_window[-mina_immediate:] if mina_immediate > 0 else []
         new_entries, state, image_paths = await _mina_turn(
-            system_prompt, decoder_window[-mina_immediate:], state, state_note
+            system_prompt, immediate_slice, state, state_note
         )
         save_state(state)
 

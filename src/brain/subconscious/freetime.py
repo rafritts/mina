@@ -518,8 +518,9 @@ async def run_freetime(force: bool = False) -> None:
         _mark_search_done()
 
     # [5] Mina's free time turn — she sees only the immediate window, not the full decoder window
+    immediate_slice = decoder_window[-mina_immediate:] if mina_immediate > 0 else []
     new_entries, pending_dos = await _run_mina_free_time(
-        state, system_prompt, decoder_window[-mina_immediate:], pre_session=pre_session
+        state, system_prompt, immediate_slice, pre_session=pre_session
     )
 
     decoder_window.extend(new_entries)
