@@ -58,7 +58,16 @@ try:
     from src.application.infra.stream_bus import stream_bus as _stream_bus
     from ..infra.log import log as _log
 
-    _SKIP_LOG_EVENTS = frozenset({"state_snapshot"})
+    _SKIP_LOG_EVENTS = frozenset({
+        "state_snapshot",   # every-60s heartbeat dump — dashboard only
+        "emotion_pillar",   # duplicate of [EMOTION_PILLAR] log line
+        "context_pillar",   # duplicate of [CONTEXT_PILLAR] log line
+        "reasoning",        # duplicate of [REASONER] log line
+        "stimulus_land",    # redundant with [ENCODER/STIMULUS]
+        "delta",            # redundant with encoder logs
+        "rag_hit",          # verbose per-hit noise
+        "kag_selection",    # verbose per-file noise
+    })
 
     def _stream_log_handler(event) -> None:
         if event.type in _SKIP_LOG_EVENTS:

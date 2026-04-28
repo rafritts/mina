@@ -682,7 +682,6 @@ async def run_turn(
             if response_deltas:
                 state = apply_deltas(state, response_deltas)
                 save_state(state)
-        print("=" * 21 + "MESSAGE END" + "=" * 21, flush=True)
 
         # Append response entries to the decoder window and save
         decoder_window.extend(new_entries)
@@ -708,13 +707,21 @@ async def run_turn(
 
         try:
             from src.application.infra.stream_bus import stream_bus as _stream_bus
+            _last_turn = _ts.get().get("turn_log", [{}])[-1]
+            _turn_totals = _last_turn.get("totals", {})
             _stream_bus.emit("response_complete", {
                 "text": reply[:300] if reply else "",
-                "token_count": _ts.get().get("total", {}).get("completion_tokens", 0),
+                "tokens": {
+                    "input":     _turn_totals.get("input", 0),
+                    "output":    _turn_totals.get("output", 0),
+                    "reasoning": _turn_totals.get("reasoning", 0),
+                    "cached":    _turn_totals.get("cached", 0),
+                },
             })
         except Exception:
             pass
 
+        print("=" * 21 + "MESSAGE END" + "=" * 21, flush=True)
         touch_last_active()
         return reply, image_paths
 
