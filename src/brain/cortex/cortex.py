@@ -615,8 +615,9 @@ async def run_turn(
         if _context_result:
             system_prompt_parts.append(format_situational_context_block(_context_result))
         if _reasoning_result:
+            # Only surface a queued question if ask_now is empty (avoid double-questioning)
             _queued_q: str | None = None
-            if _reasoning_result.get("approach") in ("question", "warm"):
+            if not _reasoning_result.get("ask_now"):
                 _queued_q = pop_queued_question()
             system_prompt_parts.append(format_strategy_block(_reasoning_result, _queued_q))
 
