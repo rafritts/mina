@@ -4,6 +4,7 @@ import { useStatePoller } from '../../lib/hooks/useStatePoller'
 import { apiFetch } from '../../lib/api'
 import { StatBar } from '../../components/metrics/StatBar'
 import { useState } from 'react'
+import type { SecretionQueueEntry } from '../../lib/api'
 
 const GROUPS: { label: string; chemicals: string[] }[] = [
   { label: 'Monoamines', chemicals: ['dopamine', 'serotonin', 'norepinephrine'] },
@@ -82,6 +83,51 @@ export default function NeuroPage() {
             </div>
           </section>
         ))}
+
+        {/* Secretion queue */}
+        <section>
+          <h2 className="text-xs uppercase tracking-widest mb-4" style={{ color: 'rgba(232,228,221,0.3)' }}>
+            Secretion Queue
+          </h2>
+          {(!state.secretion_queue || state.secretion_queue.length === 0) ? (
+            <div className="gallery-card rounded-lg px-4 py-3 text-xs value-mono" style={{ color: 'rgba(232,228,221,0.2)' }}>
+              empty
+            </div>
+          ) : (
+            <div className="gallery-card rounded-lg overflow-hidden">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b" style={{ borderColor: 'rgba(232,228,221,0.06)' }}>
+                    <th className="text-left px-4 py-2.5" style={{ color: 'rgba(232,228,221,0.35)' }}>Chemical</th>
+                    <th className="text-right px-4 py-2.5 value-mono" style={{ color: 'rgba(232,228,221,0.35)' }}>Remaining</th>
+                    <th className="text-right px-4 py-2.5 value-mono" style={{ color: 'rgba(232,228,221,0.35)' }}>Rate/hr</th>
+                    <th className="text-right px-4 py-2.5 value-mono" style={{ color: 'rgba(232,228,221,0.35)' }}>Posted</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y" style={{ borderColor: 'rgba(232,228,221,0.04)' }}>
+                  {state.secretion_queue.map((entry: SecretionQueueEntry, i: number) => {
+                    const age = Math.round((Date.now() / 1000 - entry.posted_at) / 60)
+                    const isPositive = entry.remaining > 0
+                    return (
+                      <tr key={i} className="border-t" style={{ borderColor: 'rgba(232,228,221,0.04)' }}>
+                        <td className="px-4 py-2" style={{ color: 'rgba(232,228,221,0.7)' }}>{entry.chemical.replace(/_/g, ' ')}</td>
+                        <td className="px-4 py-2 text-right value-mono" style={{ color: isPositive ? '#34d399' : '#f87171' }}>
+                          {isPositive ? '+' : ''}{entry.remaining.toFixed(2)}
+                        </td>
+                        <td className="px-4 py-2 text-right value-mono" style={{ color: 'rgba(232,228,221,0.4)' }}>
+                          {entry.rate_per_sim_hour.toFixed(0)}
+                        </td>
+                        <td className="px-4 py-2 text-right value-mono" style={{ color: 'rgba(232,228,221,0.25)' }}>
+                          {age < 1 ? 'just now' : `${age}m ago`}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
 
         {/* Receptor sensitivities */}
         <section>

@@ -38,6 +38,13 @@ export interface CascadeEvent {
   magnitude: number
 }
 
+export interface SecretionQueueEntry {
+  chemical: string
+  remaining: number
+  rate_per_sim_hour: number
+  posted_at: number
+}
+
 export interface StateData {
   chemicals: Record<string, ChemicalEntry>
   sleeping: boolean
@@ -52,6 +59,7 @@ export interface StateData {
   body: Record<string, number>
   receptor_sensitivity: Record<string, number>
   cascade_queue: CascadeEvent[]
+  secretion_queue: SecretionQueueEntry[]
   allostatic_load: number
   cycle_day: number
 }

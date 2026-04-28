@@ -235,6 +235,16 @@ def _build_state_response(s) -> dict:
             "magnitude":    ev.get("delta",  0.0),
         })
 
+    # Secretion queue (pending drip entries)
+    secretion_out = []
+    for entry in (s.secretion_queue or []):
+        secretion_out.append({
+            "chemical":          entry.get("chemical", "unknown"),
+            "remaining":         round(entry.get("remaining", 0.0), 3),
+            "rate_per_sim_hour": round(entry.get("rate_per_sim_hour", 0.0), 1),
+            "posted_at":         round(entry.get("posted_at", 0.0), 0),
+        })
+
     return {
         "chemicals":          chemicals_out,
         "sleeping":           s.sleeping,
@@ -249,6 +259,7 @@ def _build_state_response(s) -> dict:
         "body":               body_out,
         "receptor_sensitivity": receptor_sensitivity_out,
         "cascade_queue":      cascade_out,
+        "secretion_queue":    secretion_out,
         "allostatic_load":    al_01,
         "cycle_day":          max(0, int(s.cycle_day) - 1),  # 0-indexed, 0-27
     }
