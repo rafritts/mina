@@ -227,8 +227,9 @@ def format_strategy_block(result: dict) -> str:
     follow_ups = [m for m in result.get("follow_up_messages", []) if isinstance(m, str) and m.strip()]
     if follow_ups:
         lines.append(
-            "Follow-up messages (sent separately after your response — coordinate with these, "
-            "do not repeat or answer what they cover):"
+            "Follow-up messages WILL be sent verbatim as separate messages after your response. "
+            "They are committed. Your response MUST NOT cover the same ground — do not answer, "
+            "hint at, or repeat anything in them. Set them up or leave space for them instead:"
         )
         for msg in follow_ups:
             lines.append(f"  - {msg}")
