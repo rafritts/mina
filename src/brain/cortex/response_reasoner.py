@@ -224,4 +224,12 @@ def format_strategy_block(result: dict) -> str:
     if result.get("subtext_detected"):
         lines.append(f"Subtext detected: {result['subtext_detected']}")
         lines.append(f"Lean into subtext: {'yes' if result.get('lean_into_subtext') else 'no'}")
+    follow_ups = [m for m in result.get("follow_up_messages", []) if isinstance(m, str) and m.strip()]
+    if follow_ups:
+        lines.append(
+            "Follow-up messages (sent separately after your response — coordinate with these, "
+            "do not repeat or answer what they cover):"
+        )
+        for msg in follow_ups:
+            lines.append(f"  - {msg}")
     return "\n".join(lines)
