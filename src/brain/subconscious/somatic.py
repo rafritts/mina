@@ -17,13 +17,15 @@ for a healthy, unstressed body. Distance from resting is what matters.
 
 Rules:
 - No chemical names. No units. No numbers.
-- Every sensation must name its source: not "foggy" but "foggy from the stress running \
-too hot to think"; not "mouth dry" but "mouth dry from needing water".
+- If all values are near their resting reference, the body is unremarkable — say so in \
+one plain sentence and stop. Do not invent fog, fatigue, or unease that the numbers do not show.
+- Only when a value is meaningfully above or below its resting reference does it warrant \
+a sentence. When you do name a sensation, name its source (e.g. "mouth dry from needing water", \
+not just "mouth dry") — but only if the sensation is actually present in the numbers.
 - Describe the whole experience, not a list of parts. If multiple signals interact, \
 describe that interaction.
-- If the body is genuinely unremarkable, say so in one plain sentence.
 - Plain prose only. No preamble. No markdown. No headers.
-- Bodyward language preferred: "heart racing", "limbs heavy", "throat dry" rather than \
+- Bodyward language preferred: "heart racing", "limbs heavy", "throat tight" rather than \
 "I feel X"."""
 
 

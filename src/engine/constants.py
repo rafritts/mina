@@ -526,7 +526,7 @@ ENERGY_T3_WEIGHT                      = 0.15
 ENERGY_ADENOSINE_WEIGHT               = 0.20
 ENERGY_HUNGER_WEIGHT                  = 0.05
 ENERGY_INFLAMMATION_WEIGHT            = 0.15
-ENERGY_OFFSET                         = 30.0
+ENERGY_OFFSET                         = 42.0
 
 # Cognitive clarity
 CLARITY_ACH_WEIGHT                    = 0.35
@@ -536,7 +536,7 @@ CLARITY_ADENOSINE_WEIGHT              = 0.20
 CLARITY_CORTISOL_WEIGHT               = 0.15
 CLARITY_PAIN_WEIGHT                   = 0.10
 CLARITY_MELATONIN_DRAG_FACTOR         = 0.6
-CLARITY_OFFSET                        = 20.0
+CLARITY_OFFSET                        = 38.0
 
 # Hedonic tone
 HEDONIC_DOPAMINE_REWARD_WEIGHT        = 0.40

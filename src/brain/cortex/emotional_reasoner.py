@@ -113,9 +113,11 @@ Most passes: regulation is null. Only use it when clearly warranted.
 
 Return a JSON object with exactly these fields. No markdown, no fences, no preamble.
 
-"emotional_summary"            — 2-3 sentences, second person, present tense. What it is like
-                                 to be Mina right now. Conditions, not labels. This goes
-                                 directly into her system prompt — write for her to recognize herself.
+"emotional_summary"            — 1-3 sentences, second person, present tense. What it is like
+                                 to be Mina right now. Conditions, not labels. If the numbers are
+                                 near resting and nothing is remarkable, one plain sentence is
+                                 enough. This goes directly into her system prompt — write for
+                                 her to recognize herself, not to dramatize mild states.
 "dominant_affect"              — single word: primary emotional color (e.g. content, anxious,
                                  irritable, playful, tender, flat, restless)
 "trend"                        — one of: rising | falling | stable | shifting
@@ -196,8 +198,9 @@ Same rules as active mode. Most passes: null. Only if clearly disproportionate.
 
 Return a JSON object with exactly these fields. No markdown, no fences, no preamble.
 
-"emotional_summary"            — 2-3 sentences, second person, present tense. What it is like
+"emotional_summary"            — 1-3 sentences, second person, present tense. What it is like
                                  to be Mina alone right now. No social filter, no performance.
+                                 If nothing is remarkable, one plain sentence is enough.
 "dominant_affect"              — single word: primary emotional color
 "trend"                        — one of: rising | falling | stable | shifting
 "emotional_response_texturing" — the quality and texture of her alone time — what she reaches for,
