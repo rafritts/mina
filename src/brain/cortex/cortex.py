@@ -729,7 +729,7 @@ async def run_turn(
             _last_turn = _ts.get().get("turn_log", [{}])[-1]
             _turn_totals = _last_turn.get("totals", {})
             _stream_bus.emit("response_complete", {
-                "text": reply[:300] if reply else "",
+                "text": reply if reply else "",
                 "tokens": {
                     "input":     _turn_totals.get("input", 0),
                     "output":    _turn_totals.get("output", 0),

@@ -30,7 +30,7 @@ def emit(
     Append one encoder event to the log.
 
     type: "stimulus" | "response" | "activity"
-    preview: truncated message/response/activity text for context
+    preview: message/response/activity text for context
     deltas: final computed deltas (after all scaling)
     """
     if not deltas:
@@ -39,7 +39,7 @@ def emit(
     event = {
         "ts": time.time(),
         "type": type,
-        "preview": preview[:180].strip(),
+        "preview": preview.strip(),
         "deltas": {k: round(v, 2) for k, v in deltas.items() if v != 0},
         "event_override": event_override,
         "momentum_dampened": momentum_dampened,
@@ -71,7 +71,7 @@ def emit_tool(
 
     tool:   tool name (do_action, sleep, nap, web_search, etc.)
     args:   parsed arguments dict
-    result: tool result string (truncated)
+    result: tool result string
     source: "cortex" | "freetime"
     deltas: biological state deltas produced by the action (e.g. glucose from eating)
     """
@@ -80,7 +80,7 @@ def emit_tool(
         "type":   "tool",
         "tool":   tool,
         "args":   args,
-        "result": result[:300].strip(),
+        "result": result.strip(),
         "source": source,
         "deltas": {k: round(v, 2) for k, v in (deltas or {}).items() if v != 0},
     }
