@@ -65,13 +65,12 @@ def _advance_glucose(s: BiologicalState, sim_hours: float) -> BiologicalState:
     Glucose decay with insulin-mediated clearance.
     Replaces the glucose special-case in engine Phase 1 (SPEC-22).
 
-    Sleep: -0.8 mg/dL/hr (hepatic output largely compensates)
-    Awake: -6.5 mg/dL/hr (combined cellular uptake and brain glucose use)
+    Sleep/awake fasting: -0.8 mg/dL/hr (hepatic glucose production largely offsets uptake)
     High insulin: additional insulin-mediated clearance
     Hypoglycaemic awakening: glucose < 55 forces the body awake.
     """
     glucose = s.chemicals.get("glucose", 85.0)
-    decay_rate = 0.8 if s.sleeping else 6.5
+    decay_rate = 0.8 if s.sleeping else 0.8
 
     # Post-meal insulin accelerates glucose clearance
     insulin = s.neuroendocrine.get("insulin", 5.0)

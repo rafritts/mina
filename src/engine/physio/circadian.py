@@ -64,16 +64,17 @@ def _advance_adenosine(s: BiologicalState, sim_hours: float, sleep_hours_needed:
     a = s.body["adenosine"]
 
     if s.sleeping:
-        # Clearance rate calibrated so adenosine depletes from onset level to floor
-        # over exactly sleep_hours_needed hours of sleep.
-        clear_rate = (ADENOSINE_SLEEP_ONSET_NMOL - ADENOSINE_FLOOR_SLEEP) / sleep_hours_needed
+        # Clearance rate scales from current level so she fully clears to floor
+        # in sleep_hours_needed hours regardless of starting adenosine.
+        clear_rate = (a - ADENOSINE_FLOOR_SLEEP) / sleep_hours_needed
         a = max(ADENOSINE_FLOOR_SLEEP, a - clear_rate * sim_hours)
     else:
-        # Neural activity accumulates adenosine; cortisol stress accelerates it
+        # Neural activity accumulates adenosine; cortisol stress accelerates it.
+        # No hard cap — multi-day deprivation can exceed normal range.
         base_rate    = ADENOSINE_BUILD_RATE_BASE
         stress_bonus = max(0.0, s.chemicals.get("cortisol", 250.0) - 400.0) * 0.004
         base_rate   += stress_bonus
-        a = min(100.0, a + base_rate * sim_hours)
+        a += base_rate * sim_hours
 
     s.body["adenosine"] = a
     return s
