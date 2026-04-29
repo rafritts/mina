@@ -44,16 +44,19 @@ context injector output. If the context is thin, say so — do not invent.
 
 Return a JSON object with exactly these fields. No markdown, no fences, no preamble.
 
-"situational_summary" — 2-3 sentences, second person, present tense. What is the situation
-                        she is in right now: who she is talking to, what has been happening,
-                        the social texture of the moment. Ground in the context.
+"situational_summary" — 1-5 paragraphs, second person, present tense. Use as much space as
+                        the situation warrants — minimum one paragraph, more when the history,
+                        social texture, or subtext is rich enough to deserve it. Cover: who she
+                        is talking to, what has been happening, the emotional and social texture
+                        of the moment, any relevant patterns or history from the context.
+                        Ground everything in the context injector output. Do not invent.
 "social_context"      — short label: e.g. "one-on-one, familiar" | "group, strangers" | "alone"
 "urgency"             — one of: none | low | high
                         none = nothing pressing. low = something worth noting. high = something
                         that warrants prioritization in the response.
-"notable"             — null, or one sentence: something in the context that specifically warrants
+"notable"             — null, or 1-3 sentences: something in the context that specifically warrants
                         calling out — an unusual request, an emotional subtext in the history,
-                        a tension, a pattern. Only include if genuinely notable."""
+                        a tension, a pattern, a shift in dynamic. Only include if genuinely notable."""
 
 
 def _load_context_state() -> dict:
