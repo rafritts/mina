@@ -70,7 +70,7 @@ def _advance_glucose(s: BiologicalState, sim_hours: float) -> BiologicalState:
     Hypoglycaemic awakening: glucose < 55 forces the body awake.
     """
     glucose = s.chemicals.get("glucose", 85.0)
-    decay_rate = 0.8 if s.sleeping else 0.8
+    decay_rate = 0.8
 
     # Post-meal insulin accelerates glucose clearance
     insulin = s.neuroendocrine.get("insulin", 5.0)
