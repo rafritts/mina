@@ -483,5 +483,24 @@ def call_tool(name: str, args: dict, state: BiologicalState) -> tuple[str, Biolo
     elif name == "update_customization":
         msg, state = handle_update_customization(args, state)
         return msg, state, {}
+    elif _toolbox_call_tool is not None:
+        return _toolbox_call_tool(name, args, state)
     else:
         return f"[Unknown tool: {name}]", state, {}
+
+
+# ---------------------------------------------------------------------------
+# Toolbox — operator-defined custom tools (toolbox/toolbox.py)
+# ---------------------------------------------------------------------------
+
+_toolbox_call_tool = None
+
+try:
+    import toolbox.toolbox as _tb
+    _custom_schemas = getattr(_tb, "TOOLS", [])
+    _toolbox_call_tool = getattr(_tb, "call_tool", None)
+    if _custom_schemas:
+        TOOLS = TOOLS + _custom_schemas
+        HEARTBEAT_TOOLS = HEARTBEAT_TOOLS + _custom_schemas
+except ModuleNotFoundError:
+    pass
