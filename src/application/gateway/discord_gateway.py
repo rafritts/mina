@@ -217,16 +217,29 @@ def _chunk_text(text: str) -> list[str]:
     return chunks
 
 
+async def _send_with_retry(channel: discord.abc.Messageable, **kwargs) -> None:
+    for attempt in range(4):
+        try:
+            await channel.send(**kwargs)
+            return
+        except discord.DiscordServerError as e:
+            if attempt == 3:
+                raise
+            wait = 2 ** attempt
+            log("GATEWAY/RETRY", f"send failed ({e}), retrying in {wait}s (attempt {attempt + 1}/4)")
+            await asyncio.sleep(wait)
+
+
 async def _deliver(channel: discord.abc.Messageable, reply: str, image_paths: list[str]) -> None:
     if reply:
         chunks = _chunk_text(reply)
         for chunk in chunks:
-            await channel.send(chunk)
+            await _send_with_retry(channel, content=chunk)
             if len(chunks) > 1:
                 await asyncio.sleep(0.15)
     for path in image_paths:
         if os.path.exists(path):
-            await channel.send(file=discord.File(path))
+            await _send_with_retry(channel, file=discord.File(path))
 
 
 # ---------------------------------------------------------------------------
@@ -328,7 +341,7 @@ async def _run_turn(channel: discord.abc.Messageable, messages: list[discord.Mes
         await asyncio.sleep(3)
         async with channel.typing():
             await asyncio.sleep(1)
-        await channel.send(msg)
+        await _send_with_retry(channel, content=msg)
         log("MINA/FOLLOWUP", msg)
 
 
