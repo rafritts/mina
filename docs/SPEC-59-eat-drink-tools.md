@@ -200,7 +200,7 @@ When a user suggests she eat during a conversation, the expected outcome is that
 
 **Known issue:** When Mina wants to eat during a conversation turn, she tends to narrate the tool call as emote text (`*do_action("eat...")*`) rather than invoking it as a function — likely because calling a tool mid-conversation feels like breaking the narrative. This is less critical since eating is freetime-primary, but the character instructions (MINA.md or KAG) should clarify that using `eat`/`drink` tools *is* the physical act, not a meta-operation.
 
-## Open Questions
+## Resolved Decisions
 
-- Should chocolate milk route through both the milk caloric path and add a small glucose spike for the sugar content? (Yes — the encoder should handle this naturally from the description.)
-- Hydration from food (juicy fruit, soup, etc.) — should `eat` also contribute a small hydration delta? Probably yes for soup/fruit, negligible for eggs/toast.
+- **Chocolate milk**: The LLM encoder handles it naturally from the description — no special routing needed.
+- **Hydration from food**: `eat` contributes a small hydration delta for water-rich foods. The encoder estimates this from description: soup/broth +0.5–1.0% TBW, juicy fruit +0.2–0.4% TBW, standard solid food +0.0%.
