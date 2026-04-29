@@ -346,9 +346,13 @@ async def _mina_turn(
             model=MODEL,
             messages=messages + new_entries if round_num > 0 else messages,
             temperature=0.85,
-            max_tokens=4096,
+            max_tokens=32768,
         )
         _ts.record_response("cortex" if round_num == 0 else f"cortex_r{round_num}", response)
+
+        finish = response.choices[0].finish_reason
+        if finish and "MAX_LEN" in finish:
+            log("CORTEX/TRUNCATED", f"response truncated (finish_reason={finish})")
 
         content = response.choices[0].message.content or ""
         tc = _extract_tool_call(content)

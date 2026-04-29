@@ -132,8 +132,8 @@ class _Choice:
 
     def __init__(self, response):
         self.message = _Message(response)
-        raw_finish = response.finish_reason  # e.g. "FINISH_REASON_TOOL_CALLS"
-        self.finish_reason = "tool_calls" if "TOOL_CALL" in raw_finish else "stop"
+        raw_finish = response.finish_reason  # e.g. "REASON_STOP", "REASON_MAX_LEN"
+        self.finish_reason = "tool_calls" if "TOOL_CALL" in raw_finish else raw_finish
 
 
 class _CompatResponse:
