@@ -62,14 +62,14 @@ def advance_endocannabinoids(s: BiologicalState, sim_hours: float,
     ana_target = ana_profile.baseline_fn(0.0, ctx)
     ana_gap    = ana_target - ana
     new_ana    = ana + ana_gap * min(1.0, ana_profile.approach_rate * sim_hours)
-    new_ana    = max(0.0, min(ana_profile.critical_high or 15.0, new_ana))
+    new_ana    = max(ana_profile.critical_low or 0.3, min(ana_profile.critical_high or 15.0, new_ana))
     s.body["anandamide"] = new_ana
 
     # --- 2-AG advance toward baseline ---
     two_ag_target = two_ag_profile.baseline_fn(0.0, ctx)
     two_ag_gap    = two_ag_target - two_ag
     new_two_ag    = two_ag + two_ag_gap * min(1.0, two_ag_profile.approach_rate * sim_hours)
-    new_two_ag    = max(0.0, min(two_ag_profile.critical_high or 50.0, new_two_ag))
+    new_two_ag    = max(two_ag_profile.critical_low or 2.0, min(two_ag_profile.critical_high or 50.0, new_two_ag))
     s.body["two_ag"] = new_two_ag
 
     return s

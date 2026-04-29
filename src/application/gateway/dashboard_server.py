@@ -125,9 +125,16 @@ def _build_state_response(s) -> dict:
     d = derived(s)
 
     # Tier 1: chemicals (REGISTRY-driven)
+    # anandamide/two_ag live in state.body; sleep_pressure is computed from adenosine
+    _BODY_CHEMICALS = {"anandamide", "two_ag"}
     chemicals_out = {}
     for name, profile in REGISTRY.items():
-        val = s.chemicals.get(name, 0.0)
+        if name in _BODY_CHEMICALS:
+            val = s.body.get(name, 0.0)
+        elif name == "sleep_pressure":
+            val = s.sleep_pressure
+        else:
+            val = s.chemicals.get(name, 0.0)
         lbl, _ = get_label(name, val)
         chemicals_out[name] = {
             "value":      round(val, 2),

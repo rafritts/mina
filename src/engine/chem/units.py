@@ -38,10 +38,11 @@ def get_label(name: str, value: float) -> tuple[str, str]:
 
 
 def clamp_chemical(name: str, value: float) -> float:
-    """Clamp a chemical value to [0, critical_high]."""
+    """Clamp a chemical value to [critical_low, critical_high]."""
     from src.engine.chem.registry import REGISTRY
     p = REGISTRY.get(name)
     if not p:
         return max(0.0, value)
     hi = p.critical_high if p.critical_high > 0 else p.display_max * 2
-    return max(0.0, min(hi, value))
+    lo = p.critical_low if p.critical_low > 0 else 0.0
+    return max(lo, min(hi, value))

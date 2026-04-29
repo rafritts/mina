@@ -270,7 +270,7 @@ def _apply_isolation_stage_effects(
     state.chemicals["norepinephrine"] = max(0.0, state.chemicals.get("norepinephrine", 200.0) + norepi_drift    * tick_hours)
     state.neuroplasticity["bdnf"]     = max(0.0, state.neuroplasticity.get("bdnf",   9000.0) - bdnf_drain      * tick_hours)
     state.neuroendocrine["prolactin"] = max(0.0, state.neuroendocrine.get("prolactin",  8.0) + prolactin_drift  * tick_hours)
-    state.body["anandamide"]          = max(0.0, state.body.get("anandamide",           1.5) - anandamide_drain * tick_hours)
+    state.body["anandamide"]          = max(0.3, state.body.get("anandamide",           1.5) - anandamide_drain * tick_hours)
 
     return state
 
