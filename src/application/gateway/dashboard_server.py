@@ -307,11 +307,13 @@ def patch_state(body: StatePatch, request: Request):
             # Inverse: adenosine = SP * 0.60 + 20
             adenosine_val = float(value) * 0.60 + 20.0
             s.body["adenosine"] = round(max(15.0, min(300.0, adenosine_val)), 4)
-        elif field in REGISTRY:
-            s.chemicals[field] = clamp_chemical(field, float(value))
         elif field in _BODY_PATCHABLE:
+            # anandamide and two_ag live in s.body, not s.chemicals — must route here
+            # before the REGISTRY check, which would write to the wrong dict
             lo, hi = _BODY_CLAMP[field]
             s.body[field] = round(max(lo, min(hi, float(value))), 4)
+        elif field in REGISTRY:
+            s.chemicals[field] = clamp_chemical(field, float(value))
 
     save_state(s)
     return {"ok": True, "updated": list(updates.keys())}
