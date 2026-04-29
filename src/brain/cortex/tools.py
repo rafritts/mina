@@ -504,3 +504,21 @@ try:
         HEARTBEAT_TOOLS = HEARTBEAT_TOOLS + _custom_schemas
 except ModuleNotFoundError:
     pass
+
+
+def format_tool_descriptions(tool_list: "list[dict] | None" = None) -> str:
+    """Compact text description of tools for injection into the system prompt."""
+    tl = tool_list if tool_list is not None else TOOLS
+    lines = []
+    for t in tl:
+        fn = t.get("function", {})
+        name = fn.get("name", "")
+        desc = fn.get("description", "")
+        props = fn.get("parameters", {}).get("properties", {})
+        required_params = fn.get("parameters", {}).get("required", [])
+        if not props:
+            lines.append(f"  {name}() — {desc}")
+        else:
+            params = ", ".join(p if p in required_params else f"{p}?" for p in props)
+            lines.append(f"  {name}({params}) — {desc}")
+    return "\n".join(lines)

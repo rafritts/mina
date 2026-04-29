@@ -23,7 +23,7 @@ from src.brain.subconscious.decoder import biological_report, build_window_conte
 from src.brain.hippocampus.hippocampus import build_kag_context, build_rag_context as _hpc_rag_context, build_rag_context_bucketed, build_rag_context_relational
 from src.brain.amygdala.stimulus_encoder import encode_stimulus, encode_response, evaluate_activity_deltas, compute_relationship_modifier, regulate
 from src.brain.brainstem.state import BiologicalState, apply_deltas, load_and_advance, load_state, save_state
-from .tools import TOOLS, call_tool
+from .tools import TOOLS, call_tool, format_tool_descriptions
 from .response_reasoner import reason_response, format_strategy_block
 from .emotional_reasoner import run_emotion_pillar, format_emotional_state_block
 from .context_reasoner import run_context_pillar, format_situational_context_block
@@ -48,6 +48,21 @@ _EMOJI_RE = re.compile(
 
 def _strip_emoji(text: str) -> str:
     return _EMOJI_RE.sub("", text).strip()
+
+
+def _extract_tool_call(content: str) -> "dict | None":
+    """Parse a JSON response and return the tool_call dict if present and valid."""
+    raw = content.strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
+    raw = re.sub(r"\s*```$", "", raw, flags=re.MULTILINE).strip()
+    try:
+        parsed = json.loads(raw)
+        tc = parsed.get("tool_call")
+        if isinstance(tc, dict) and tc.get("name"):
+            return tc
+    except (json.JSONDecodeError, ValueError):
+        pass
+    return None
 
 
 def _safe_emotion_pillar(state, stimulus, mode="active", time_context="", recent_messages=None, context_hint=None) -> "dict | None":
@@ -317,7 +332,7 @@ async def _mina_turn(
     state_note: str = "",
 ) -> tuple[list[dict], object, list[str]]:
     """
-    One full Mina turn. Resolves all tool calls.
+    One full Mina turn. Resolves tool calls embedded in JSON responses.
     Returns (new_history_entries, updated_state, image_paths).
     """
     messages = api_messages(history, system_prompt, state_note)
@@ -325,92 +340,58 @@ async def _mina_turn(
     image_paths: list[str] = []
     from src.application.infra import token_stats as _ts
 
-    max_tool_rounds = 5
-    for round_num in range(max_tool_rounds):
-        is_first = round_num == 0
+    for round_num in range(5):
         response = await asyncio.to_thread(
             chat_create,
             model=MODEL,
-            messages=messages + new_entries if not is_first else messages,
-            tools=TOOLS,
-            tool_choice="auto",
+            messages=messages + new_entries if round_num > 0 else messages,
             temperature=0.85,
         )
-        _ts.record_response("cortex" if is_first else f"cortex_r{round_num}", response)
+        _ts.record_response("cortex" if round_num == 0 else f"cortex_r{round_num}", response)
 
-        msg = response.choices[0].message
-        finish = response.choices[0].finish_reason
+        content = response.choices[0].message.content or ""
+        tc = _extract_tool_call(content)
 
-        if finish != "tool_calls" or not msg.tool_calls:
-            new_entries.append({"role": "assistant", "content": msg.content or "", "ts": time.time()})
+        if not tc:
+            new_entries.append({"role": "assistant", "content": content, "ts": time.time()})
             break
 
-        assistant_entry = {
-            "role": "assistant",
-            "content": msg.content or "",
-            "ts": time.time(),
-            "tool_calls": [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-                }
-                for tc in msg.tool_calls
-            ],
-        }
-        new_entries.append(assistant_entry)
+        name = tc.get("name", "")
+        args = tc.get("args", {})
+        log("TOOL", f"{name}({args})")
 
-        for tc in msg.tool_calls:
-            name = tc.function.name
-            try:
-                args = json.loads(tc.function.arguments)
-            except json.JSONDecodeError:
-                args = {}
+        if name == "ignore":
+            log("MINA", "[left on read]")
+            new_entries.append({"role": "assistant", "content": content, "ts": time.time()})
+            return new_entries, state, image_paths
 
-            log("TOOL", f"{name}({args})")
+        result, state, extra = call_tool(name, args, state)
+        save_state(state)
+        log("TOOL/RESULT", str(result))
 
-            if name == "ignore":
-                log("MINA", "[left on read]")
-                # Append the tool call entry so context records she chose silence
-                new_entries.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": "[no response sent]",
-                    "ts": time.time(),
-                })
-                return new_entries, state, image_paths
+        if isinstance(result, str) and result.endswith(".png") and os.path.isfile(result):
+            image_paths.append(result)
+            result = f"[Image generated: {os.path.basename(result)}]"
 
-            result, state, extra = call_tool(name, args, state)
-            save_state(state)
-            log("TOOL/RESULT", str(result))
+        if name == "do_action" and extra:
+            activity = extra.get("activity", "")
+            description = extra.get("description", "")
+            do_deltas = await asyncio.to_thread(
+                evaluate_activity_deltas, state, activity, description
+            )
+            if do_deltas:
+                state = apply_deltas(state, do_deltas)
+                save_state(state)
+                log("DO/DELTA", str(do_deltas))
 
-            # If the result is an image path, capture it for delivery and give Mina a clean message
-            if isinstance(result, str) and result.endswith(".png") and os.path.isfile(result):
-                image_paths.append(result)
-                result = f"[Image generated: {os.path.basename(result)}]"
+        try:
+            from src.application.infra.events import emit_tool
+            emit_tool(name, args, str(result), source="cortex")
+        except Exception:
+            pass
 
-            if name == "do_action" and extra:
-                activity = extra.get("activity", "")
-                description = extra.get("description", "")
-                do_deltas = await asyncio.to_thread(
-                    evaluate_activity_deltas, state, activity, description
-                )
-                if do_deltas:
-                    state = apply_deltas(state, do_deltas)
-                    save_state(state)
-                    log("DO/DELTA", str(do_deltas))
-
-            try:
-                from src.application.infra.events import emit_tool
-                emit_tool(name, args, str(result), source="cortex")
-            except Exception:
-                pass
-
-            new_entries.append({
-                "role": "tool",
-                "tool_call_id": tc.id,
-                "content": str(result),
-            })
+        new_entries.append({"role": "assistant", "content": content, "ts": time.time()})
+        new_entries.append({"role": "user", "content": f"[Tool result: {name}] {result}"})
 
     return new_entries, state, image_paths
 
@@ -617,18 +598,21 @@ async def run_turn(
         if _reasoning_result:
             system_prompt_parts.append(format_strategy_block(_reasoning_result))
 
+        _tool_desc = format_tool_descriptions()
         system_prompt_parts.append(
             "[Output Format]\n"
-            "If you want to use a tool (do_action, web_search, etc.), invoke it NOW via the "
-            "tool-calling mechanism — do not describe or mention the call in your text. Tool calls happen before "
-            "your text response; the JSON format below is only for your final reply after any tools are resolved.\n\n"
-            "Return a JSON object with exactly two fields. No markdown, no fences, no preamble.\n"
+            "Return a JSON object — no markdown, no fences, no preamble.\n\n"
             '  "response"           — your message text, exactly as it should appear in Discord\n'
             '  "follow_up_messages" — list of short additional messages to send after a brief pause;\n'
             "                         each is one thought, in your voice, like a real person texting.\n"
             "                         Empty list if none. These are sent verbatim — write them as real messages.\n"
+            '  "tool_call"          — (optional) {"name": "tool_name", "args": {...}} — omit if not calling a tool\n\n'
             "Use follow_up_messages when you thought of something after your main response, want to ask\n"
-            "something that should land separately, or want to push back / react after a beat."
+            "something that should land separately, or want to push back / react after a beat.\n\n"
+            "To call a tool: set tool_call and leave response/follow_up_messages empty or minimal. "
+            "The result comes back as [Tool result: name] and you respond in the next turn. "
+            "Don't describe the call in response.\n\n"
+            f"Available tools:\n{_tool_desc}"
         )
         system_prompt = _sep.join(system_prompt_parts) if system_prompt_parts else "You are Mina. Respond naturally."
 

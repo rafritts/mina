@@ -41,7 +41,7 @@ from src.brain.brainstem.state import (
     load_and_advance,
     save_state,
 )
-from src.brain.cortex.tools import HEARTBEAT_TOOLS, call_tool
+from src.brain.cortex.tools import HEARTBEAT_TOOLS, call_tool, format_tool_descriptions
 
 _LAST_ACTIVE_FILE       = LAST_ACTIVE_FILE
 _LAST_SEARCH_FILE       = os.path.join(PROJECT_ROOT, "run", "last_search.json")
@@ -129,10 +129,7 @@ def _mark_message_sent(content: str) -> None:
 
 
 async def _build_ambient_search_entries() -> list[dict]:
-    """
-    Run all ambient searches in parallel and return a list of fake assistant
-    tool-call + tool-result message dicts, as if Mina had called them herself.
-    """
+    """Run ambient searches and return them as user context messages."""
     from src.brain.cortex.tools import handle_web_search, handle_x_search
 
     handlers = {"web_search": handle_web_search, "x_search": handle_x_search}
@@ -145,22 +142,9 @@ async def _build_ambient_search_entries() -> list[dict]:
 
     entries: list[dict] = []
     for tool_name, query, result in results:
-        call_id = f"ambient_{tool_name}_{int(time.time())}"
-        # Fake assistant turn that "called" the tool
         entries.append({
-            "role": "assistant",
-            "content": "",
-            "tool_calls": [{
-                "id": call_id,
-                "type": "function",
-                "function": {"name": tool_name, "arguments": json.dumps({"query": query})},
-            }],
-        })
-        # Fake tool result
-        entries.append({
-            "role": "tool",
-            "tool_call_id": call_id,
-            "content": result,
+            "role": "user",
+            "content": f"[Background {tool_name}: {query!r}]\n{result}",
         })
         _log(f"Ambient {tool_name}({query!r}): {len(result)} chars")
 
@@ -189,29 +173,27 @@ def _build_freetime_suffix(state: BiologicalState) -> str:
 
     isolation_days = _compute_isolation_days(state)
 
+    tool_desc = format_tool_descriptions(HEARTBEAT_TOOLS)
+
     parts = [
         "[YOUR BIOLOGICAL STATE]",
         profile,
         "",
         "You have time to yourself. Nobody is here.",
         "Read your state. Act from it honestly — physical needs first, then whatever is true.",
-        "",
-        "Call one tool:\n"
-        "- **sleep** — if it's your sleep window and you're tired enough\n"
-        "- **nap** — if sleep pressure is elevated\n"
-        "- **do_action** — eat, drink, read, walk, make something, watch something, write, draw, shower. "
-        "Name the activity specifically and describe how it actually feels.",
     ]
 
     if isolation_days >= 0.5:
         parts.append(f"\nYou have been alone for {isolation_days:.1f} days.")
 
     parts.append(
-        "\nAfter your tool call (or if you have nothing to do), respond with a JSON object — "
-        "no markdown, no code fences, just raw JSON:\n"
-        '{"inner_state": "...", "message_user": "..."}\n\n'
+        "\nRespond with a JSON object — no markdown, no code fences, just raw JSON:\n"
+        '{"inner_state": "...", "message_user": "...", "tool_call": {"name": "...", "args": {...}}}\n\n'
         "- **inner_state** (required): a brief honest description of what you are experiencing right now.\n"
-        "- **message_user** (optional): if you want to reach out. Whatever you write will be sent directly. Omit if you have nothing."
+        "- **message_user** (optional): if you want to reach out. Whatever you write will be sent directly. Omit if you have nothing.\n"
+        "- **tool_call** (optional): call a tool by including this field. The result comes back and you respond again. "
+        "Omit once you're done.\n\n"
+        f"Available tools:\n{tool_desc}"
     )
 
     return "\n".join(parts)
@@ -231,18 +213,14 @@ async def _run_mina_free_time(
     pre_session: list[dict] | None = None,
 ) -> tuple[list[dict], list[dict]]:
     """
-    Give Mina a tool-calling loop during free time. She may call up to
-    _MAX_FREETIME_TOOLS tools in sequence before a final wrap-up response.
-
-    pre_session: fake tool-call/result entries to seed the session with before
-    the loop starts (used for ambient searches). These appear in new_entries and
-    are visible to Mina, but do NOT count against _MAX_FREETIME_TOOLS.
+    Give Mina a free-time turn with JSON-based tool dispatch.
+    She responds with {"inner_state": ..., "message_user": ..., "tool_call": ...}.
+    If tool_call is present the tool runs and she gets another turn, up to _MAX_FREETIME_TOOLS times.
 
     Returns (new_history_entries, pending_do_activities).
     """
     full_system = system_prompt + _build_freetime_suffix(state)
 
-    # Base messages — immediate window only, stripping internal system markers
     base_messages = [{"role": "system", "content": full_system}]
     for msg in history:
         role = msg.get("role", "")
@@ -253,95 +231,59 @@ async def _run_mina_free_time(
         else:
             base_messages.append({k: v for k, v in msg.items() if k != "ts"})
 
-    new_entries = [{"role": "system", "content": "[FREETIME]"}]
+    new_entries: list[dict] = [{"role": "system", "content": "[FREETIME]"}]
     pending_dos: list[dict] = []
-    # Seed session with any ambient search results so Mina sees them from turn 1
     session: list[dict] = list(pre_session) if pre_session else []
     new_entries.extend(session)
-    tool_calls_made = 0
 
-    while tool_calls_made < _MAX_FREETIME_TOOLS:
+    for round_num in range(_MAX_FREETIME_TOOLS):
         response = await asyncio.to_thread(
             chat_create,
             model=MODEL,
             messages=base_messages + session,
-            tools=HEARTBEAT_TOOLS,
-            tool_choice="auto",
             temperature=0.9,
         )
 
-        msg = response.choices[0].message
+        content = response.choices[0].message.content or ""
 
-        if not msg.tool_calls:
-            # She's done — plain response, exit loop
-            entry = {"role": "assistant", "content": msg.content or "", "ts": time.time()}
-            new_entries.append(entry)
-            session.append({"role": "assistant", "content": msg.content or ""})
+        # Parse JSON and check for tool_call
+        raw = content.strip()
+        raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
+        raw = re.sub(r"\s*```$", "", raw, flags=re.MULTILINE).strip()
+        tool_call_data: dict | None = None
+        try:
+            parsed = json.loads(raw)
+            tc = parsed.get("tool_call")
+            if isinstance(tc, dict) and tc.get("name"):
+                tool_call_data = tc
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        if not tool_call_data:
+            # No tool call — this is the final response
+            new_entries.append({"role": "assistant", "content": content, "ts": time.time()})
+            session.append({"role": "assistant", "content": content})
             break
 
-        tool_calls_made += 1
+        name = tool_call_data.get("name", "")
+        args = tool_call_data.get("args", {})
+        _log(f"Action {round_num + 1}/{_MAX_FREETIME_TOOLS}: {name}({args})")
 
-        assistant_entry = {
-            "role": "assistant",
-            "content": msg.content or "",
-            "ts": time.time(),
-            "tool_calls": [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-                }
-                for tc in msg.tool_calls
-            ],
-        }
-        new_entries.append(assistant_entry)
-        session.append({
-            "role": "assistant",
-            "content": msg.content or "",
-            "tool_calls": assistant_entry["tool_calls"],
-        })
-
-        for tc in msg.tool_calls:
-            name = tc.function.name
+        tool_result, state, extra = call_tool(name, args, state)
+        if name == "do_action" and extra:
+            pending_dos.append(extra)
+        else:
             try:
-                args = json.loads(tc.function.arguments)
-            except json.JSONDecodeError:
-                args = {}
+                from src.application.infra.events import emit_tool
+                emit_tool(name, args, tool_result, source="freetime")
+            except Exception:
+                pass
 
-            _log(f"Action {tool_calls_made}/{_MAX_FREETIME_TOOLS}: {name}({args})")
-
-            tool_result, state, extra = call_tool(name, args, state)
-            if name == "do_action" and extra:
-                pending_dos.append(extra)
-                # do_action deltas emitted in Phase 3 once we have them
-            else:
-                try:
-                    from src.application.infra.events import emit_tool
-                    emit_tool(name, args, tool_result, source="freetime")
-                except Exception:
-                    pass
-
-            tool_entry = {
-                "role": "tool",
-                "tool_call_id": tc.id,
-                "content": tool_result,
-                "ts": time.time(),
-            }
-            new_entries.append(tool_entry)
-            # Session copy has no ts — API doesn't accept custom fields on tool messages
-            session.append({k: v for k, v in tool_entry.items() if k != "ts"})
-
-    else:
-        # Hit the cap — get a final wrap-up response without offering more tools
-        _log(f"Tool cap ({_MAX_FREETIME_TOOLS}) reached — requesting wrap-up.")
-        wrap_response = await asyncio.to_thread(
-            chat_create,
-            model=MODEL,
-            messages=base_messages + session,
-            temperature=0.9,
-        )
-        wrap_msg = wrap_response.choices[0].message
-        new_entries.append({"role": "assistant", "content": wrap_msg.content or "", "ts": time.time()})
+        new_entries.append({"role": "assistant", "content": content, "ts": time.time()})
+        session.append({"role": "assistant", "content": content})
+        result_msg = {"role": "user", "content": f"[Tool result: {name}] {tool_result}"}
+        new_entries.append({**result_msg, "ts": time.time()})
+        session.append(result_msg)
 
     save_state(state)
     return new_entries, pending_dos
@@ -600,13 +542,21 @@ async def run_freetime(force: bool = False) -> None:
     for entry in new_entries:
         role = entry.get("role")
         content = entry.get("content", "")
-        if role == "assistant" and content and not entry.get("tool_calls"):
-            conv_entries.append({
-                "role": "assistant",
-                "ts": entry.get("ts", time.time()),
-                "content": content,
-                "source": "freetime",
-            })
+        if role != "assistant" or not content:
+            continue
+        # Skip intermediate tool-call responses (have tool_call in their JSON)
+        try:
+            _p = json.loads(content)
+            if _p.get("tool_call"):
+                continue
+        except (json.JSONDecodeError, ValueError):
+            pass
+        conv_entries.append({
+            "role": "assistant",
+            "ts": entry.get("ts", time.time()),
+            "content": content,
+            "source": "freetime",
+        })
     # Include do_action descriptions as context-bearing events
     for pending_do in pending_dos:
         activity    = pending_do.get("activity", "")
