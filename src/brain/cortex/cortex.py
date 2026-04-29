@@ -672,13 +672,22 @@ async def run_turn(
                     raw = re.sub(r"\s*```$", "", raw, flags=re.MULTILINE).strip()
                     try:
                         parsed = json.loads(raw)
-                        entry["content"] = parsed.get("response", raw)
+                        entry["content"] = (
+                            parsed.get("response")
+                            or parsed.get("message")
+                            or parsed.get("text")
+                            or parsed.get("content")
+                            or raw
+                        )
                         _follow_up_messages = [
                             m for m in parsed.get("follow_up_messages", [])
                             if isinstance(m, str) and m.strip()
                         ]
                     except (json.JSONDecodeError, ValueError):
-                        pass  # fallback: treat as plain text, no follow-ups
+                        # Truncated JSON — salvage the response field with regex
+                        m = re.search(r'"response"\s*:\s*"((?:[^"\\]|\\.)*)', raw, re.DOTALL)
+                        if m:
+                            entry["content"] = m.group(1).strip()
                     break
 
             for entry in new_entries:
