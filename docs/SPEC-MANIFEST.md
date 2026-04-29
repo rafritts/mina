@@ -48,4 +48,5 @@ Status legend: **DONE** · **IN-PROGRESS** · **TODO** · **DRAFT** (scoped but 
 | 55 | RAG Similarity Tuning | DONE | Add similarity floor (~0.75) to filter low-quality hits; consolidation entries are already good; noise comes from mina_sliding returning loosely-related chunks |
 | 56 | Application Cleanup | DONE | 10-item debt pass: broken imports, dead fields/constants, duplicate state I/O, compat shims, tolerance scalar |
 | 57 | Decoder Refactor | TODO | Split 1,676-line god file into 6 focused modules; replace hardcoded thresholds with registry-grounded SomaticSignal registry |
+| 58 | Memory Seeding | DRAFT | Pre-populate RAG/KAG with authored memories at startup or on-demand; bypass consolidation for bootstrapping |
 | 99 | Long-Term Physiological Validation | OBE | Removed; sim_baseline.py (SPEC-53) covers validation needs |
