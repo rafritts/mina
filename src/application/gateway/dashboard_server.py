@@ -83,7 +83,7 @@ def healthz():
 # Body fields that can be directly patched
 _BODY_PATCHABLE = {"adenosine", "anandamide", "two_ag", "hedonic_setpoint"}
 _BODY_CLAMP = {
-    "adenosine":        (15.0, 100.0),
+    "adenosine":        (15.0, 300.0),
     "anandamide":       (0.0,  5.0),
     "two_ag":           (0.0,  30.0),
     "hedonic_setpoint": (15.0, 100.0),
@@ -302,7 +302,12 @@ def patch_state(body: StatePatch, request: Request):
         raise HTTPException(status_code=422, detail="No fields provided")
 
     for field, value in updates.items():
-        if field in REGISTRY:
+        if field == "sleep_pressure":
+            # sleep_pressure is derived: SP = (adenosine - 20) / 0.60
+            # Inverse: adenosine = SP * 0.60 + 20
+            adenosine_val = float(value) * 0.60 + 20.0
+            s.body["adenosine"] = round(max(15.0, min(300.0, adenosine_val)), 4)
+        elif field in REGISTRY:
             s.chemicals[field] = clamp_chemical(field, float(value))
         elif field in _BODY_PATCHABLE:
             lo, hi = _BODY_CLAMP[field]
