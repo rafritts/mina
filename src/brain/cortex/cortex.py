@@ -619,6 +619,9 @@ async def run_turn(
 
         system_prompt_parts.append(
             "[Output Format]\n"
+            "If you want to use a tool (do_action, web_search, etc.), invoke it NOW via the "
+            "tool-calling mechanism — do not describe or mention the call in your text. Tool calls happen before "
+            "your text response; the JSON format below is only for your final reply after any tools are resolved.\n\n"
             "Return a JSON object with exactly two fields. No markdown, no fences, no preamble.\n"
             '  "response"           — your message text, exactly as it should appear in Discord\n'
             '  "follow_up_messages" — list of short additional messages to send after a brief pause;\n'
