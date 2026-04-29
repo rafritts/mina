@@ -383,6 +383,12 @@ async def _mina_turn(
             result, state, extra = call_tool(name, args, state)
             save_state(state)
             log("TOOL/RESULT", str(result))
+
+            # If the result is an image path, capture it for delivery and give Mina a clean message
+            if isinstance(result, str) and result.endswith(".png") and os.path.isfile(result):
+                image_paths.append(result)
+                result = f"[Image generated: {os.path.basename(result)}]"
+
             if name == "do_action" and extra:
                 activity = extra.get("activity", "")
                 description = extra.get("description", "")

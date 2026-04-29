@@ -32,6 +32,9 @@ identity/CUSTOMIZATION.md
 
 # Custom toolbox (operator-defined tools — not for version control)
 toolbox/toolbox.py
+toolbox/comfyui_skill.py
+toolbox/RestlessSimpleAPI_template.json
+toolbox/temp_workflow_*.json
 
 # Claude Code project memory (local only)
 .claude/
