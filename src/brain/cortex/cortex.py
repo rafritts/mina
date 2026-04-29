@@ -20,7 +20,7 @@ from src.config.config import (
 )
 from src.application.infra.log import log
 from src.brain.subconscious.decoder import biological_report, build_window_context, build_rag_context, needs_summary
-from src.brain.hippocampus.hippocampus import build_kag_context, build_rag_context as _hpc_rag_context, build_rag_context_bucketed, build_rag_context_relational, sliding_rag_write, sliding_rag_query
+from src.brain.hippocampus.hippocampus import build_kag_context, build_rag_context as _hpc_rag_context, build_rag_context_bucketed, build_rag_context_relational
 from src.brain.amygdala.stimulus_encoder import encode_stimulus, encode_response, evaluate_activity_deltas, compute_relationship_modifier, regulate
 from src.brain.brainstem.state import BiologicalState, apply_deltas, load_and_advance, load_state, save_state
 from .tools import TOOLS, call_tool
@@ -469,15 +469,10 @@ async def run_turn(
         if isinstance(m.get("content"), str)
     ]
 
-    # Three parallel RAG pulls before the encoder:
-    # - relational (30-day half-life) → context_hint for encoder + adjudicator
-    # - bucketed (time buckets) → semi-recent + historical for response context
-    # - sliding (SPEC-45, per-message chunks) → precise recent context replacing rag_recent
-    kag_context, _relational_rag, (rag_recent, rag_semi_recent, rag_historical), _rag_sliding = await asyncio.gather(
+    kag_context, _relational_rag, (rag_recent, rag_semi_recent, rag_historical) = await asyncio.gather(
         asyncio.to_thread(build_kag_context, stimulus),
         asyncio.to_thread(build_rag_context_relational, stimulus),
         asyncio.to_thread(build_rag_context_bucketed, user_input),
-        asyncio.to_thread(sliding_rag_query, user_input),
     )
 
     _kag_always = [l[3:] for l in kag_context.splitlines() if l.startswith("## ") and not l.startswith("## Knowledge:")]
@@ -536,7 +531,6 @@ async def run_turn(
     else:
         user_content = f"{username}: {user_input}"
     decoder_window.append({"role": "user", "content": user_content, "ts": time.time()})
-    sliding_rag_write(decoder_window)  # SPEC-45: write chunk after user message
 
     # [3] SPEC-52 three-pillar pipeline — sequential, each constrains the next.
     stimulus = f"{username}: {user_input}"
@@ -566,7 +560,7 @@ async def run_turn(
                 _time_context, decoder_window, _relational_rag or None,
             ),
             asyncio.to_thread(build_window_context, decoder_window, username, user_input),
-            asyncio.to_thread(build_rag_context, stimulus, kag_context, _rag_sliding or rag_recent, rag_semi_recent, rag_historical),
+            asyncio.to_thread(build_rag_context, stimulus, kag_context, rag_recent, rag_semi_recent, rag_historical),
         )
 
         # Apply regulation if the Emotion Pillar requested it
@@ -695,7 +689,6 @@ async def run_turn(
         decoder_window.extend(new_entries)
         if len(decoder_window) > DECODER_WINDOW_SIZE:
             decoder_window = decoder_window[-DECODER_WINDOW_SIZE:]
-        sliding_rag_write(decoder_window)  # SPEC-45: write chunk after Mina's reply
         save_decoder_window(decoder_window)
 
         # SPEC-32: append user message + final reply to the append-only conversation record
