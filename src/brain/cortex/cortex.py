@@ -611,13 +611,18 @@ async def run_turn(
         if _reasoning_result:
             system_prompt_parts.append(format_strategy_block(_reasoning_result))
 
+        system_prompt_parts.append(
+            "[Output Format]\n"
+            "Return a JSON object with exactly two fields. No markdown, no fences, no preamble.\n"
+            '  "response"           — your message text, exactly as it should appear in Discord\n'
+            '  "follow_up_messages" — list of short additional messages to send after a brief pause;\n'
+            "                         each is one thought, in your voice, like a real person texting.\n"
+            "                         Empty list if none. These are sent verbatim — write them as real messages.\n"
+            "Use follow_up_messages when you thought of something after your main response, want to ask\n"
+            "something that should land separately, or want to push back / react after a beat."
+        )
         system_prompt = _sep.join(system_prompt_parts) if system_prompt_parts else "You are Mina. Respond naturally."
 
-        # Extract follow-up plan from reasoner before the cortex call
-        _follow_up_messages: list[str] = [
-            m for m in (_reasoning_result or {}).get("follow_up_messages", [])
-            if isinstance(m, str) and m.strip()
-        ]
         _skip_primary = bool((_reasoning_result or {}).get("skip_primary_response"))
 
         # Emotion Pillar result stored as adj (replaces adjudicator JSON — SPEC-52)
@@ -651,13 +656,32 @@ async def run_turn(
         image_paths: list[str] = []
         new_entries: list[dict] = []
 
+        _follow_up_messages: list[str] = []
+
         if _skip_primary:
-            log("MINA", "[primary response suppressed — follow-ups only]")
+            log("MINA", "[primary response suppressed]")
         else:
             new_entries, state, image_paths = await _mina_turn(
                 system_prompt, immediate_slice, state, state_note
             )
             save_state(state)
+
+            # Parse JSON response — extract response text and follow-ups, write clean text back
+            for entry in reversed(new_entries):
+                if entry.get("role") == "assistant" and entry.get("content"):
+                    raw = entry["content"].strip()
+                    raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
+                    raw = re.sub(r"\s*```$", "", raw, flags=re.MULTILINE).strip()
+                    try:
+                        parsed = json.loads(raw)
+                        entry["content"] = parsed.get("response", raw)
+                        _follow_up_messages = [
+                            m for m in parsed.get("follow_up_messages", [])
+                            if isinstance(m, str) and m.strip()
+                        ]
+                    except (json.JSONDecodeError, ValueError):
+                        pass  # fallback: treat as plain text, no follow-ups
+                    break
 
             for entry in new_entries:
                 if entry.get("role") == "assistant" and isinstance(entry.get("content"), str):

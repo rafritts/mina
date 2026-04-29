@@ -22,7 +22,7 @@ VALID_APPROACHES = frozenset({
 _REQUIRED_FIELDS = (
     "internal_reaction", "approach", "tone", "lead_with",
     "subtext_detected", "lean_into_subtext", "strategy_rationale",
-    "skip_primary_response", "follow_up_messages",
+    "skip_primary_response",
 )
 
 _SYSTEM = """\
@@ -49,26 +49,11 @@ Consider the full exchange context, not just this message in isolation.
 Is this the third question about the same topic? Is the person probing? Being aggressive?
 Over-explaining? These patterns matter as much as the content of this specific message.
 
-## Follow-up messages
-
-After her primary response (or instead of it), Mina can send additional messages as separate
-Discord messages — real text, in her voice, sent a few seconds later.
-
-Use follow_up_messages when:
-- She thought of something after she already responded
-- She wants to ask something and it should land separately, not tacked onto a statement
-- She's pushing back and the pushback is the point ("wait, why do you keep asking about this?")
-- Something landed and she wants to react to it after a beat
-
-These are ACTUAL messages she will send verbatim. Write them in her voice.
-Keep each one short — one thought per message, like a real person texting.
-Empty list means no follow-ups.
-
 ## skip_primary_response
 
-If the follow-up messages ARE the response — she doesn't want to answer, she wants to ask —
-set skip_primary_response: true. The primary response will be suppressed entirely.
-Only use this when the follow-ups fully replace what she'd say. Not when she wants both.
+If she genuinely does not want to respond at all — she wants to ignore, is choosing silence,
+or the situation calls for no reply — set skip_primary_response: true.
+The entire cortex call will be skipped. Use sparingly.
 
 Return only a JSON object. No markdown, no fences, no extra commentary.
 
@@ -80,8 +65,7 @@ Required fields:
   "subtext_detected"      — any innuendo, leading question, or unstated thing (or null)
   "lean_into_subtext"     — true or false
   "strategy_rationale"    — why this approach; can reference the reaction and any pattern detected
-  "skip_primary_response" — true if follow_up_messages replace the primary response, false otherwise
-  "follow_up_messages"    — list of actual message strings to send after the primary response (may be empty)"""
+  "skip_primary_response" — true only if she is choosing silence entirely, false otherwise"""
 
 
 def _compute_normalized(state: BiologicalState, name: str) -> float:
@@ -187,7 +171,8 @@ def reason_response(
                         "Invalid JSON or missing/invalid fields. Return only a valid JSON object "
                         f"with all required fields: {', '.join(_REQUIRED_FIELDS)}. "
                         "approach must be one of: banter, sincere, question, deflect, "
-                        "ignore, vulnerable, warm, brief."
+                        "ignore, vulnerable, warm, brief. "
+                        "skip_primary_response must be true or false."
                     )},
                 ]
 
@@ -224,13 +209,4 @@ def format_strategy_block(result: dict) -> str:
     if result.get("subtext_detected"):
         lines.append(f"Subtext detected: {result['subtext_detected']}")
         lines.append(f"Lean into subtext: {'yes' if result.get('lean_into_subtext') else 'no'}")
-    follow_ups = [m for m in result.get("follow_up_messages", []) if isinstance(m, str) and m.strip()]
-    if follow_ups:
-        lines.append(
-            "Follow-up messages WILL be sent verbatim as separate messages after your response. "
-            "They are committed. Your response MUST NOT cover the same ground — do not answer, "
-            "hint at, or repeat anything in them. Set them up or leave space for them instead:"
-        )
-        for msg in follow_ups:
-            lines.append(f"  - {msg}")
     return "\n".join(lines)
