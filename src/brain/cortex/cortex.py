@@ -346,6 +346,7 @@ async def _mina_turn(
             model=MODEL,
             messages=messages + new_entries if round_num > 0 else messages,
             temperature=0.85,
+            max_tokens=4096,
         )
         _ts.record_response("cortex" if round_num == 0 else f"cortex_r{round_num}", response)
 
@@ -608,7 +609,8 @@ async def run_turn(
             "                         Empty list if none. These are sent verbatim — write them as real messages.\n"
             '  "tool_call"          — (optional) {"name": "tool_name", "args": {...}} — omit if not calling a tool\n\n'
             "Use follow_up_messages when you thought of something after your main response, want to ask\n"
-            "something that should land separately, or want to push back / react after a beat.\n\n"
+            "something that should land separately, or want to push back / react after a beat.\n"
+            "These follow_up_messages should never predict events that might happen and respond to them.\n"
             "To call a tool: set tool_call and leave response/follow_up_messages empty or minimal. "
             "The result comes back as [Tool result: name] and you respond in the next turn. "
             "Don't describe the call in response.\n\n"
