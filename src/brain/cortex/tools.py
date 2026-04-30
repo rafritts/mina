@@ -115,7 +115,11 @@ _BIOLOGICAL_TOOLS = [
         "type": "function",
         "function": {
             "name": "do_action",
-            "description": "Do an action.",
+            "description": (
+                "Do a physical or recreational activity — exercise, reading, showering, "
+                "walking, creative work, etc. For eating, use the eat tool. For drinking, "
+                "use the drink tool."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -129,6 +133,56 @@ _BIOLOGICAL_TOOLS = [
                     },
                 },
                 "required": ["activity", "description"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "eat",
+            "description": (
+                "Eat something. Describe exactly what you eat and how much — the physiological "
+                "effect scales with content. A small snack vs. a full meal vs. eating when "
+                "hypoglycemic all produce different results."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "description": {
+                        "type": "string",
+                        "description": (
+                            "What you ate and roughly how much. Be specific: "
+                            "'two scrambled eggs and a slice of toast' vs. "
+                            "'eggs, bacon, toast, fruit, and chocolate milk'. "
+                            "More detail = more accurate effect."
+                        ),
+                    }
+                },
+                "required": ["description"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "drink",
+            "description": (
+                "Drink something. Describe what and how much — the effect depends on the "
+                "drink type, volume, and any active substances."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "description": {
+                        "type": "string",
+                        "description": (
+                            "What you drank and how much. Be specific: "
+                            "'a large glass of water', 'a mug of black coffee', "
+                            "'a glass of chocolate milk', 'a beer'."
+                        ),
+                    }
+                },
+                "required": ["description"],
             },
         },
     },
@@ -406,6 +460,16 @@ def handle_update_customization(args: dict, state: BiologicalState) -> tuple[str
     return "CUSTOMIZATION.md updated.", state
 
 
+def handle_eat(args: dict, state: BiologicalState) -> tuple[str, BiologicalState]:
+    from src.engine.physio.feeding import handle_eat as _handle_eat
+    return _handle_eat(args, state)
+
+
+def handle_drink(args: dict, state: BiologicalState) -> tuple[str, BiologicalState]:
+    from src.engine.physio.feeding import handle_drink as _handle_drink
+    return _handle_drink(args, state)
+
+
 def handle_do_action(args: dict, state: BiologicalState) -> tuple[str, BiologicalState, dict]:
     """
     Returns (message, state, pending_deltas).
@@ -466,6 +530,12 @@ def call_tool(name: str, args: dict, state: BiologicalState) -> tuple[str, Biolo
         return msg, state, {}
     elif name == "nap":
         msg, state = handle_nap(args, state)
+        return msg, state, {}
+    elif name == "eat":
+        msg, state = handle_eat(args, state)
+        return msg, state, {}
+    elif name == "drink":
+        msg, state = handle_drink(args, state)
         return msg, state, {}
     elif name == "do_action":
         msg, state, pending = handle_do_action(args, state)

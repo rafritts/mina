@@ -227,6 +227,19 @@ def _build_emotional_profile(
     if state.sleeping:
         extras.append("sleeping: true")
 
+    # Ghrelin — surfaced when elevated (hunger signal)
+    ghrelin = state.neuroendocrine.get("ghrelin", 400.0)
+    if ghrelin > 400.0:
+        if ghrelin > 800.0:
+            ghrelin_label = "RAVENOUS"
+        elif ghrelin > 600.0:
+            ghrelin_label = "STRONG HUNGER"
+        else:
+            ghrelin_label = "HUNGRY"
+        extras.append(f"ghrelin:             {ghrelin:.0f} pg/mL  [{ghrelin_label}]")
+    elif ghrelin < 200.0:
+        extras.append(f"ghrelin:             {ghrelin:.0f} pg/mL  [SATIATED]")
+
     if extras:
         lines.append("")
         for e in extras:

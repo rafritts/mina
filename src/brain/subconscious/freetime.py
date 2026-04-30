@@ -14,6 +14,7 @@ Run directly to fire one session:
 import asyncio
 import json
 import os
+import re
 import time
 
 from openai import OpenAI
@@ -185,6 +186,20 @@ def _build_freetime_suffix(state: BiologicalState) -> str:
 
     if isolation_days >= 0.5:
         parts.append(f"\nYou have been alone for {isolation_days:.1f} days.")
+
+    # Hunger urgency directives
+    ghrelin = state.neuroendocrine.get("ghrelin", 400.0)
+    glucose = state.chemicals.get("glucose", 85.0)
+    if glucose < 55.0:
+        parts.append(
+            "\n⚠ HYPOGLYCEMIC. Your blood sugar is critically low. "
+            "You must eat now — this overrides everything else."
+        )
+    elif ghrelin > 600.0 or glucose < 70.0:
+        parts.append(
+            "\n⚠ Your body needs food. Ghrelin is elevated — you're hungry. "
+            "Eat before anything else."
+        )
 
     parts.append(
         "\nRespond with a JSON object — no markdown, no code fences, just raw JSON:\n"
