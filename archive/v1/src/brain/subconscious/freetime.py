@@ -31,7 +31,7 @@ from src.brain.subconscious.decoder import biological_report, needs_summary, bui
 from src.brain.cortex.emotional_reasoner import run_emotion_pillar, format_emotional_state_block
 from src.brain.amygdala.stimulus_encoder import encode_stimulus, encode_response, evaluate_activity_deltas
 from src.brain.hippocampus.hippocampus import (
-    build_kag_context, build_rag_context, build_rag_context_dual,
+    build_kag_context, build_rag_context_dual,
     rag_add, rag_prune, write_kag, consolidate,
     consolidate_relationship,
 )
@@ -48,7 +48,7 @@ _LAST_ACTIVE_FILE       = LAST_ACTIVE_FILE
 _LAST_SEARCH_FILE       = os.path.join(PROJECT_ROOT, "run", "last_search.json")
 _LAST_MSG_FILE          = os.path.join(PROJECT_ROOT, "run", "last_freetime_msg.json")
 _SEARCH_INTERVAL_S      = 4 * 3600   # 4 hours
-_FREETIME_IDLE_WINDOW_S = 20 * 60    # must be idle this long before freetime runs
+_FREETIME_IDLE_WINDOW_S = 60 * 60    # must be idle this long before freetime runs
 _MSG_COOLDOWN_S         = 3600       # suppress identical outbound messages within 1 hour
 
 

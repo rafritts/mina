@@ -14,9 +14,9 @@ from xai_sdk import Client
 from xai_sdk.proto import chat_pb2
 from xai_sdk.chat import text, image as _xai_image
 
-from src.config.config import MODEL, BASE_URL, API_KEY, ENCODER_MODEL, DECODER_MODEL, CONTEXT_MODEL
+from src.config.config import MODEL, BASE_URL, API_KEY
 
-__all__ = ["get_client", "chat_create", "MODEL", "BASE_URL", "API_KEY", "ENCODER_MODEL", "DECODER_MODEL", "CONTEXT_MODEL"]
+__all__ = ["get_client", "chat_create", "MODEL", "BASE_URL", "API_KEY"]
 
 _client: Optional[Client] = None
 

@@ -5,6 +5,7 @@ Existing callers (encoder.py, decoder.py, cortex.py, heartbeat.py, tests) import
 from this module unchanged. load_state() and save_state() are defined here (not
 re-exported) so that pytest monkeypatching of state._STATE_FILE works correctly.
 """
+import fcntl
 import json
 import os
 import threading
@@ -15,6 +16,8 @@ from src.engine.psych.derived import derived
 from src.engine.bio.defaults import CHEMICAL_DEFAULTS as _CHEMICAL_DEFAULTS
 
 from src.config.config import STATE_FILE as _STATE_FILE
+
+_STATE_LOCK_FILE = _STATE_FILE + ".lock"
 
 
 def load_state() -> BiologicalState:
@@ -46,14 +49,28 @@ def save_state(s: BiologicalState) -> None:
     os.replace(tmp, _STATE_FILE)
 
 
-# Prevents concurrent load/advance/save collisions between the background sim
-# loop and conversation turns or freetime cycles.
+# Within-process lock (thread safety) + cross-process file lock (heartbeat vs dashboard).
 _ADVANCE_LOCK = threading.Lock()
+
+
+class _StateLock:
+    """Combined threading + file lock for cross-process load/advance/save safety."""
+    def __enter__(self):
+        _ADVANCE_LOCK.acquire()
+        os.makedirs(os.path.dirname(_STATE_LOCK_FILE), exist_ok=True)
+        self._fh = open(_STATE_LOCK_FILE, "w")
+        fcntl.flock(self._fh, fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, *_):
+        fcntl.flock(self._fh, fcntl.LOCK_UN)
+        self._fh.close()
+        _ADVANCE_LOCK.release()
 
 
 def load_and_advance() -> BiologicalState:
     """Load state, apply time-based decay, save, return."""
-    with _ADVANCE_LOCK:
+    with _StateLock():
         s = load_state()
         s = advance(s)
         save_state(s)

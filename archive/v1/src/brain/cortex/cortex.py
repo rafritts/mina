@@ -346,7 +346,7 @@ async def _mina_turn(
             model=MODEL,
             messages=messages + new_entries if round_num > 0 else messages,
             temperature=0.85,
-            max_tokens=32768,
+            max_tokens=131072,
         )
         _ts.record_response("cortex" if round_num == 0 else f"cortex_r{round_num}", response)
 
@@ -606,22 +606,17 @@ async def run_turn(
         system_prompt_parts.append(
             "[Output Format]\n"
             "Return a JSON object — no markdown, no fences, no preamble.\n\n"
-            '  "response"           — your message text, exactly as it should appear in Discord\n'
-            '  "follow_up_messages" — list of short additional messages to send after a brief pause;\n'
-            "                         each is one thought, in your voice, like a real person texting.\n"
-            "                         Empty list if none. These are sent verbatim — write them as real messages.\n"
-            '  "tool_call"          — (optional) {"name": "tool_name", "args": {...}} — omit if not calling a tool\n\n'
-            "Use follow_up_messages when you thought of something after your main response, want to ask\n"
-            "something that should land separately, or want to push back / react after a beat.\n"
-            "These follow_up_messages should never predict events that might happen and respond to them.\n"
-            "To call a tool: set tool_call and leave response/follow_up_messages empty or minimal. "
+            '  "response"  — your message text, exactly as it should appear in Discord\n'
+            '  "tool_call" — (optional) {"name": "tool_name", "args": {...}} — omit if not calling a tool\n\n'
+            "To call a tool: set tool_call and leave response empty or minimal. "
             "The result comes back as [Tool result: name] and you respond in the next turn. "
             "Don't describe the call in response.\n\n"
             f"Available tools:\n{_tool_desc}"
         )
         system_prompt = _sep.join(system_prompt_parts) if system_prompt_parts else "You are Mina. Respond naturally."
 
-        _skip_primary = bool((_reasoning_result or {}).get("skip_primary_response"))
+        _skip_raw = (_reasoning_result or {}).get("skip_primary_response")
+        _skip_primary = False if str(_skip_raw).lower() in ("false", "0", "none", "") else bool(_skip_raw)
 
         # Emotion Pillar result stored as adj (replaces adjudicator JSON — SPEC-52)
         _adj_json: dict | None = _emotion_result
@@ -654,8 +649,6 @@ async def run_turn(
         image_paths: list[str] = []
         new_entries: list[dict] = []
 
-        _follow_up_messages: list[str] = []
-
         if _skip_primary:
             log("MINA", "[primary response suppressed]")
         else:
@@ -679,10 +672,6 @@ async def run_turn(
                             or parsed.get("content")
                             or raw
                         )
-                        _follow_up_messages = [
-                            m for m in parsed.get("follow_up_messages", [])
-                            if isinstance(m, str) and m.strip()
-                        ]
                     except (json.JSONDecodeError, ValueError):
                         # Truncated JSON — salvage the response field with regex
                         m = re.search(r'"response"\s*:\s*"((?:[^"\\]|\\.)*)', raw, re.DOTALL)
@@ -754,7 +743,7 @@ async def run_turn(
 
         print("=" * 21 + "MESSAGE END" + "=" * 21, flush=True)
         touch_last_active()
-        return reply, _follow_up_messages, image_paths
+        return reply, image_paths
 
     except asyncio.CancelledError:
         # Rewind bio state to pre-encoder snapshot so the next turn (which will

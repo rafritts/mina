@@ -160,6 +160,8 @@ def reason_response(
                 raise ValueError(f"missing fields: {missing}")
             if parsed.get("approach") not in VALID_APPROACHES:
                 raise ValueError(f"invalid approach: {parsed.get('approach')!r}")
+            skip_raw = parsed.get("skip_primary_response")
+            parsed["skip_primary_response"] = False if str(skip_raw).lower() in ("false", "0", "none", "") else bool(skip_raw)
             result = parsed
             break
         except (json.JSONDecodeError, ValueError) as exc:

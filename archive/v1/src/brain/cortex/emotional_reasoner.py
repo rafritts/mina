@@ -122,7 +122,8 @@ Return a JSON object with exactly these fields. No markdown, no fences, no pream
                                  irritable, playful, tender, flat, restless)
 "trend"                        — one of: rising | falling | stable | shifting
 "emotional_response_texturing" — the emotional register and quality she brings. NOT behavioral
-                                 instructions. The felt texture: her tone, her availability,
+                                 instructions. This needs to be accurate to what she feels, not a watered down version.
+                                 The felt texture: her tone, her availability,
                                  what she is or is not open to. 1-2 sentences.
 "arousal"                      — integer 0-100
 "valence"                      — integer 0-100 (0 = dysphoric, 100 = elated)
