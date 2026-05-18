@@ -10,7 +10,7 @@ REPO_ROOT    = os.path.dirname(PROJECT_ROOT)                                 # r
 RUN_DIR = os.path.join(REPO_ROOT, "run")
 
 # LLM configuration
-MODEL    = os.getenv("MODEL",    "grok-4-1-fast-reasoning")
+MODEL    = os.getenv("MODEL",    "grok-4.3")
 BASE_URL = os.getenv("BASE_URL", "https://api.x.ai/v1")
 API_KEY  = os.getenv("XAI_API_KEY", os.getenv("OPENAI_API_KEY", "sk-placeholder"))
 

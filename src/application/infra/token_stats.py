@@ -12,7 +12,8 @@ import json
 import time
 from pathlib import Path
 
-_STATS_FILE = Path(__file__).parent.parent / "run" / "token_stats.json"
+from src.config.config import RUN_DIR
+_STATS_FILE = Path(RUN_DIR) / "token_stats.json"
 _TURN_LOG_MAX = 100  # keep last N turns in the log
 
 

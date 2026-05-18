@@ -171,6 +171,10 @@ def chat_create(**kwargs) -> _CompatResponse:
 
     Accepts the same kwargs as openai.chat.completions.create() and returns
     an object with the same interface (choices[0].message.content, usage, etc.).
+
+    reasoning_effort: "none" | "low" | "medium" | "high" (default "low" per xAI docs).
+      Controls how many reasoning tokens grok-4.3 spends before answering.
+      Pass "none" for pure generation tasks where reasoning adds no value.
     """
     model: str = kwargs.pop("model", MODEL)
     raw_messages: list[dict] = kwargs.pop("messages", [])
@@ -179,21 +183,28 @@ def chat_create(**kwargs) -> _CompatResponse:
     temperature: Optional[float] = kwargs.pop("temperature", None)
     max_tokens: Optional[int] = kwargs.pop("max_tokens", None)
     response_format = _normalize_response_format(kwargs.pop("response_format", None))
+    reasoning_effort: Optional[str] = kwargs.pop("reasoning_effort", None)
     # Discard any remaining unknown kwargs gracefully
     kwargs.pop("stream", None)
 
     xai_messages: Sequence[chat_pb2.Message] = [_dict_to_xai_message(m) for m in raw_messages]
     xai_tools: Optional[Sequence[chat_pb2.Tool]] = [_dict_to_xai_tool(t) for t in raw_tools] if raw_tools else None
 
-    chat = get_client().chat.create(
+    create_kwargs: dict = dict(
         model=model,
         messages=xai_messages,
         tools=xai_tools,
         tool_choice=tool_choice,
-        temperature=temperature,
         max_tokens=max_tokens,
         response_format=response_format,
     )
+    # Reasoning models reject temperature; only pass when explicitly set.
+    if temperature is not None:
+        create_kwargs["temperature"] = temperature
+    if reasoning_effort is not None:
+        create_kwargs["reasoning_effort"] = reasoning_effort
+
+    chat = get_client().chat.create(**create_kwargs)
 
     response = chat.sample()
     return _CompatResponse(response)

@@ -25,6 +25,7 @@ from ..infra.log import log
 from ..infra import discord_send as _discord_send
 from ..infra.image_utils import normalise_image as _normalise_image
 from src.config.config import RUN_DIR, REPO_ROOT
+from src.application.pipeline import run_turn
 
 # Suppress noisy-but-harmless WebSocket transport errors on reconnect
 class _SuppressResetError(logging.Filter):
@@ -192,14 +193,17 @@ async def _run_turn(channel: discord.abc.Messageable, messages: list[discord.Mes
 
     try:
         async with channel.typing():
-            raise NotImplementedError("run_turn not yet implemented")
+            reply, image_paths = await run_turn(
+                user_input, username=username,
+                images=images or None,
+            )
     except asyncio.CancelledError:
-        raise
-    except NotImplementedError:
         raise
     except Exception as e:
         log("GATEWAY/ERROR", f"turn failed: {e}")
         return
+
+    await _deliver(channel, reply, image_paths)
 
 
 # ---------------------------------------------------------------------------
