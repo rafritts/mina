@@ -99,11 +99,13 @@ async def run_turn(
     # ── 1. Encoder (state-blind) ────────────────────────────────────────────
     encoder_output = await asyncio.to_thread(encode, message, decoder_window[:-1])
 
-    # ── 2. Chemistry function → sim ─────────────────────────────────────────
-    # Get relationship modifier from hippocampus (async fetch in parallel below)
-    # For now, use 1.0; relationship state feeds in via KAG
+    # ── 2. Relationship modifier + chemistry function ────────────────────────
+    from src.hippocampus.hippocampus import get_relationship_modifier
+    relationship_modifier = await asyncio.to_thread(get_relationship_modifier, username)
+    log("PIPELINE", f"relationship_modifier({username})={relationship_modifier}")
+
     await asyncio.to_thread(
-        sim.apply_chemistry_from_encoder, encoder_output, 1.0
+        sim.apply_chemistry_from_encoder, encoder_output, relationship_modifier
     )
 
     # ── 3. Sliding RAG write (post-user-message) ─────────────────────────────

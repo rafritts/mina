@@ -800,6 +800,34 @@ def _get_net_relationship_dimensions(owner_name: str) -> dict[str, float]:
     return net
 
 
+def get_relationship_modifier(owner_name: str) -> float:
+    """
+    Return a 0.1–1.0 chemistry multiplier for this person.
+
+    Stranger (no relationship file / no layers): 0.1
+    As bonding, warmth, and security accumulate across layers, modifier rises.
+    At maximum positive scores on all three dimensions: 1.0.
+
+    This is the gate that prevents a first conversation from producing
+    relationship-level chemistry effects regardless of conversation content.
+    """
+    dims = _get_net_relationship_dimensions(owner_name)
+
+    # If all dims are 0.0 there are no layers yet — true stranger
+    if all(v == 0.0 for v in dims.values()):
+        return 0.1
+
+    # Primary trust signal: bonding + warmth + security (each -2 to +2, so sum -6 to +6)
+    trust = dims.get("bonding", 0.0) + dims.get("warmth", 0.0) + dims.get("security", 0.0)
+
+    # Map -6..+6 → 0.1..1.0
+    # At trust=0 (neutral acquaintance): ~0.4
+    # At trust=+6 (maximum): 1.0
+    # At trust=-6 (actively hostile): 0.1
+    modifier = 0.1 + (trust + 6.0) / 12.0 * 0.9
+    return round(max(0.1, min(1.0, modifier)), 3)
+
+
 def _parse_relationship_output(raw: str) -> tuple[str, dict[str, int]]:
     prose_lines = []
     scores: dict[str, int] = {}
