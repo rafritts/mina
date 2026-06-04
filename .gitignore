@@ -29,6 +29,7 @@ src/application/memory/images/
 
 # Identity customization (personal — not for version control)
 identity/CUSTOMIZATION.md
+CUSTOMIZATION.md
 
 # Custom toolbox (operator-defined tools — not for version control)
 toolbox/toolbox.py
