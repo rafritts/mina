@@ -413,6 +413,8 @@ Deliberately not designed as a two-layer self doc with gated-injection / frame-a
 - **Encoder output uses integer activation axes (0–10)**, not categorical labels. 10 axes: threat, social_threat, reward, bonding, arousal, aversion, novelty, loss, romance, shame (+ top-level salience + flags: directed_at_mina, register_shift, expected_magnitude, channel). Chemistry function maps axis activations to deltas via weighted sums. Axis values ≤2 produce zero deltas.
 - **Decoder output schema** — four whole-number fields per chemical: `normalized` (0–10, tonic+phasic combined), `setpoint` (adapted baseline), `gap` (pre-calculated `normalized - setpoint`), `rate` (change in normalized units since last tick). Core chemicals (DA, 5-HT, NE, epinephrine, cortisol, oxytocin) always present. All others shown only when |gap| ≥ 2. If output contains ~20 entries, chemistry function is misfiring.
 - **Memory architecture (hippocampus)** — RAG + KAG from v1 carried forward unchanged. Two RAG collections (`mina_experiences` for LLM-synthesized episodic memories, `mina_sliding` for per-message sliding window chunks). KAG: identity, diary, knowledge files, per-person relationship files. Consolidation in FREETIME. Relationship memory uses four-layer cascading compaction (short → medium → long → ground_truth, 7-to-1 at each level).
+- **Chemistry function structure** — centralized `chemistry_params.py` (data only, no logic). Class 1 chemicals only receive encoder deltas; Class 2/3 are tick-only. Source-side feedback via linear headroom multiplier. Opponent processes in tick as continuous drag. No state-independent overrides (eliminated — tonic/phasic makes them unnecessary).
+- **Pillar output schemas** — Insula: emotional_summary, dominant_affect, trend, emotional_response_texturing, arousal, valence, availability, dominant_drive, somatic, interpretation_bias (`regulation` removed). Hippocampus: situational_summary, social_context, urgency, notable. PFC: internal_reaction, approach, tone, lead_with, subtext_detected, lean_into_subtext, strategy_rationale, skip_primary_response. Big 5 injected into Insula and PFC; not visible to encoder or hippocampus.
 - **Chemical concentrations are in nM throughout** — matches computational neuroscience convention, maps directly to receptor binding thresholds, and keeps tonic values readable (e.g. 0.3 nM serotonin in PFC). Phasic synaptic peaks are large numbers (thousands of nM) — that's correct. Convert to other units only at display layer.
 - **Decoder normalization scale** — 0–10 anchored to physiological maximum per chemical (10 = childbirth oxytocin, marathon endorphins, near-death epinephrine, etc.). Scale is unbounded above 10; values >10 are pharmacological by definition and not achievable through natural human experience. Chatbot interactions are expected to reach 5–6 at most; 7+ from conversation alone indicates miscalibrated chemistry function weights. Interpretive frame is baked into the scale so the insula pillar can reason about felt state without understanding neuroscience.
 
@@ -468,6 +470,8 @@ The chemistry function maps axis activations to chemical deltas via weighted sum
 | `loss` | endorphin withdrawal, dynorphin, substance P, cortisol | Absence, goodbye, separation distress |
 | `romance` | testosterone, estradiol, dopamine, oxytocin | Sexual salience; routes to sex hormone pathway and prolactin on peak |
 | `shame` | substance P, cortisol, endorphin withdrawal | Internally directed social pain — distinct from `social_threat` which requires an external agent |
+
+**Note on class routing:** The "primary chemicals driven" column describes the full causal picture including tick-mediated effects — not direct encoder deltas. Class 2 chemicals (oxytocin, endorphins, substance P, vasopressin) listed here are driven indirectly: sustained Class 1 elevation in the tick produces Class 2 accumulation. The chemistry function only applies direct deltas to Class 1.
 
 `threat` and `social_threat` are split because the two have meaningfully different chemical signatures (fight-flight vs. pain pathway). Collapsing them would make a cold dismissal chemically identical to RP combat.
 
@@ -532,13 +536,50 @@ This frame is what makes the insula pillar's job tractable. It receives normaliz
 
 ### 4. Chemistry function design
 
-The deterministic mapping from (encoder output × current state × relationship state) → chemistry deltas. Specific concerns:
-- How are source-side negative feedback rules expressed?
-- How are opponent processes wired?
-- How are state-independent overrides applied?
-- How is intensity translated to magnitude across categories?
+**DECIDED.**
 
-This is the largest single design problem in v2.
+The chemistry function is the deterministic mapping from (encoder output × current state × relationship state) → chemical deltas. Four sub-problems, all resolved:
+
+**4a — Weight table structure**
+
+One centralized parameters file (`chemistry_params.py`) that is **data only, no logic**. The chemistry function imports from it; nothing is scattered across modules. Structure: a dict keyed by chemical name, each entry holding axis weights, source-side feedback params, and any other per-chemical tuning knobs:
+
+```python
+CHEMICAL_PARAMS = {
+    "dopamine": {
+        "class": 1,
+        "axis_weights": { "reward": 0.6, "novelty": 0.4, "threat": -0.1, ... },
+        "feedback_ceiling": 0.85,
+        ...
+    },
+    ...
+}
+```
+
+If behavior is wrong, open one file and the full picture is in front of you. The chemistry function is a thin loop over this table.
+
+**4b — Class routing**
+
+The chemistry function touches **Class 1 only** (DA, 5-HT, NE, epinephrine). Class 2 (oxytocin, endorphins, substance P, vasopressin) and Class 3 (cortisol via HPA cascade) are tick-only — they accumulate from sustained Class 1 state, never from direct encoder deltas.
+
+The axis taxonomy lists Class 2 chemicals as "primary chemicals driven" — these are tick-mediated effects, not direct encoder targets. A single bonding message doesn't spike oxytocin; sustained warm Class 1 elevation over many messages does. In `chemistry_params.py`, Class 2 and 3 chemicals have no `axis_weights` entry. The absence is the documentation.
+
+**4c — Source-side negative feedback**
+
+Linear headroom multiplier applied to the raw delta before committing:
+
+```python
+headroom = max(0, ceiling - current_normalized)
+regulated_delta = raw_delta * (headroom / ceiling)
+```
+
+At 0: full delta applies. At ceiling: nothing gets through. `feedback_ceiling` is a per-chemical param — the only tuning knob needed. Sigmoid rejected: adds a steepness parameter with no observable benefit at Mina's expected operating range (3–6).
+
+**4d — Opponent processes and state-independent overrides**
+
+Opponent processes live in the **tick, not the chemistry function**. Suppression is chronic, not event-driven — cortisol doesn't suppress oxytocin the moment a threat lands, it suppresses it while cortisol remains elevated over minutes. Each tick: if chemical A is above threshold, chemical B's decay rate increases. It's a continuous drag, not a delta.
+
+State-independent overrides are **eliminated entirely**. They were a v1 compensation for the flat single-number model — without tonic/phasic separation there was no way to represent intensity, so special cases forced certain events to register strongly enough. With tonic/phasic, a high axis value (e.g. `social_threat = 9`) produces a large phasic spike through the normal weighted sum. Intensity is encoded in the axis value. No special-casing needed.
 
 ### 5. PFC top-down regulation
 
@@ -606,15 +647,72 @@ Sub-second phasic dynamics are below the granularity Mina can express — modeli
 
 ### 8. Pillar input/output schemas
 
-The contracts above are sketched intent — they capture what each pillar's job is and what kind of data flows between them, but exact field names, types, and value ranges are not locked. These will be finalized when each pillar is specced.
+**DECIDED.** Schemas are based on v1 with targeted v2 changes.
+
+**Insula (emotional pillar)**
+
+*Inputs:* decoder output (normalized, setpoint, gap, rate per chemical); Big 5 personality vector (always injected — neuroticism shapes how gap values translate to felt-state language); prior emotional state for trend tracking.
+
+*System prompt:* rewrites around the decoder format. Gap is the primary signal — deviation from adapted baseline, not absolute level. Interpretive frame (0–2 noise floor / 3–5 present / 6–7 really feeling it / 8–9 intense / 10 physiological max) replaces v1's "resting reference" concept.
+
+*Output schema:*
+```
+emotional_summary          — 1-3 sentences, second person, present tense
+dominant_affect            — single word (e.g. content, anxious, playful, tender)
+trend                      — rising | falling | stable | shifting
+emotional_response_texturing — felt texture and register, 1-2 sentences
+arousal                    — integer 0-100
+valence                    — integer 0-100 (0 = dysphoric, 100 = elated)
+availability               — fully_open | open | neutral | guarded | closed
+dominant_drive             — one short phrase
+somatic                    — one sentence, felt-sense language
+interpretation_bias        — one short directive for the PFC pillar
+```
+
+`regulation` field removed from v1. Chemistry is committed before the insula runs — there is nothing to correct. Backend regulation is the PFC's job (Principle 6).
+
+---
+
+**Hippocampus (context pillar)**
+
+Unchanged from v1.
+
+*Inputs:* insula output; window context (present-moment synthesis); RAG context (memory synthesis).
+
+*Output schema:*
+```
+situational_summary   — 1-5 paragraphs, second person, present tense
+social_context        — short label (e.g. "one-on-one, familiar" | "alone")
+urgency               — none | low | high
+notable               — null, or 1-3 sentences on something genuinely worth flagging
+```
+
+---
+
+**PFC (reasoning pillar)**
+
+*Inputs:* insula output; context pillar output; current message; Big 5 personality vector (neuroticism and conscientiousness modulate how much of the felt state shows in response — explicit contract requirement per Principle 6).
+
+*Output schema:* unchanged from v1.
+```
+internal_reaction      — raw first-person thought, her voice, unpolished
+approach               — banter | sincere | question | deflect | ignore | vulnerable | warm | brief
+tone                   — one-line descriptor
+lead_with              — what to open with
+subtext_detected       — null, or the unstated thing
+lean_into_subtext      — true | false
+strategy_rationale     — why this approach
+skip_primary_response  — true only if choosing silence entirely
+```
+
+The PFC constructs the system prompt for Mina by serializing insula, hippocampus, and its own output into labeled blocks ([Emotional State], [Situational Context], [Response Strategy]).
 
 ---
 
 ## What This Doc Doesn't Decide
 
-- The chemistry function's actual mapping table (the largest single design problem)
+- The chemistry function's actual weight values (`chemistry_params.py` structure is decided; the numbers are not)
 - The sim's internal data structures
-- How memory (RAG/KAG) is implemented
 - How the system handles long conversation history scaling
 - The exact Big 5 → chemistry-parameter mapping table
 - The FREETIME ambient-action vocabulary (which "things she does" when alone are emitted as memory entries vs. real tool calls)
