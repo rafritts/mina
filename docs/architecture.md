@@ -713,8 +713,12 @@ The PFC constructs the system prompt for Mina by serializing insula, hippocampus
 
 - The chemistry function's actual weight values (`chemistry_params.py` structure is decided; the numbers are not)
 - The sim's internal data structures
-- How the system handles long conversation history scaling
 - The exact Big 5 → chemistry-parameter mapping table
-- The FREETIME ambient-action vocabulary (which "things she does" when alone are emitted as memory entries vs. real tool calls)
 
 These will each be their own design conversations and eventual SPECs.
+
+## Decisions Added During v2 Design
+
+- **Long conversation scaling is a non-problem.** Each pipeline invocation operates on a small fixed context window — Mina's ~8k token window plus the assembled system prompt. The decoder window is a rolling buffer (same as v1). Context does not accumulate unboundedly across turns; the pipeline is stateless per invocation and state lives in the sim and memory stores, not in the LLM context.
+
+- **FREETIME tool vocabulary: everything is a tool.** If Mina does something during FREETIME, it is expressed as a tool call — including writing to her diary. One tool is `record_diary` (writes a dated entry to REFLECTION.md). Other tools (eat, drink, etc.) carry over from v1. There is no separate "just emit a memory entry" path — all FREETIME actions go through the tool interface, and their outputs flow into memory via the normal consolidation path.
