@@ -411,6 +411,8 @@ Deliberately not designed as a two-layer self doc with gated-injection / frame-a
 - **`CUSTOMIZATION.md`** — gitignored, auto-appended to MINA system prompt, single uniform user-override mechanism.
 - **Action vs. dialogue are separable channels** in encoder output (different physiological pathways) and Mina's output supports asterisk-action emission.
 - **Encoder output uses integer activation axes (0–10)**, not categorical labels. 10 axes: threat, social_threat, reward, bonding, arousal, aversion, novelty, loss, romance, shame (+ top-level salience + flags: directed_at_mina, register_shift, expected_magnitude, channel). Chemistry function maps axis activations to deltas via weighted sums. Axis values ≤2 produce zero deltas.
+- **Decoder output schema** — four whole-number fields per chemical: `normalized` (0–10, tonic+phasic combined), `setpoint` (adapted baseline), `gap` (pre-calculated `normalized - setpoint`), `rate` (change in normalized units since last tick). Core chemicals (DA, 5-HT, NE, epinephrine, cortisol, oxytocin) always present. All others shown only when |gap| ≥ 2. If output contains ~20 entries, chemistry function is misfiring.
+- **Memory architecture (hippocampus)** — RAG + KAG from v1 carried forward unchanged. Two RAG collections (`mina_experiences` for LLM-synthesized episodic memories, `mina_sliding` for per-message sliding window chunks). KAG: identity, diary, knowledge files, per-person relationship files. Consolidation in FREETIME. Relationship memory uses four-layer cascading compaction (short → medium → long → ground_truth, 7-to-1 at each level).
 - **Chemical concentrations are in nM throughout** — matches computational neuroscience convention, maps directly to receptor binding thresholds, and keeps tonic values readable (e.g. 0.3 nM serotonin in PFC). Phasic synaptic peaks are large numbers (thousands of nM) — that's correct. Convert to other units only at display layer.
 - **Decoder normalization scale** — 0–10 anchored to physiological maximum per chemical (10 = childbirth oxytocin, marathon endorphins, near-death epinephrine, etc.). Scale is unbounded above 10; values >10 are pharmacological by definition and not achievable through natural human experience. Chatbot interactions are expected to reach 5–6 at most; 7+ from conversation alone indicates miscalibrated chemistry function weights. Interpretive frame is baked into the scale so the insula pillar can reason about felt state without understanding neuroscience.
 
@@ -475,13 +477,37 @@ The chemistry function maps axis activations to chemical deltas via weighted sum
 
 ### 3. Decoder design
 
-The projection layer needs to handle:
-- Ratio-to-setpoint normalization
-- Tonic and phasic preserved separately
-- Trajectory (rate of change) carried forward
-- Per-chemical normalization vs. cross-chemical commensurability
+**DECIDED.**
 
-v1's flat 1–10 scale was insufficient. v2's design TBD — except for the normalization scale, which is decided below.
+The decoder produces a single JSON object. Each chemical entry has exactly four fields, all whole numbers:
+
+```json
+{
+  "dopamine":       { "normalized": 4, "setpoint": 4, "gap":  0, "rate":  0 },
+  "serotonin":      { "normalized": 3, "setpoint": 4, "gap": -1, "rate": -1 },
+  "norepinephrine": { "normalized": 5, "setpoint": 3, "gap": +2, "rate": +1 },
+  "epinephrine":    { "normalized": 2, "setpoint": 2, "gap":  0, "rate":  0 },
+  "cortisol":       { "normalized": 2, "setpoint": 2, "gap":  0, "rate":  0 },
+  "oxytocin":       { "normalized": 4, "setpoint": 3, "gap": +1, "rate": +1 }
+}
+```
+
+- **`normalized`** — current level (tonic + phasic combined), 0–10 whole number, anchored to physiological maximum (see normalization scale below)
+- **`setpoint`** — current adapted baseline, 0–10 whole number, same scale
+- **`gap`** — `normalized - setpoint`, pre-calculated signed whole number; the insula does not compute this itself
+- **`rate`** — change in normalized units since last tick, signed whole number
+
+Tonic and phasic are combined into a single felt level. The four values together convey the full picture: absolute level, chronic baseline, deviation, and direction of travel. A phasic spike reads as large gap + nonzero rate; a chronic tonic shift reads as elevated setpoint with near-zero rate.
+
+**Core chemicals — always present:**
+
+DA, 5-HT, NE, epinephrine, cortisol, oxytocin. These map directly to the primary felt-state dimensions (motivation, mood, arousal, stress, bonding) and are always behaviorally relevant.
+
+**Conditional chemicals — shown only when |gap| ≥ 2:**
+
+All other chemicals in the sim. If the decoder output contains ~20 entries, something is wrong with the chemistry function — runaway chemistry surfaces here before it reaches the insula.
+
+**Tonic/phasic note:** combining them into one felt level works because the four-field schema already encodes the distinction implicitly. Large gap + nonzero rate = acute phasic event. Elevated setpoint + near-zero rate = chronic tonic shift. The insula does not need the raw split.
 
 **DECIDED: Normalization scale.**
 
@@ -516,15 +542,67 @@ This is the largest single design problem in v2.
 
 ### 5. PFC top-down regulation
 
-What does executive override actually look like in implementation? PFC at tier 4 should be able to modulate expression of amygdala-driven states ("I feel angry but I will not snap"). Where does this live in the pipeline — as a flag in the reasoning pillar output? As a modulation on chemistry before the decoder runs? TBD.
+**DECIDED.** Answered by Principle 6.
+
+- **Frontend regulation** lives in the chemistry function as a deterministic pre-commit modifier: `regulated_delta = raw_delta × pfc_regulation_factor(neuroticism, current_arousal)`. Applied to Class 1 chemicals only, before the delta is committed to the sim.
+- **Backend regulation** is the reasoning pillar's job. The pillar receives the decoded felt state and decides how Mina expresses it. High adrenaline + strong backend regulation = surface composure despite internal intensity.
 
 ### 6. Hippocampus / memory architecture
 
-RAG + KAG was used in v1. What's the right design for v2? Out of scope for the architecture doc but flagged as a major component.
+**DECIDED: carry v1 forward as-is.** This was one of the strongest parts of v1 — it worked well and is preserved unchanged in v2.
+
+**Two storage tiers:**
+
+- **RAG** — ChromaDB vector store for episodic memory. Two collections:
+  - `mina_experiences` — LLM-synthesized episodic memories, written during FREETIME consolidation. Semantically dense; captures meaning (what happened, why it mattered), not raw text.
+  - `mina_sliding` — per-message raw conversation chunks (10-message sliding windows, written every turn). Replaced the old "recent bucket" with much higher retrieval precision.
+
+- **KAG** — File-based knowledge store:
+  - `identity/MINA.md` — permanent identity file; never wiped.
+  - `memory/kag/REFLECTION.md` — Mina's private diary, appended by consolidation.
+  - `memory/kag/KNOWLEDGE/*.md` — facts Mina has learned (user preferences, things mentioned, etc.).
+  - `memory/relationships/<person>.md` — per-person relationship state (see relationship layer below).
+
+**Retrieval per turn (parallel fetch):**
+
+1. `mina_sliding` semantic query — finds best chunk match, expands ±3 sequence positions to recover surrounding context. Replaces the "recent" bucket.
+2. `mina_experiences` bucketed query — semi-recent (2–24h) and historical (24h+) pools, cosine similarity × recency decay (20-min half-life for recent, 48h for historical), similarity floor 0.75.
+3. Relational RAG — separate `mina_experiences` query with a 30-day half-life; used to feed relationship context into encoder and chemistry function.
+4. KAG — identity and all relationship files always included; REFLECTION.md always included; KNOWLEDGE files LLM-selected per turn based on relevance to current query.
+
+A **context assembly LLM call** synthesizes the retrieved material before it reaches the hippocampus pillar — window synthesis (present-moment situational facts) and RAG synthesis (memory context) are separate LLM passes, each with their own system prompt and output format.
+
+**Consolidation (runs in FREETIME):**
+
+LLM pass over new conversation entries since last consolidation cursor. Produces:
+- RAG entries written to `mina_experiences` — specific moments, emotionally tagged when adjudicator annotations are present.
+- KAG updates — PENDING.md (deferred things), REFLECTION.md (diary entry), KNOWLEDGE/ (facts learned).
+- Followup entries — explicit commitments Mina made that require a future action.
+
+**Relationship memory — four-layer cascading compaction:**
+
+Per-person relationship state is maintained as a Markdown file with four temporal layers, each written by a separate LLM call and compacted 7-to-1 into the next:
+
+| Layer | Period | Trigger |
+|---|---|---|
+| `short_term` | current emotional disposition | sleep or 22h elapsed |
+| `medium_term` | arc of ~7 days | 7 short_term entries accumulated |
+| `long_term` | arc of ~7 weeks | 7 medium_term entries accumulated |
+| `ground_truth` | enduring character of the relationship | 7 long_term entries accumulated |
+
+Each layer carries prose (2–4 sentences from inside Mina's experience) and six dimension scores (bonding, security, anticipation, tension, warmth, vigilance). The net weighted score across all present layers feeds the chemistry function as relationship state. Writing `long_term` or `ground_truth` layers also applies small receptor sensitivity adjustments to reflect structural adaptation.
 
 ### 7. Sim tick rate
 
-v1 used 10 seconds. Is that right for v2? Some dynamics need finer resolution (phasic decay over seconds), some coarser (slow setpoint adaptation over hours). Multi-rate architecture or single rate?
+**DECIDED: single rate, 10-second tick.**
+
+All four chemical classes are handled comfortably at 10s:
+- Class 1 phasic decay (seconds to ~2 minutes) — 10s ticks are slightly coarse but within acceptable fidelity
+- Class 2 accumulation/decay (minutes to tens of minutes) — 10s is more than sufficient
+- Class 3 HPA cascade (15–30 min rise, 60–90 min decay) — 10s is more than sufficient
+- Class 4 setpoint adaptation (hours to days) — implemented as a tiny drift applied each tick; no separate clock needed
+
+Sub-second phasic dynamics are below the granularity Mina can express — modeling them would be grade S overshoot.
 
 ### 8. Pillar input/output schemas
 
@@ -535,10 +613,7 @@ The contracts above are sketched intent — they capture what each pillar's job 
 ## What This Doc Doesn't Decide
 
 - The chemistry function's actual mapping table (the largest single design problem)
-- The encoder's exact output schema
-- The decoder's normalization mechanics
 - The sim's internal data structures
-- The tick rate and multi-rate architecture
 - How memory (RAG/KAG) is implemented
 - How the system handles long conversation history scaling
 - The exact Big 5 → chemistry-parameter mapping table
