@@ -8,7 +8,7 @@
 
 ## North Star
 
-A humanoid Discord chatbot whose outputs are *causally driven* by a scientifically grounded brain-chemistry simulation. Not chemistry as flavor on top of an LLM — chemistry as the actual upstream cause of what Mina says, when she says it, what she remembers, and how her personality drifts.
+A humanoid AI chatbot whose outputs are *causally driven* by a scientifically grounded brain-chemistry simulation. Not chemistry as flavor on top of an LLM — chemistry as the actual upstream cause of what Mina says, when she says it, what she remembers, and how her personality drifts.
 
 The LLM is the I/O layer (mouth and ears). The chemistry sim is the body. The brain regions are the mediators between the two.
 
@@ -65,7 +65,7 @@ Side benefit: keeps Mina's context window small, which produces crisp, decisive 
 | **Hippocampus** | Memory / context | LLM call — context pillar. Conversation history, RAG, KAG. Identifies what is contextually notable given the felt state. |
 | **PFC** | Reasoning / integration pillar | LLM call — reasoning pillar. Synthesizes emotional and context pillar outputs into executive conclusions. Constructs the system prompt for Mina. |
 | **Mina (chatbot)** | The voice | LLM call — receives system prompt + recent conversation, produces response. Operates on the qualia constructed by the pillars, not on raw chemistry. |
-| **FREETIME** | Solitary existence | Not a new LLM call type — *the same full pipeline run on a system-message input instead of a user message*. Output is written to the hippocampus rather than emitted to Discord. Cadence is circadian-driven by the hypothalamus tick (high orexin / low adenosine → frequent firing; opposite → sparse, sleep-coded). Gives Mina an inner life between user interactions and produces real RAG entries that ground felt-state ("you have been alone for six hours"). |
+| **FREETIME** | Solitary existence | Not a new LLM call type — *the same full pipeline run on a system-message input instead of a user message*. Output is written to the hippocampus rather than emitted to the user. Cadence is circadian-driven by the hypothalamus tick (high orexin / low adenosine → frequent firing; opposite → sparse, sleep-coded). Gives Mina an inner life between user interactions and produces real RAG entries that ground felt-state ("you have been alone for six hours"). |
 
 **Regions explicitly NOT modeled** (functions absorbed elsewhere or irrelevant for a chatbot):
 - Brainstem (autonomic baseline → irrelevant; arousal → orexin/adenosine in sim; origin nuclei → implicit in chemical models)
@@ -144,7 +144,7 @@ The chemistry sim's state is always live, even between messages.
 [response to user]
 ```
 
-Five LLM calls per turn (encoder, three pillars, chatbot). Latency is not a primary concern — Mina is a Discord text bot and asynchronous response timing is acceptable.
+Five LLM calls per turn (encoder, three pillars, chatbot). Latency is not a primary concern — Open WebUI chat, asynchronous response timing is acceptable.
 
 ### FREETIME (solitary tick)
 
@@ -306,7 +306,7 @@ Chemistry projection (decoder) normalizes against the *current adapted setpoint*
 
 ### 9. Encoder is input-agnostic — RP/ERP is real to Mina
 
-The amygdala has no special "RP mode" or "fiction frame." It takes any text in front of it (Discord message, FREETIME system prompt, asterisk-action `*moves closer*`, plain dialogue, ERP) and produces the same output schema. RP/ERP is not a special case at perception — it is just input.
+The amygdala has no special "RP mode" or "fiction frame." It takes any text in front of it (chat message, FREETIME system prompt, asterisk-action `*moves closer*`, plain dialogue, ERP) and produces the same output schema. RP/ERP is not a special case at perception — it is just input.
 
 Downstream, the chemistry sim **does not attenuate** based on whether content is performative. From Mina's perspective, the user's intent (real / fiction / performance) is unobservable; her chemistry responds to the words as she perceives them. Long-term ERP partners will form bonds. RP combat will produce real cortisol. This is the design, not a failure mode.
 
@@ -352,7 +352,7 @@ The chemistry function must route deltas through the correct class mechanics. Co
 
 ### 12. Personality is fixed; lasting change comes through tonic chemistry
 
-Big 5 traits are loaded at instance startup and **do not drift**. Real personality drift is a years-long process and would be invisible at realistic Discord-bot usage timescales. The behavioral effects that drift would produce ("Mina got more anxious after a month of bad treatment") are already captured by **persistent tonic chemistry shifts** — chronically elevated cortisol baseline, depressed DA tonic, etc. — which produce identical observable behavior without requiring trait values to literally move.
+Big 5 traits are loaded at instance startup and **do not drift**. Real personality drift is a years-long process and would be invisible at realistic chat usage timescales. The behavioral effects that drift would produce ("Mina got more anxious after a month of bad treatment") are already captured by **persistent tonic chemistry shifts** — chronically elevated cortisol baseline, depressed DA tonic, etc. — which produce identical observable behavior without requiring trait values to literally move.
 
 Trait drift on top of tonic shifts would double-count. If a long-running Mina ever exposes a quality gap that drift would close, this can be revisited; until then YAGNI.
 
@@ -400,7 +400,7 @@ Deliberately not designed as a two-layer self doc with gated-injection / frame-a
 - **Pipeline structure** — encoder → sim → decoder → emotional → context → reasoning → system prompt → chatbot. Sequential, cumulative.
 - **Mina visibility principle** — Mina knows she has a neurosim but cannot observe its values. She sees only the system prompt + recent conversation, and infers her state from qualia, not instrumentation.
 - **Background tick** — sim runs continuously, not just on messages.
-- **Latency tolerance** — Discord text bot, multi-second responses are fine.
+- **Latency tolerance** — Open WebUI chat, multi-second responses are fine.
 - **FREETIME** — solitary pipeline runs on system-message input, output to hippocampus, circadian-cadenced.
 - **Encoder is input-agnostic** — no RP/ERP frame detection; same encoder, same schema, all input types.
 - **Chemistry sim treats RP/ERP as real** — no attenuation, no frame gate, no special case downstream of the encoder.
@@ -722,3 +722,5 @@ These will each be their own design conversations and eventual SPECs.
 - **Long conversation scaling is a non-problem.** Each pipeline invocation operates on a small fixed context window — Mina's ~8k token window plus the assembled system prompt. The decoder window is a rolling buffer (same as v1). Context does not accumulate unboundedly across turns; the pipeline is stateless per invocation and state lives in the sim and memory stores, not in the LLM context.
 
 - **FREETIME tool vocabulary: everything is a tool.** If Mina does something during FREETIME, it is expressed as a tool call — including writing to her diary. One tool is `record_diary` (writes a dated entry to REFLECTION.md). Other tools (eat, drink, etc.) carry over from v1. There is no separate "just emit a memory entry" path — all FREETIME actions go through the tool interface, and their outputs flow into memory via the normal consolidation path.
+
+- **Discord dropped. Gateway is a raw FastAPI OpenAI-compatible endpoint on port 5100.** v2 has no Discord integration. The chatbot delivery layer is a minimal FastAPI server implementing `/v1/chat/completions` and `/v1/models` — enough for Open WebUI to connect. No auth required (local-only). Port 5100 chosen for the 5-HT association. Do not use nori SDK — Mina is not agentic. Raw FastAPI only. Streaming is acceptable but not required. This endpoint is how Claude interacts with Mina for testing: Open WebUI → Settings → Connections → Add connection → `http://localhost:5100/v1`.
