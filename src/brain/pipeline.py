@@ -188,7 +188,58 @@ async def run_turn(
     _save_prior_emotional_state(insula_output)
     _trim_and_save_window(decoder_window)
 
+    # ── 13. Full turn log ───────────────────────────────────────────────────
+    _write_turn_log(
+        ts=ts,
+        username=username,
+        message=message,
+        encoder_output=encoder_output,
+        relationship_modifier=relationship_modifier,
+        decoder_snapshot=decoded,
+        big5=big5,
+        insula_output=insula_output,
+        context_output=context_output,
+        pfc_output=pfc_output,
+        reply=reply,
+    )
+
     return reply
+
+
+def _write_turn_log(
+    ts: float,
+    username: str,
+    message: str,
+    encoder_output: dict,
+    relationship_modifier: float,
+    decoder_snapshot: dict,
+    big5: dict,
+    insula_output: dict,
+    context_output: dict,
+    pfc_output: dict,
+    reply: str,
+) -> None:
+    path = os.path.join(RUN_DIR, "turns.jsonl")
+    os.makedirs(RUN_DIR, exist_ok=True)
+    record = {
+        "ts":                   ts,
+        "ts_human":             time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts)),
+        "username":             username,
+        "message":              message,
+        "encoder":              encoder_output,
+        "relationship_modifier": relationship_modifier,
+        "sim_snapshot":         decoder_snapshot,
+        "big5":                 big5,
+        "insula":               insula_output,
+        "hippocampus":          context_output,
+        "pfc":                  pfc_output,
+        "reply":                reply,
+    }
+    try:
+        with open(path, "a") as f:
+            f.write(json.dumps(record) + "\n")
+    except OSError as e:
+        log("PIPELINE/LOG/ERR", str(e))
 
 
 def _trim_and_save_window(window: list[dict]) -> None:
