@@ -64,9 +64,16 @@ async def chat_completions(request: Request):
     if not messages:
         return JSONResponse(status_code=400, content={"error": "No messages provided."})
 
+    # Resolve username: config.json > request body "user" field > "user"
+    from src.config.config import load_config
+    username = (
+        load_config().get("username")
+        or body.get("user")
+        or "user"
+    ).strip().lower() or "user"
+
     # Extract the last user message
     user_msg = ""
-    username = "user"
     for m in reversed(messages):
         if m.get("role") == "user":
             content = m.get("content", "")

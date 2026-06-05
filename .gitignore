@@ -42,6 +42,9 @@ toolbox/temp_workflow_*.json
 
 # Secrets
 .env
+
+# Local config (personal settings — not for version control)
+config.json
 *.key
 dashboard/build/
 dashboard/node_modules/
