@@ -3,18 +3,27 @@ import http from 'node:http'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
-export const maxDuration = 300
+export const maxDuration = 600
 
 const BACKEND_HOST = process.env.MINA_BACKEND_HOST ?? '127.0.0.1'
 const BACKEND_PORT = Number(process.env.MINA_BACKEND_PORT ?? '5100')
 
 /**
  * POST /api/chat
- * Body: { message: string, history?: { role: string; content: string }[] }
- * Proxies a single user turn to the Python sim process.
+ * Body: {
+ *   message: string
+ *   history?: { role: string; content: string }[]
+ *   image_count?: "auto" | 0 | 1..5
+ *   image_aspect?: "landscape" | "square" | "portrait"
+ * }
  */
 export async function POST(request: NextRequest) {
-  let body: { message?: string; history?: { role: string; content: string }[] }
+  let body: {
+    message?: string
+    history?: { role: string; content: string }[]
+    image_count?: string | number
+    image_aspect?: string
+  }
   try {
     body = await request.json()
   } catch {
@@ -36,6 +45,8 @@ export async function POST(request: NextRequest) {
     model: 'mina',
     messages,
     stream: false,
+    image_count: body.image_count ?? 'auto',
+    image_aspect: body.image_aspect ?? 'square',
   })
 
   try {
@@ -77,7 +88,6 @@ function postJson(path: string, body: string): Promise<{ status: number; body: s
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(body),
         },
-        // Turns can take a long time (multi-LLM pipeline)
         timeout: 0,
       },
       (res) => {

@@ -5,6 +5,7 @@ import type { NextConfig } from 'next'
 
 const backendHost = process.env.MINA_BACKEND_HOST ?? '127.0.0.1'
 const backendPort = process.env.MINA_BACKEND_PORT ?? '5100'
+const comfyFe = (process.env.COMFY_FE_URL ?? 'http://127.0.0.1:8886').replace(/\/$/, '')
 
 type BuildInfo = { id: string; git: string; builtAt: string }
 
@@ -55,6 +56,15 @@ const nextConfig: NextConfig = {
   },
   async rewrites() {
     return [
+      // Comfy-restless-frontend (same as Kairu) — optional client-side generate
+      {
+        source: '/api/generate',
+        destination: `${comfyFe}/api/generate`,
+      },
+      {
+        source: '/api/generate/:path*',
+        destination: `${comfyFe}/api/generate/:path*`,
+      },
       {
         // Admin/state poller still hits /api/*; route handlers take precedence
         // where defined (chat, stream, catch-all proxy).

@@ -1,10 +1,20 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { BUILD_INFO } from '../lib/build-info'
 import { useStatePoller } from '../lib/hooks/useStatePoller'
+import {
+  IMAGE_ASPECT_DEFAULT,
+  type ImageAspect,
+} from '../lib/image-aspect'
+import {
+  IMAGE_COUNT_DEFAULT,
+  type ImageCount,
+} from '../lib/image-count'
+import { AspectRatioSlider } from './AspectRatioSlider'
+import { ImageCountSelector } from './ImageCountSelector'
 
 type Role = 'user' | 'assistant'
 
@@ -15,6 +25,53 @@ interface ChatMessage {
 }
 
 const STORAGE_KEY = 'mina-chat-messages'
+const PREFS_KEY = 'mina-chat-image-prefs'
+
+/** Split text into prose + host image markdown units for display. */
+function renderMessageBody(content: string) {
+  const re = /!\[([^\]]*)\]\((\/images\/[^)]+|\/api\/generate\/[^)]+)\)/g
+  const nodes: ReactNode[] = []
+  let last = 0
+  let m: RegExpExecArray | null
+  let i = 0
+  while ((m = re.exec(content)) !== null) {
+    if (m.index > last) {
+      nodes.push(
+        <span key={`t-${i++}`} className="whitespace-pre-wrap">
+          {content.slice(last, m.index)}
+        </span>,
+      )
+    }
+    const alt = m[1] || 'photo'
+    const src = m[2]
+    nodes.push(
+      <figure key={`img-${i++}`} className="my-2">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt={alt}
+          className="max-w-full rounded-md border"
+          style={{ borderColor: 'rgba(232,228,221,0.12)', maxHeight: '28rem' }}
+          loading="lazy"
+        />
+        {alt && alt !== 'photo' && (
+          <figcaption className="mt-1 text-[11px]" style={{ color: 'rgba(232,228,221,0.4)' }}>
+            {alt}
+          </figcaption>
+        )}
+      </figure>,
+    )
+    last = m.index + m[0].length
+  }
+  if (last < content.length) {
+    nodes.push(
+      <span key={`t-${i++}`} className="whitespace-pre-wrap">
+        {content.slice(last)}
+      </span>,
+    )
+  }
+  return nodes.length ? nodes : <span className="whitespace-pre-wrap">{content}</span>
+}
 
 function loadMessages(): ChatMessage[] {
   if (typeof window === 'undefined') return []
@@ -175,11 +232,23 @@ export function ChatApp() {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hydrated, setHydrated] = useState(false)
+  const [imageCount, setImageCount] = useState<ImageCount>(IMAGE_COUNT_DEFAULT)
+  const [imageAspect, setImageAspect] = useState<ImageAspect>(IMAGE_ASPECT_DEFAULT)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     setMessages(loadMessages())
+    try {
+      const raw = localStorage.getItem(PREFS_KEY)
+      if (raw) {
+        const p = JSON.parse(raw) as { imageCount?: ImageCount; imageAspect?: ImageAspect }
+        if (p.imageCount !== undefined) setImageCount(p.imageCount)
+        if (p.imageAspect !== undefined) setImageAspect(p.imageAspect)
+      }
+    } catch {
+      /* ignore */
+    }
     setHydrated(true)
   }, [])
 
@@ -187,6 +256,15 @@ export function ChatApp() {
     if (!hydrated) return
     saveMessages(messages)
   }, [messages, hydrated])
+
+  useEffect(() => {
+    if (!hydrated) return
+    try {
+      localStorage.setItem(PREFS_KEY, JSON.stringify({ imageCount, imageAspect }))
+    } catch {
+      /* ignore */
+    }
+  }, [imageCount, imageAspect, hydrated])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -214,9 +292,9 @@ export function ChatApp() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
-          // Backend only needs the latest user turn for the pipeline, but we
-          // pass recent history in case the gateway shape is used elsewhere.
           history: messages.slice(-12).map((m) => ({ role: m.role, content: m.content })),
+          image_count: imageCount,
+          image_aspect: imageAspect,
         }),
       })
       const data = (await res.json()) as { reply?: string; error?: string }
@@ -236,7 +314,7 @@ export function ChatApp() {
       setSending(false)
       textareaRef.current?.focus()
     }
-  }, [input, sending, messages])
+  }, [input, sending, messages, imageCount, imageAspect])
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -319,7 +397,7 @@ export function ChatApp() {
                 className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className="max-w-[min(36rem,90%)] rounded-lg px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap"
+                  className="max-w-[min(36rem,90%)] rounded-lg px-3.5 py-2.5 text-sm leading-relaxed"
                   style={
                     m.role === 'user'
                       ? {
@@ -339,7 +417,7 @@ export function ChatApp() {
                       mina
                     </div>
                   )}
-                  {m.content}
+                  {renderMessageBody(m.content)}
                 </div>
               </div>
             ))
@@ -355,7 +433,7 @@ export function ChatApp() {
                   color: 'rgba(232,228,221,0.4)',
                 }}
               >
-                thinking…
+                {imageCount !== 0 ? 'thinking / maybe generating…' : 'thinking…'}
               </div>
             </div>
           )}
@@ -380,35 +458,49 @@ export function ChatApp() {
           className="border-t p-3 flex-shrink-0"
           style={{ borderColor: 'rgba(232,228,221,0.08)', background: 'rgba(4,4,4,0.75)' }}
         >
-          <div className="flex gap-2 max-w-3xl mx-auto items-end">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder="Message Mina…"
-              rows={1}
-              disabled={sending}
-              className="flex-1 resize-none rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-white/20 disabled:opacity-50"
-              style={{
-                background: 'rgba(232,228,221,0.04)',
-                borderColor: 'rgba(232,228,221,0.12)',
-                color: '#e8e4dd',
-                minHeight: '2.5rem',
-                maxHeight: '8rem',
-              }}
-            />
-            <Button
-              onClick={() => void send()}
-              disabled={sending || !input.trim()}
-              className="h-10 px-4"
-            >
-              {sending ? '…' : 'Send'}
-            </Button>
+          <div className="max-w-3xl mx-auto space-y-2">
+            <div className="flex flex-wrap items-center gap-2 px-0.5">
+              <ImageCountSelector
+                value={imageCount}
+                onChange={setImageCount}
+                disabled={sending}
+              />
+              <AspectRatioSlider
+                value={imageAspect}
+                onChange={setImageAspect}
+                disabled={sending || imageCount === 0}
+              />
+            </div>
+            <div className="flex gap-2 items-end">
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={onKeyDown}
+                placeholder="Message Mina…"
+                rows={1}
+                disabled={sending}
+                className="flex-1 resize-none rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-white/20 disabled:opacity-50"
+                style={{
+                  background: 'rgba(232,228,221,0.04)',
+                  borderColor: 'rgba(232,228,221,0.12)',
+                  color: '#e8e4dd',
+                  minHeight: '2.5rem',
+                  maxHeight: '8rem',
+                }}
+              />
+              <Button
+                onClick={() => void send()}
+                disabled={sending || !input.trim()}
+                className="h-10 px-4"
+              >
+                {sending ? '…' : 'Send'}
+              </Button>
+            </div>
+            <p className="text-[10px] text-center value-mono" style={{ color: 'rgba(232,228,221,0.2)' }}>
+              Enter to send · Shift+Enter for newline · pics via comfy-fe (Krea)
+            </p>
           </div>
-          <p className="text-[10px] text-center mt-1.5 value-mono" style={{ color: 'rgba(232,228,221,0.2)' }}>
-            Enter to send · Shift+Enter for newline
-          </p>
         </div>
       </div>
 

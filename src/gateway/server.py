@@ -224,11 +224,39 @@ async def chat_completions(request: Request):
     if not user_msg:
         return JSONResponse(status_code=400, content={"error": "No user message found."})
 
-    log("GATEWAY", f"Received: {user_msg[:80]}")
+    # UI photo prefs (Kairu-compatible names)
+    raw_count = body.get("image_count", "auto")
+    if raw_count is None or raw_count == "":
+        image_count: str | int = "auto"
+    elif isinstance(raw_count, bool):
+        image_count = "auto"
+    elif isinstance(raw_count, int) and 0 <= raw_count <= 5:
+        image_count = raw_count
+    elif isinstance(raw_count, str):
+        s = raw_count.strip().lower()
+        if s == "auto":
+            image_count = "auto"
+        elif s.isdigit() and 0 <= int(s) <= 5:
+            image_count = int(s)
+        else:
+            image_count = "auto"
+    else:
+        image_count = "auto"
+
+    raw_aspect = body.get("image_aspect", "square")
+    image_aspect = raw_aspect if raw_aspect in ("landscape", "square", "portrait") else "square"
+
+    log("GATEWAY", f"Received: {user_msg[:80]} (photos={image_count} aspect={image_aspect})")
 
     from src.brain.pipeline import run_turn
     try:
-        reply = await run_turn(user_msg, username, _sim)
+        reply = await run_turn(
+            user_msg,
+            username,
+            _sim,
+            image_count=image_count,
+            image_aspect=image_aspect,
+        )
     except Exception as e:
         log("GATEWAY/ERR", str(e))
         return JSONResponse(status_code=500, content={"error": str(e)})

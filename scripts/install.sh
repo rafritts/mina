@@ -102,6 +102,7 @@ Environment=MINA_UV_BIN=$UV_BIN
 Environment=MINA_NPM_BIN=$NPM_BIN
 Environment=MINA_BACKEND_PORT=5100
 Environment=MINA_UI_PORT=2050
+Environment=COMFY_FE_URL=http://127.0.0.1:8886
 ExecStart=$REPO_DIR/scripts/run.sh
 Restart=on-failure
 RestartSec=5

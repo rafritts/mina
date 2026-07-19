@@ -14,6 +14,7 @@ For each incoming message:
 
 Conversation window and JSONL log are managed here.
 Sliding RAG write is called after each message (user and Mina).
+Optional send_photo tool (comfy-fe) when image_count allows.
 """
 from __future__ import annotations
 
@@ -34,9 +35,17 @@ from .insula import run_insula, format_emotional_state_block
 from .hippocampus_pillar import run_hippocampus
 from .pfc import run_pfc, build_system_prompt
 from .context_assembly import assemble_window_context, assemble_rag_context
+from .chat_tools import (
+    CHAT_TOOLS,
+    call_chat_tool,
+    max_photos,
+    parse_tool_args,
+    photo_turn_context,
+)
 
 _DECODER_WINDOW_MAX = 20  # rolling window of raw messages for context assembly
 _MINA_WINDOW        = 8   # messages Mina receives directly
+_MAX_TOOL_ROUNDS    = 6
 
 
 def _load_decoder_window() -> list[dict]:
@@ -82,12 +91,20 @@ async def run_turn(
     message: str,
     username: str,
     sim: Sim,
+    *,
+    image_count: str | int = "auto",
+    image_aspect: str = "square",
 ) -> str:
     """
     Run the full per-turn pipeline. Returns Mina's reply.
+
+    image_count: "auto" | 0 | 1..5 — UI pic preference (hard cap on send_photo).
+    image_aspect: landscape | square | portrait — forced on host generate.
     """
     ts = time.time()
     log("USER", f"{username}: {message[:120]}")
+    photo_cap = max_photos(image_count)
+    aspect = image_aspect if image_aspect in ("landscape", "square", "portrait") else "square"
 
     # Load rolling window
     decoder_window = _load_decoder_window()
@@ -162,23 +179,91 @@ async def run_turn(
     if kag_context:
         system_prompt += f"\n\n[Memory]\n{kag_context}"
 
-    # ── 11. Mina LLM call ──────────────────────────────────────────────────
+    system_prompt += "\n\n" + photo_turn_context(image_count, aspect)
+
+    # ── 11. Mina LLM call (+ optional send_photo tool loop) ────────────────
     mina_window = decoder_window[-_MINA_WINDOW:]
-    messages = [{"role": "system", "content": system_prompt}] + [
+    messages: list[dict] = [{"role": "system", "content": system_prompt}] + [
         {"role": m["role"], "content": m["content"]}
         for m in mina_window
         if m.get("role") in ("user", "assistant") and m.get("content")
     ]
 
-    resp = await asyncio.to_thread(
-        chat_create,
-        model=MODEL,
-        messages=messages,
-        max_tokens=1024,
-        reasoning_effort="none",
-    )
-    reply = resp.choices[0].message.content or ""
-    log("MINA", reply[:120])
+    tools = CHAT_TOOLS if photo_cap > 0 else None
+    photo_units: list[str] = []
+    photos_sent = 0
+    reply = ""
+
+    for round_num in range(_MAX_TOOL_ROUNDS):
+        create_kwargs: dict = dict(
+            model=MODEL,
+            messages=messages,
+            max_tokens=1024,
+            reasoning_effort="none",
+        )
+        if tools and photos_sent < photo_cap:
+            create_kwargs["tools"] = tools
+            create_kwargs["tool_choice"] = "auto"
+
+        resp = await asyncio.to_thread(chat_create, **create_kwargs)
+        msg = resp.choices[0].message
+        content = msg.content or ""
+        tool_calls = getattr(msg, "tool_calls", None) or []
+
+        if not tool_calls:
+            reply = content
+            break
+
+        messages.append({
+            "role": "assistant",
+            "content": content,
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments,
+                    },
+                }
+                for tc in tool_calls
+            ],
+        })
+
+        for tc in tool_calls:
+            name = tc.function.name
+            args = parse_tool_args(tc.function.arguments)
+            if name == "send_photo" and photos_sent >= photo_cap:
+                result = f"[send_photo skipped: already sent {photo_cap} this turn]"
+            else:
+                log("PIPELINE", f"Tool {round_num+1}: {name}")
+                result = await asyncio.to_thread(
+                    call_chat_tool, name, args, image_aspect=aspect
+                )
+                if name == "send_photo" and "![" in result and "/images/" in result:
+                    photos_sent += 1
+                    photo_units.append(result)
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": result,
+            })
+    else:
+        # Exhausted tool rounds without a pure text finish
+        reply = content if content else ""
+
+    # Attach host photos after text if the model didn't already embed them
+    if photo_units:
+        units = "\n\n".join(photo_units)
+        if reply.strip():
+            # Drop model-invented fake image markdown; host photos are authoritative
+            reply = _strip_fake_images(reply)
+            if not any(u in reply for u in photo_units):
+                reply = f"{reply.rstrip()}\n\n{units}"
+        else:
+            reply = units
+
+    log("MINA", (reply[:120] if reply else "(empty)"))
 
     # ── 12. Post-turn bookkeeping ───────────────────────────────────────────
     decoder_window.append({"role": "assistant", "content": reply, "ts": time.time()})
@@ -204,6 +289,17 @@ async def run_turn(
     )
 
     return reply
+
+
+def _strip_fake_images(text: str) -> str:
+    """Remove model-invented image markdown that is not host /images/ or /api/generate/."""
+    import re
+    def keep(m: re.Match) -> str:
+        url = m.group(2)
+        if url.startswith("/images/") or url.startswith("/api/generate/"):
+            return m.group(0)
+        return ""
+    return re.sub(r"!\[([^\]]*)\]\(([^)]+)\)", keep, text).strip()
 
 
 def _write_turn_log(

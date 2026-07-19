@@ -21,6 +21,7 @@ fi
 export NODE_ENV="${NODE_ENV:-production}"
 export MINA_BACKEND_HOST="${MINA_BACKEND_HOST:-127.0.0.1}"
 export MINA_BACKEND_PORT="$BACKEND_PORT"
+export COMFY_FE_URL="${COMFY_FE_URL:-http://127.0.0.1:8886}"
 export PATH="$(dirname "$UV_BIN" 2>/dev/null || true):$HOME/.local/bin:/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/bin${PATH:+:$PATH}"
 
 # Free ports if orphaned listeners remain (stale HTML / EADDRINUSE).
