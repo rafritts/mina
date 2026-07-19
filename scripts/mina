@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# mina — management CLI for the Mina Discord bot
+# mina — management CLI for Mina (chat UI + neurosim)
 # Installed at ~/.local/bin/mina → scripts/mina
 
 set -euo pipefail
@@ -12,15 +12,14 @@ fi
 
 SERVICE="mina"
 RUN_DIR="$REPO_DIR/run"
-STOPPED_FLAG="$RUN_DIR/.stopped"
+UI_PORT="${MINA_UI_PORT:-2050}"
+BACKEND_PORT="${MINA_BACKEND_PORT:-5100}"
 
 _svc() { systemctl --user "$@" "$SERVICE"; }
 
-_require_running() {
-    if ! _svc is-active --quiet 2>/dev/null; then
-        echo "Mina is not running." >&2
-        exit 1
-    fi
+_build_ui() {
+    echo "Building UI..."
+    (cd "$REPO_DIR/ui" && npm install --silent && npm run build)
 }
 
 cmd="${1:-help}"
@@ -50,18 +49,19 @@ setup)
     ;;
 
 start)
-    rm -f "$STOPPED_FLAG"
     _svc start
     echo -n "Starting"
-    for i in $(seq 1 30); do
+    for _ in $(seq 1 90); do
         sleep 1
         echo -n "."
-        if [[ -f "$RUN_DIR/ready" ]]; then
+        if [[ -f "$RUN_DIR/ready" ]] || curl -sf "http://localhost:${UI_PORT}/" &>/dev/null; then
             echo " ready."
+            echo "UI: http://localhost:${UI_PORT}"
             exit 0
         fi
     done
     echo " timed out waiting for ready signal."
+    exit 1
     ;;
 
 stop)
@@ -69,12 +69,38 @@ stop)
     ;;
 
 restart)
-    rm -f "$STOPPED_FLAG"
+    # Rebuild then restart — same idea as kairu restart after deploy.
+    _build_ui
+    echo "Restarting..."
     _svc restart
+    echo -n "Waiting"
+    for _ in $(seq 1 90); do
+        sleep 1
+        echo -n "."
+        if [[ -f "$RUN_DIR/ready" ]] || curl -sf "http://localhost:${UI_PORT}/" &>/dev/null; then
+            echo " ready."
+            if curl -sf "http://localhost:${UI_PORT}/api/build" &>/dev/null; then
+                echo -n "Build: "
+                curl -s "http://localhost:${UI_PORT}/api/build"
+                echo ""
+            fi
+            exit 0
+        fi
+    done
+    echo " timed out."
+    exit 1
     ;;
 
 status)
     _svc status
+    echo ""
+    echo "UI:      http://localhost:${UI_PORT}"
+    echo "Backend: http://localhost:${BACKEND_PORT}/health"
+    if curl -sf "http://localhost:${UI_PORT}/api/build" &>/dev/null; then
+        echo -n "Build:   "
+        curl -s "http://localhost:${UI_PORT}/api/build"
+        echo ""
+    fi
     ;;
 
 enable)
@@ -97,29 +123,33 @@ logs)
             *) shift ;;
         esac
     done
-    LOG_FILE="$REPO_DIR/logs/mina.log"
-    if [[ ! -f "$LOG_FILE" ]]; then
-        echo "No log file yet. Has mina been started?" >&2
-        exit 1
-    fi
     if $follow; then
-        tail -n "$n" -f "$LOG_FILE"
+        journalctl --user -u "$SERVICE" -n "$n" -f
     else
-        tail -n "$n" "$LOG_FILE"
+        journalctl --user -u "$SERVICE" -n "$n" --no-pager
     fi
     ;;
 
 rebuild)
-    echo "Building UI..."
-    (cd "$REPO_DIR/ui" && npm install --silent && npm run build)
-    echo "Copying UI static assets into standalone bundle..."
-    rm -rf "$REPO_DIR/ui/.next/standalone/.next/static"
-    rm -rf "$REPO_DIR/ui/.next/standalone/public"
-    cp -r "$REPO_DIR/ui/.next/static"  "$REPO_DIR/ui/.next/standalone/.next/static"
-    cp -r "$REPO_DIR/ui/public"        "$REPO_DIR/ui/.next/standalone/public"
+    _build_ui
     echo "Restarting..."
-    rm -f "$STOPPED_FLAG"
     _svc restart
+    echo -n "Waiting"
+    for _ in $(seq 1 90); do
+        sleep 1
+        echo -n "."
+        if [[ -f "$RUN_DIR/ready" ]] || curl -sf "http://localhost:${UI_PORT}/" &>/dev/null; then
+            echo " ready."
+            if curl -sf "http://localhost:${UI_PORT}/api/build" &>/dev/null; then
+                echo -n "Build: "
+                curl -s "http://localhost:${UI_PORT}/api/build"
+                echo ""
+            fi
+            exit 0
+        fi
+    done
+    echo " timed out."
+    exit 1
     ;;
 
 update)
@@ -127,32 +157,20 @@ update)
     git -C "$REPO_DIR" pull
     echo "Syncing Python dependencies..."
     (cd "$REPO_DIR" && uv sync)
-    echo "Building UI..."
-    (cd "$REPO_DIR/ui" && npm install --silent && npm run build)
-    echo "Copying UI static assets into standalone bundle..."
-    rm -rf "$REPO_DIR/ui/.next/standalone/.next/static"
-    rm -rf "$REPO_DIR/ui/.next/standalone/public"
-    cp -r "$REPO_DIR/ui/.next/static"  "$REPO_DIR/ui/.next/standalone/.next/static"
-    cp -r "$REPO_DIR/ui/public"        "$REPO_DIR/ui/.next/standalone/public"
+    _build_ui
     echo "Restarting..."
-    rm -f "$STOPPED_FLAG"
     _svc restart
-    ;;
-
-unstop)
-    rm -f "$STOPPED_FLAG"
-    echo "Stop flag removed. Run 'mina start' to bring her back."
-    ;;
-
-pause)
-    mkdir -p "$RUN_DIR"
-    touch "$RUN_DIR/.paused"
-    echo "Biological updates paused."
-    ;;
-
-resume)
-    rm -f "$RUN_DIR/.paused"
-    echo "Biological updates resumed."
+    echo -n "Waiting"
+    for _ in $(seq 1 90); do
+        sleep 1
+        echo -n "."
+        if [[ -f "$RUN_DIR/ready" ]] || curl -sf "http://localhost:${UI_PORT}/" &>/dev/null; then
+            echo " ready."
+            exit 0
+        fi
+    done
+    echo " timed out."
+    exit 1
     ;;
 
 factory-reset)
@@ -162,21 +180,18 @@ factory-reset)
         read -rp "Factory reset: clear all runtime state, events, history, and memory? [y/N] " ans
         [[ "$ans" =~ ^[Yy]$ ]] || exit 0
     fi
-    # Runtime state
-    rm -f "$RUN_DIR/state.json"
-    rm -f "$RUN_DIR/conversation.json"
+    rm -f "$RUN_DIR/sim_state.json"
     rm -f "$RUN_DIR/conversation-"*.jsonl
-    # UI data feeds
     rm -f "$RUN_DIR/events.jsonl"
-    rm -f "$RUN_DIR/bio_history.jsonl"
-    rm -f "$RUN_DIR/bio_snapshots.jsonl"
+    rm -f "$RUN_DIR/history.jsonl"
+    rm -f "$RUN_DIR/obs.jsonl"
     rm -f "$RUN_DIR/token_stats.json"
-    # Internal runtime state
     rm -f "$RUN_DIR/consolidation_state.json"
     rm -f "$RUN_DIR/decoder_window.json"
-    rm -f "$RUN_DIR/followup_queue.json"
     rm -f "$RUN_DIR/sliding_seq.json"
-    # Memory
+    rm -f "$RUN_DIR/prior_emotional_state.json"
+    rm -f "$RUN_DIR/last_freetime.json"
+    rm -f "$RUN_DIR/turns.jsonl"
     rm -rf "$REPO_DIR/memory/rag"
     echo "Factory reset complete. Restarting service..."
     _svc restart
@@ -184,29 +199,29 @@ factory-reset)
 
 help|--help|-h)
     cat <<EOF
-mina — Mina Discord bot management
+mina — Mina chat + neurosim management
 
 Setup:
-  install          Full setup: generate service, enable autostart, start
+  install          Full setup: deps, build UI, service, autostart, start
   uninstall        Remove service and CLI symlink
-  setup            Regenerate systemd unit file
+  setup            Regenerate systemd unit file only
 
 Service:
-  start            Start the service (API :2049, UI :2050, bot)
+  start            Start the service (backend :${BACKEND_PORT}, UI :${UI_PORT})
   stop             Stop the service
-  restart          Restart the service
-  status           Show service status
+  restart          Rebuild UI + restart (fresh build id)
+  status           Service status + build id
   enable           Enable autostart on boot
   disable          Disable autostart on boot
-  logs [-f] [-n N] Show logs (default 100 lines; -f to follow)
+  logs [-f] [-n N] journalctl for the unit (default 100 lines; -f to follow)
 
 Maintenance:
-  rebuild          npm build + copy static + restart (no git pull)
+  rebuild          npm build + restart (no git pull)
   update           git pull + uv sync + npm build + restart
-  unstop           Remove .stopped flag (re-enables restart)
-  pause            Pause biological updating (no time decay, no heartbeat)
-  resume           Resume biological updating
-  factory-reset [--yes]  Clear all runtime state, events, history, and memory
+  factory-reset [--yes]  Clear runtime state / events / history / RAG
+
+Open http://localhost:${UI_PORT}
+Build id: header chip and GET /api/build must match (stale shell if not).
 EOF
     ;;
 

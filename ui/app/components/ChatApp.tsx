@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { BUILD_INFO } from '../lib/build-info'
 import { useStatePoller } from '../lib/hooks/useStatePoller'
 
 type Role = 'user' | 'assistant'
@@ -268,6 +269,13 @@ export function ChatApp() {
             </span>
             <span className="text-[11px] value-mono hidden sm:inline" style={{ color: 'rgba(232,228,221,0.3)' }}>
               chat
+            </span>
+            <span
+              className="text-[10px] value-mono hidden sm:inline"
+              title={`${BUILD_INFO.builtAt} · GET /api/build must match`}
+              style={{ color: 'rgba(232,228,221,0.22)' }}
+            >
+              build {BUILD_INFO.id}
             </span>
           </div>
           <div className="flex items-center gap-2">

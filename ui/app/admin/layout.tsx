@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useStatePoller } from '../lib/hooks/useStatePoller'
+import { BUILD_INFO } from '../lib/build-info'
 import { formatDistanceToNow } from 'date-fns'
 import { BackgroundAmbience } from '../components/BackgroundAmbience'
 
@@ -115,6 +116,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             {hasAlerts && <div className="w-1.5 h-1.5 rounded-full bg-red-400 ml-auto" style={{ boxShadow: '0 0 6px rgba(248,113,113,0.8)' }} />}
           </div>
           <div className="text-xs value-mono" style={{ color: 'rgba(232,228,221,0.2)' }}>{lastUpdateStr}</div>
+          <div
+            className="text-[10px] value-mono truncate"
+            title={`${BUILD_INFO.builtAt} · GET /api/build must match`}
+            style={{ color: 'rgba(232,228,221,0.18)' }}
+          >
+            build {BUILD_INFO.id}
+          </div>
         </div>
       </aside>
 

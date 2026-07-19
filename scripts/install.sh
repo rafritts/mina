@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install Mina as a systemd user service and create the 'mina' CLI command.
+# Install Mina as a systemd user service (sim backend + Next UI) and CLI.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -9,11 +9,15 @@ SETUP_ONLY="${1:-}"
 # Find uv
 # ---------------------------------------------------------------------------
 UV_BIN=""
-for candidate in "$HOME/.local/bin/uv" "$HOME/.cargo/bin/uv" "$(command -v uv 2>/dev/null)"; do
-    if [[ -x "$candidate" ]]; then
-        UV_BIN="$candidate"
-        break
-    fi
+for candidate in \
+    "$HOME/.local/bin/uv" \
+    "$HOME/.cargo/bin/uv" \
+    "/home/linuxbrew/.linuxbrew/bin/uv" \
+    "$(command -v uv 2>/dev/null || true)"
+do
+    [[ -x "$candidate" ]] || continue
+    UV_BIN="$candidate"
+    break
 done
 
 if [[ -z "$UV_BIN" ]]; then
@@ -21,53 +25,87 @@ if [[ -z "$UV_BIN" ]]; then
     exit 1
 fi
 
-echo "Using uv: $UV_BIN"
-echo "Repo:     $REPO_DIR"
+# ---------------------------------------------------------------------------
+# Find npm / Node
+# ---------------------------------------------------------------------------
+NODE_BIN_DIR=""
+for candidate in \
+    "$(command -v npm 2>/dev/null || true)" \
+    "$HOME/.nvm/versions/node/"*/bin/npm \
+    "/home/linuxbrew/.linuxbrew/bin/npm" \
+    "/usr/local/bin/npm" \
+    "/usr/bin/npm"
+do
+    [[ -x "$candidate" ]] || continue
+    NODE_BIN_DIR="$(cd "$(dirname "$candidate")" && pwd)"
+    break
+done
+
+if [[ -z "$NODE_BIN_DIR" ]]; then
+    echo "Error: npm/node not found. Install Node.js 20+ first." >&2
+    exit 1
+fi
+
+NPM_BIN="$NODE_BIN_DIR/npm"
+export PATH="$NODE_BIN_DIR:$PATH"
+
+echo "Using uv:  $UV_BIN"
+echo "Using npm: $NPM_BIN"
+echo "Repo:      $REPO_DIR"
 
 # ---------------------------------------------------------------------------
-# Install Python dependencies
+# Dependencies + UI build
 # ---------------------------------------------------------------------------
 if [[ "$SETUP_ONLY" != "--setup-only" ]]; then
-    echo "Installing dependencies..."
+    echo "Installing Python dependencies..."
     (cd "$REPO_DIR" && "$UV_BIN" sync)
+
+    echo "Installing UI dependencies..."
+    (cd "$REPO_DIR/ui" && "$NPM_BIN" install)
+
+    echo "Building UI..."
+    (cd "$REPO_DIR/ui" && "$NPM_BIN" run build)
 fi
 
 # ---------------------------------------------------------------------------
-# Store repo path for the CLI
+# Config dir + CLI symlink
 # ---------------------------------------------------------------------------
-mkdir -p "$HOME/.config/mina"
+mkdir -p "$HOME/.config/mina" "$HOME/.local/bin"
 echo "$REPO_DIR" > "$HOME/.config/mina/dir"
-
-# ---------------------------------------------------------------------------
-# Install CLI symlink
-# ---------------------------------------------------------------------------
-mkdir -p "$HOME/.local/bin"
 ln -sf "$REPO_DIR/scripts/mina" "$HOME/.local/bin/mina"
-chmod +x "$REPO_DIR/scripts/mina"
+chmod +x "$REPO_DIR/scripts/mina" "$REPO_DIR/scripts/run.sh" "$REPO_DIR/scripts/install.sh"
 echo "CLI installed: ~/.local/bin/mina"
 
 # ---------------------------------------------------------------------------
-# Generate systemd user service
+# Systemd user unit
 # ---------------------------------------------------------------------------
 SERVICE_DIR="$HOME/.config/systemd/user"
 SERVICE_FILE="$SERVICE_DIR/mina.service"
 mkdir -p "$SERVICE_DIR"
 
+# PATH must include node + uv for the run script.
+SERVICE_PATH="$NODE_BIN_DIR:$(dirname "$UV_BIN"):$HOME/.local/bin:/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/bin"
+
 cat > "$SERVICE_FILE" <<EOF
 [Unit]
-Description=Mina Discord Bot
+Description=Mina chat + neurosim (Next UI + Python backend)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 WorkingDirectory=$REPO_DIR
 EnvironmentFile=-$REPO_DIR/.env
-ExecStart=$UV_BIN run python supervisor.py
+Environment=HOME=$HOME
+Environment=PATH=$SERVICE_PATH
+Environment=NODE_ENV=production
+Environment=MINA_UV_BIN=$UV_BIN
+Environment=MINA_NPM_BIN=$NPM_BIN
+Environment=MINA_BACKEND_PORT=5100
+Environment=MINA_UI_PORT=2050
+ExecStart=$REPO_DIR/scripts/run.sh
 Restart=on-failure
 RestartSec=5
 KillMode=control-group
-Environment="HOME=$HOME"
-Environment="PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
 
 [Install]
 WantedBy=default.target
@@ -77,7 +115,7 @@ echo "Service file written: $SERVICE_FILE"
 systemctl --user daemon-reload
 
 # ---------------------------------------------------------------------------
-# Enable and start (unless setup-only)
+# Enable and start
 # ---------------------------------------------------------------------------
 if [[ "$SETUP_ONLY" != "--setup-only" ]]; then
     systemctl --user enable mina
@@ -87,29 +125,35 @@ if [[ "$SETUP_ONLY" != "--setup-only" ]]; then
         echo ""
         echo "WARNING: $REPO_DIR/.env not found."
         echo "Create it with at minimum:"
-        echo "  MINA_BOT_TOKEN=your-token-here"
         echo "  XAI_API_KEY=your-key-here"
         echo ""
         echo "Then run: mina start"
     else
-        systemctl --user start mina
+        systemctl --user restart mina
         echo -n "Starting"
-        for i in $(seq 1 30); do
+        for _ in $(seq 1 90); do
             sleep 1
             echo -n "."
-            if [[ -f "$REPO_DIR/run/ready" ]]; then
+            if [[ -f "$REPO_DIR/run/ready" ]] || curl -sf http://localhost:2050/ &>/dev/null; then
                 echo " ready."
                 break
             fi
         done
         echo ""
+        echo "UI:      http://localhost:2050"
+        echo "Backend: http://localhost:5100"
+        if curl -sf http://localhost:2050/api/build &>/dev/null; then
+            echo -n "Build:   "
+            curl -s http://localhost:2050/api/build
+            echo ""
+        fi
     fi
 fi
 
 # ---------------------------------------------------------------------------
 # PATH reminder
 # ---------------------------------------------------------------------------
-if ! echo "$PATH" | grep -q "$HOME/.local/bin"; then
+if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
     echo ""
     echo "NOTE: ~/.local/bin is not in your PATH."
     echo "Add to ~/.zshrc or ~/.bashrc:"

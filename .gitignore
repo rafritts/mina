@@ -1,7 +1,7 @@
 # Python-generated files
 __pycache__/
 *.py[oc]
-build/
+/build/
 dist/
 wheels/
 *.egg-info
@@ -51,3 +51,5 @@ dashboard/node_modules/
 dashboard/.svelte-kit/
 ui/node_modules/
 ui/.next/
+ui/.mina-build.json
+ui/tsconfig.tsbuildinfo

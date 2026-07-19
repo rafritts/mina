@@ -83,7 +83,7 @@ async def _main() -> None:
     signal.signal(signal.SIGTERM, _shutdown)
 
     log("MAIN", "Backend listening on http://0.0.0.0:5100")
-    log("MAIN", "UI: cd ui && npm run dev  →  http://localhost:3000")
+    log("MAIN", "UI (systemd): http://localhost:2050  ·  dev: cd ui && npm run dev")
 
     await server.serve()
 
