@@ -4,8 +4,10 @@ import http from 'node:http'
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-// fetch() blocks port 2049 (NFS port restriction in Node.js). Use node:http directly.
-// TransformStream actively pushes chunks as they arrive rather than relying on lazy pulls.
+// Stream proxy to sim backend. Use node:http for port compatibility.
+const BACKEND_HOST = process.env.MINA_BACKEND_HOST ?? '127.0.0.1'
+const BACKEND_PORT = Number(process.env.MINA_BACKEND_PORT ?? '5100')
+
 export function GET(request: NextRequest) {
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
   const writer = writable.getWriter()
@@ -13,8 +15,8 @@ export function GET(request: NextRequest) {
 
   const req = http.get(
     {
-      host: '127.0.0.1',
-      port: 2049,
+      host: BACKEND_HOST,
+      port: BACKEND_PORT,
       path: '/api/stream',
       headers: { Accept: 'text/event-stream', Cookie: cookie },
     },

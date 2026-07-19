@@ -9,14 +9,13 @@ import { BackgroundAmbience } from '../components/BackgroundAmbience'
 const NAV = [
   { href: '/admin', label: 'Overview', icon: '◉' },
   { href: '/admin/neuro', label: 'Neuro', icon: '⬡' },
-  { href: '/admin/physiology', label: 'Physiology', icon: '◈' },
   { href: '/admin/history', label: 'History', icon: '∿' },
   { href: '/admin/control', label: 'Control', icon: '⊕' },
-  { href: '/admin/substances', label: 'Substances', icon: '◎' },
   { href: '/admin/events', label: 'Events', icon: '≋' },
   { href: '/admin/system', label: 'System', icon: '◈' },
 ]
 
+const CHAT_LINK = { href: '/', label: 'Chat', icon: '◈' }
 const VIEWER_LINK = { href: '/viewer', label: 'Viewer', icon: '⊙' }
 
 function computeDominantState(state: { second_order?: Record<string, number>; third_order?: Record<string, number>; sleeping?: boolean }): string {
@@ -86,8 +85,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           })}
         </nav>
 
-        {/* Viewer shortcut */}
-        <div className="px-3 pb-2">
+        {/* Chat + Viewer shortcuts */}
+        <div className="px-3 pb-2 space-y-0.5">
+          <Link
+            href={CHAT_LINK.href}
+            className="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-all duration-150"
+            style={{ color: 'rgba(232,228,221,0.42)', borderLeft: '2px solid transparent' }}
+          >
+            <span className="text-xs w-4 text-center" style={{ color: 'rgba(232,228,221,0.25)' }}>{CHAT_LINK.icon}</span>
+            {CHAT_LINK.label}
+          </Link>
           <Link
             href={VIEWER_LINK.href}
             className="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-all duration-150"

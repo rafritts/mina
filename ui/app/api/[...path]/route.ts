@@ -4,16 +4,19 @@ import http from 'node:http'
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-// Proxy all /api/* requests to the backend on port 2049.
-// Must use node:http — fetch() blocks port 2049 (NFS port restriction).
+// Proxy /api/* (except routes with dedicated handlers, e.g. /api/chat) to the sim backend.
+// Use node:http — some ports are blocked for fetch() in this environment.
+const BACKEND_HOST = process.env.MINA_BACKEND_HOST ?? '127.0.0.1'
+const BACKEND_PORT = Number(process.env.MINA_BACKEND_PORT ?? '5100')
+
 function proxyRequest(request: NextRequest, path: string): Promise<Response> {
   return new Promise((resolve, reject) => {
     const url = new URL(request.url)
     const backendPath = `/api/${path}${url.search}`
 
     const options = {
-      host: '127.0.0.1',
-      port: 2049,
+      host: BACKEND_HOST,
+      port: BACKEND_PORT,
       path: backendPath,
       method: request.method,
       headers: {
