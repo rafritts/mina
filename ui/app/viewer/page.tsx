@@ -20,25 +20,6 @@ export default function ViewerPage() {
   // rag/kag events arrive before stimulus_land — buffer them and flush on landing
   const memoryBufferRef = useRef<MemoryItem[]>([])
 
-  // Performance mode — defaults to minimal; only goes full if user explicitly saved 'full'
-  const [lowPower, setLowPower] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return true
-    return localStorage.getItem('viewerMode') !== 'full'
-  })
-
-  const handleLowPower = useCallback(() => {
-    setLowPower(true)
-    localStorage.setItem('viewerMode', 'low')
-  }, [])
-
-  const toggleLowPower = useCallback(() => {
-    setLowPower(prev => {
-      const next = !prev
-      localStorage.setItem('viewerMode', next ? 'low' : 'full')
-      return next
-    })
-  }, [])
-
   // Hamburger visibility
   const [hamburgerVisible, setHamburgerVisible] = useState(false)
   const [navOpen, setNavOpen] = useState(false)
@@ -137,12 +118,10 @@ export default function ViewerPage() {
       }}
       onMouseMove={onMouseMove}
     >
-      {/* Layer 0: Vanta topology */}
+      {/* Layer 0: chemistry-tinted backdrop */}
       <ViewerTopology
         chemicals={chemicals}
         pulseChemicals={pulseChemicals}
-        lowPower={lowPower}
-        onLowPower={handleLowPower}
       />
 
       {/* Layer 1: Pipeline columns */}
@@ -234,55 +213,18 @@ export default function ViewerPage() {
         >
           Admin
         </Link>
-
-        <div style={{
-          marginTop: 8,
-          paddingTop: 8,
-          borderTop: '1px solid rgba(232,228,221,0.06)',
-        }}>
-          <div style={{
-            fontSize: 9,
-            letterSpacing: '0.12em',
-            textTransform: 'uppercase',
-            color: 'rgba(232,228,221,0.2)',
-            marginBottom: 10,
-          }}>
-            Graphics
-          </div>
-          {/* Toggle row */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 2px' }}>
-            <span style={{ fontSize: 12, color: 'rgba(232,228,221,0.45)' }}>
-              Full effects
-            </span>
-            <button
-              onClick={toggleLowPower}
-              aria-label="Toggle graphics mode"
-              style={{
-                position: 'relative',
-                width: 36,
-                height: 20,
-                borderRadius: 10,
-                border: 'none',
-                cursor: 'pointer',
-                padding: 0,
-                background: lowPower ? 'rgba(232,228,221,0.12)' : 'rgba(96,165,250,0.55)',
-                transition: 'background 0.25s ease',
-                flexShrink: 0,
-              }}
-            >
-              <span style={{
-                position: 'absolute',
-                top: 3,
-                left: lowPower ? 3 : 17,
-                width: 14,
-                height: 14,
-                borderRadius: '50%',
-                background: lowPower ? 'rgba(232,228,221,0.35)' : 'rgba(232,228,221,0.9)',
-                transition: 'left 0.2s ease, background 0.25s ease',
-              }} />
-            </button>
-          </div>
-        </div>
+        <Link
+          href="/"
+          style={{
+            fontSize: 13,
+            color: 'rgba(232,228,221,0.55)',
+            padding: '6px 10px',
+            borderRadius: 6,
+            textDecoration: 'none',
+          }}
+        >
+          Chat
+        </Link>
 
         <button
           onClick={() => setNavOpen(false)}

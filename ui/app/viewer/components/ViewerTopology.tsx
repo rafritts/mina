@@ -39,7 +39,7 @@ function blendByNormalized(chemicals: Record<string, number>): RGB {
 }
 
 function blendByNames(names: string[]): RGB {
-  const colors = names.flatMap(n => MONOAMINE_COLORS[n] ? [MONOAMINE_COLORS[n]] : [])
+  const colors = names.flatMap(n => (MONOAMINE_COLORS[n] ? [MONOAMINE_COLORS[n]] : []))
   if (colors.length === 0) return [200, 200, 255]
   let r = 0, g = 0, b = 0
   for (const c of colors) { r += c[0]; g += c[1]; b += c[2] }
@@ -54,24 +54,16 @@ function lerp(a: RGB, b: RGB, t: number): RGB {
   ]
 }
 
-function toHex(rgb: RGB): number {
-  return (Math.round(rgb[0]) << 16) | (Math.round(rgb[1]) << 8) | Math.round(rgb[2])
-}
-
 interface Props {
   chemicals: Record<string, number> | null
   pulseChemicals: string[] | null
-  lowPower: boolean
-  onLowPower: () => void
 }
 
 type PulsePhase = 'idle' | 'in' | 'hold' | 'out'
 
-export function ViewerTopology({ chemicals, pulseChemicals, lowPower, onLowPower }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const overlayRef = useRef<HTMLDivElement>(null)
+/** Chemistry-tinted CSS gradient backdrop (no Vanta / WebGL). */
+export function ViewerTopology({ chemicals, pulseChemicals }: Props) {
   const gradientRef = useRef<HTMLDivElement>(null)
-  const effectRef = useRef<{ destroy: () => void; setOptions: (o: Record<string, unknown>) => void } | null>(null)
   const currentColorRef = useRef<RGB>([137, 150, 78])
   const baselineRef = useRef<RGB>([137, 150, 78])
   const targetColorRef = useRef<RGB>([137, 150, 78])
@@ -79,85 +71,6 @@ export function ViewerTopology({ chemicals, pulseChemicals, lowPower, onLowPower
   const phaseStartRef = useRef<number>(0)
   const rafRef = useRef<number>(0)
 
-  // Keep props readable inside RAF closure without stale captures
-  const lowPowerRef = useRef(lowPower)
-  lowPowerRef.current = lowPower
-  const onLowPowerRef = useRef(onLowPower)
-  onLowPowerRef.current = onLowPower
-
-  // FPS detection state (one-shot, measures once Vanta is running)
-  const vantaReadyRef = useRef(false)
-  const fpsStartRef = useRef(0)
-  const fpsCountRef = useRef(0)
-  const fpsReportedRef = useRef(false)
-
-  // Warm up dynamic imports immediately so switching to full mode is instant
-  useEffect(() => {
-    import('p5').catch(() => {})
-    import('../vanta-topology-patched').catch(() => {})
-  }, [])
-
-  // Initialize Vanta — re-runs when lowPower toggles so it can be destroyed/created
-  useEffect(() => {
-    if (lowPower) return
-    if (!containerRef.current) return
-
-    let effect: typeof effectRef.current = null
-    let alive = true
-
-    async function init() {
-      const p5 = (await import('p5')).default
-      if (!alive) return
-      ;(window as unknown as Record<string, unknown>).p5 = p5
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const VANTA = await import('../vanta-topology-patched') as any
-      if (!alive) return
-      effect = VANTA.default({
-        el: containerRef.current!,
-        p5,
-        mouseControls: false,
-        touchControls: false,
-        gyroControls: false,
-        minHeight: 200,
-        minWidth: 200,
-        scale: 1.0,
-        scaleMobile: 1.0,
-        color: toHex(currentColorRef.current),
-        backgroundColor: 0x050505,
-      })
-      effectRef.current = effect
-      // Start FPS measurement window after Vanta is live
-      vantaReadyRef.current = true
-      fpsStartRef.current = performance.now()
-      fpsCountRef.current = 0
-    }
-
-    init().catch(console.error)
-
-    // Restart every 20s: canvas saturates, so fade out → restart → fade in
-    const cycleTimer = setInterval(() => {
-      const overlay = overlayRef.current
-      if (!overlay || !effectRef.current) return
-      overlay.style.transition = 'opacity 1000ms ease'
-      overlay.style.opacity = '1'
-      setTimeout(() => {
-        effectRef.current?.setOptions({ color: toHex(currentColorRef.current) })
-        ;(effectRef.current as unknown as { restart: () => void }).restart()
-        overlay.style.transition = 'opacity 800ms ease'
-        overlay.style.opacity = '0'
-      }, 1000)
-    }, 20_000)
-
-    return () => {
-      alive = false
-      vantaReadyRef.current = false
-      clearInterval(cycleTimer)
-      effect?.destroy()
-      effectRef.current = null
-    }
-  }, [lowPower])
-
-  // Update baseline when chemicals change
   useEffect(() => {
     if (!chemicals) return
     baselineRef.current = blendByNormalized(chemicals)
@@ -166,7 +79,6 @@ export function ViewerTopology({ chemicals, pulseChemicals, lowPower, onLowPower
     }
   }, [chemicals])
 
-  // Trigger pulse when pulseChemicals changes
   const prevPulseRef = useRef<string[] | null>(null)
   useEffect(() => {
     if (pulseChemicals === null) return
@@ -177,7 +89,6 @@ export function ViewerTopology({ chemicals, pulseChemicals, lowPower, onLowPower
     phaseStartRef.current = performance.now()
   }, [pulseChemicals])
 
-  // RAF color animation loop — drives both Vanta color and CSS gradient fallback
   useEffect(() => {
     const PHASE_DURATION: Record<PulsePhase, number> = {
       idle: 0, in: 400, hold: 300, out: 2500,
@@ -186,18 +97,6 @@ export function ViewerTopology({ chemicals, pulseChemicals, lowPower, onLowPower
     function tick(now: number) {
       rafRef.current = requestAnimationFrame(tick)
 
-      // FPS detection: measure for 6s after Vanta starts; auto-switch if avg < 25fps
-      if (vantaReadyRef.current && !fpsReportedRef.current && !lowPowerRef.current) {
-        fpsCountRef.current++
-        const elapsed = now - fpsStartRef.current
-        if (elapsed > 6000) {
-          fpsReportedRef.current = true
-          const avgFps = fpsCountRef.current / (elapsed / 1000)
-          if (avgFps < 25) onLowPowerRef.current()
-        }
-      }
-
-      // Color phase logic
       const phase = phaseRef.current
       const elapsed = now - phaseStartRef.current
 
@@ -219,17 +118,11 @@ export function ViewerTopology({ chemicals, pulseChemicals, lowPower, onLowPower
         }
       }
 
-      // Apply color to whichever renderer is active
-      if (lowPowerRef.current) {
-        const el = gradientRef.current
-        if (el) {
-          const [r, g, b] = currentColorRef.current.map(Math.round)
-          el.style.background =
-            `radial-gradient(ellipse 80% 80% at 50% 50%, rgba(${r},${g},${b},0.13) 0%, #050505 68%)`
-        }
-      } else {
-        const effect = effectRef.current
-        if (effect) effect.setOptions({ color: toHex(currentColorRef.current) })
+      const el = gradientRef.current
+      if (el) {
+        const [r, g, b] = currentColorRef.current.map(Math.round)
+        el.style.background =
+          `radial-gradient(ellipse 80% 80% at 50% 50%, rgba(${r},${g},${b},0.13) 0%, #050505 68%)`
       }
     }
 
@@ -238,38 +131,15 @@ export function ViewerTopology({ chemicals, pulseChemicals, lowPower, onLowPower
   }, [])
 
   return (
-    <>
-      {/* Vanta container — hidden (not destroyed) when in low-power mode */}
-      <div
-        ref={containerRef}
-        style={{ position: 'fixed', inset: 0, zIndex: 0, display: lowPower ? 'none' : 'block' }}
-        aria-hidden
-      />
-      {/* CSS gradient fallback — shown in low-power mode */}
-      <div
-        ref={gradientRef}
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 0,
-          background: '#050505',
-          display: lowPower ? 'block' : 'none',
-        }}
-        aria-hidden
-      />
-      {/* Fade overlay for smooth restart transitions */}
-      <div
-        ref={overlayRef}
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 1,
-          background: '#050505',
-          opacity: 0,
-          pointerEvents: 'none',
-        }}
-        aria-hidden
-      />
-    </>
+    <div
+      ref={gradientRef}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 0,
+        background: '#050505',
+      }}
+      aria-hidden
+    />
   )
 }
