@@ -581,21 +581,21 @@ export function ChatApp() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={onKeyDown}
                 placeholder="Message Mina…"
-                rows={1}
+                rows={4}
                 disabled={sending}
-                className="flex-1 resize-none rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-white/20 disabled:opacity-50"
+                className="flex-1 resize-y rounded-lg border px-3 py-3 text-sm leading-relaxed outline-none focus:ring-1 focus:ring-white/20 disabled:opacity-50"
                 style={{
                   background: 'rgba(232,228,221,0.04)',
                   borderColor: 'rgba(232,228,221,0.12)',
                   color: '#e8e4dd',
-                  minHeight: '2.5rem',
-                  maxHeight: '8rem',
+                  minHeight: '6.5rem',
+                  maxHeight: '18rem',
                 }}
               />
               <Button
                 onClick={() => void send()}
                 disabled={sending || !input.trim()}
-                className="h-10 px-4"
+                className="h-10 px-4 self-end"
               >
                 {sending ? '…' : 'Send'}
               </Button>
