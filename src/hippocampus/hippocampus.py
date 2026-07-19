@@ -260,6 +260,29 @@ def _reset_sliding_collection() -> None:
     _sliding_collection = None
 
 
+def sliding_rag_wipe() -> None:
+    """
+    Drop short-term sliding conversation memory only.
+    Keeps episodic RAG (experiences) and KAG knowledge.
+    """
+    global _chroma_client, _sliding_collection
+    with _chroma_lock:
+        try:
+            if _chroma_client is None and os.path.exists(RAG_DIR):
+                _init_chroma_locked()
+            if _chroma_client is not None:
+                try:
+                    _chroma_client.delete_collection("mina_sliding")
+                except Exception:
+                    pass
+        finally:
+            _sliding_collection = None
+    try:
+        os.remove(SLIDING_SEQ_FILE)
+    except FileNotFoundError:
+        pass
+
+
 def rag_wipe() -> None:
     import shutil
     _reset_collection()

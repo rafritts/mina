@@ -239,6 +239,7 @@ export function ChatApp() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [erasing, setErasing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hydrated, setHydrated] = useState(false)
   const [imageCount, setImageCount] = useState<ImageCount>(IMAGE_COUNT_DEFAULT)
@@ -332,11 +333,37 @@ export function ChatApp() {
     }
   }
 
-  const clear = () => {
+  const clearView = () => {
     if (sending) return
     setMessages([])
     setError(null)
     saveMessages([])
+  }
+
+  const eraseHistory = async () => {
+    if (sending || erasing) return
+    const ok = window.confirm(
+      'Erase chat history?\n\n' +
+        'This wipes conversation logs, her rolling chat window, turn dumps, ' +
+        'and short-term sliding memory.\n\n' +
+        'Keeps: chemistry, long-term RAG, knowledge (KAG), relationships.',
+    )
+    if (!ok) return
+    setErasing(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/conversation/erase', { method: 'POST' })
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
+      if (!res.ok) {
+        throw new Error(data.error ?? `HTTP ${res.status}`)
+      }
+      setMessages([])
+      saveMessages([])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erase failed')
+    } finally {
+      setErasing(false)
+    }
   }
 
   return (
@@ -376,12 +403,24 @@ export function ChatApp() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={clear}
-              disabled={sending || messages.length === 0}
+              onClick={clearView}
+              disabled={sending || erasing || messages.length === 0}
               className="text-[11px]"
               style={{ color: 'rgba(232,228,221,0.45)' }}
+              title="Clear this panel only (does not change what Mina remembers)"
             >
-              Clear
+              Clear view
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void eraseHistory()}
+              disabled={sending || erasing}
+              className="text-[11px]"
+              style={{ color: 'rgba(248,113,113,0.75)' }}
+              title="Wipe conversation logs, window, and short-term memory on the server"
+            >
+              {erasing ? 'Erasing…' : 'Erase history'}
             </Button>
           </div>
         </header>

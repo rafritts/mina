@@ -410,6 +410,53 @@ def _trim_and_save_window(window: list[dict]) -> None:
     _save_decoder_window(window)
 
 
+def erase_chat_history() -> dict:
+    """
+    Wipe conversation-facing history so the next turn starts fresh.
+
+    Clears: conversation logs, decoder window, turn/context dumps, prior
+    emotional state from chat, and sliding (short-term) RAG.
+
+    Keeps: chemistry, episodic RAG, KAG, relationship files.
+    """
+    from pathlib import Path
+    from src.hippocampus.hippocampus import sliding_rag_wipe
+
+    removed: list[str] = []
+    run = Path(RUN_DIR)
+    targets = [
+        run / "decoder_window.json",
+        run / "prior_emotional_state.json",
+        run / "turns.jsonl",
+        run / "last_context.json",
+        run / "last_context.md",
+        run / "sliding_seq.json",
+    ]
+    for path in targets:
+        try:
+            if path.exists():
+                path.unlink()
+                removed.append(path.name)
+        except OSError as e:
+            log("PIPELINE/ERASE", f"{path.name}: {e}")
+
+    for path in run.glob("conversation-*.jsonl"):
+        try:
+            path.unlink()
+            removed.append(path.name)
+        except OSError as e:
+            log("PIPELINE/ERASE", f"{path.name}: {e}")
+
+    try:
+        sliding_rag_wipe()
+        removed.append("sliding_rag")
+    except Exception as e:
+        log("PIPELINE/ERASE", f"sliding_rag: {e}")
+
+    log("PIPELINE", f"Chat history erased: {', '.join(removed) or '(nothing)'}")
+    return {"ok": True, "removed": removed}
+
+
 async def _sliding_rag_write_async(window: list[dict]) -> None:
     try:
         from src.hippocampus.hippocampus import sliding_rag_write

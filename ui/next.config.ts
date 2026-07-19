@@ -103,6 +103,10 @@ const nextConfig: NextConfig = {
         source: '/api/obs',
         destination: `http://${backendHost}:${backendPort}/api/obs`,
       },
+      {
+        source: '/api/conversation/erase',
+        destination: `http://${backendHost}:${backendPort}/api/conversation/erase`,
+      },
     ]
   },
   async headers() {

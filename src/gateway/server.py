@@ -17,6 +17,7 @@ State / admin (proxied by Next):
   GET  /api/heartbeat/status
   GET  /api/context           — latest pillar assembly (JSON; ?format=md for markdown)
   GET  /api/context/text     — same assembly as markdown
+  POST /api/conversation/erase — wipe chat logs + window + sliding RAG (keeps chem/KAG)
   GET  /api/substance         — stub
   GET  /api/billing          — stub
 
@@ -330,6 +331,20 @@ async def reset_state():
     norms = _sim.reset_to_baseline()
     log("GATEWAY", "State reset to baseline.")
     return {"ok": True, "sleeping": False, "chemicals": norms}
+
+
+@app.post("/api/conversation/erase")
+async def erase_conversation():
+    """
+    Erase chat history Mina can still see: conversation logs, rolling window,
+    turn dumps, prior affect stickiness, short-term sliding RAG.
+
+    Does not touch chemistry, episodic RAG, KAG, or relationships.
+    """
+    from src.brain.pipeline import erase_chat_history
+    result = erase_chat_history()
+    log("GATEWAY", f"Conversation erased: {result.get('removed')}")
+    return result
 
 
 # ── /api/events ───────────────────────────────────────────────────────────────
