@@ -292,6 +292,16 @@ async def advance_state(request: Request):
     return {"ok": True, "advanced_hours": hours}
 
 
+@app.post("/api/state/reset")
+async def reset_state():
+    """Reset chemistry to Big-5 baselines; wake if sleeping. Keeps memory/chat."""
+    if _sim is None:
+        return JSONResponse(status_code=503, content={"error": "Sim not initialized."})
+    norms = _sim.reset_to_baseline()
+    log("GATEWAY", "State reset to baseline.")
+    return {"ok": True, "sleeping": False, "chemicals": norms}
+
+
 # ── /api/events ───────────────────────────────────────────────────────────────
 
 @app.get("/api/events")

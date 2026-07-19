@@ -17,6 +17,7 @@ export default function ControlPage() {
   const [heartbeatStatus, setHeartbeatStatus] = useState<string | null>(null)
   const [advanceHours, setAdvanceHours] = useState('1')
   const [advancing, setAdvancing] = useState(false)
+  const [resetting, setResetting] = useState(false)
   const [cascade, setCascade] = useState<CascadeEvent[]>([])
   const [presetApplying, setPresetApplying] = useState<string | null>(null)
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null)
@@ -80,6 +81,21 @@ export default function ControlPage() {
     }
   }
 
+  const resetBaseline = async () => {
+    if (!confirm('Reset chemistry to baseline? Clears sleep pressure / setpoints / phasic. Keeps chat & memory.')) {
+      return
+    }
+    setResetting(true)
+    try {
+      await apiFetch('/api/state/reset', { method: 'POST' })
+      showMsg('Reset to baseline', true)
+    } catch (e) {
+      showMsg(e instanceof Error ? e.message : 'Failed', false)
+    } finally {
+      setResetting(false)
+    }
+  }
+
   return (
     
       <div className="p-8 mx-auto space-y-8 max-w-3xl">
@@ -92,6 +108,29 @@ export default function ControlPage() {
             {message.text}
           </div>
         )}
+
+        {/* Baseline reset */}
+        <section>
+          <h2 className="text-xs uppercase tracking-widest mb-4" style={{ color: 'rgba(232,228,221,0.3)' }}>Baseline</h2>
+          <div className="gallery-card rounded-lg p-5 flex items-center gap-4 flex-wrap">
+            <button
+              onClick={() => void resetBaseline()}
+              disabled={resetting}
+              className="px-6 py-2.5 rounded-lg text-sm font-medium transition-all"
+              style={{
+                background: resetting ? 'rgba(248,113,113,0.08)' : 'rgba(248,113,113,0.12)',
+                color: resetting ? 'rgba(248,113,113,0.5)' : '#f87171',
+                border: '1px solid rgba(248,113,113,0.3)',
+              }}
+            >
+              {resetting ? 'Resetting…' : 'Reset to baseline'}
+            </button>
+            <p className="text-xs max-w-sm" style={{ color: 'rgba(232,228,221,0.35)' }}>
+              Restores all chemicals to natural setpoints (Big 5 biased), clears phasic, wakes if sleeping.
+              Does not wipe conversation or RAG memory.
+            </p>
+          </div>
+        </section>
 
         {/* Heartbeat */}
         <section>

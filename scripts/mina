@@ -173,6 +173,20 @@ update)
     exit 1
     ;;
 
+reset)
+    # Chemistry-only baseline reset (live process via API).
+    if ! curl -sf "http://localhost:${BACKEND_PORT}/health" &>/dev/null; then
+        echo "Backend not up on :${BACKEND_PORT}. Is mina running?" >&2
+        exit 1
+    fi
+    if [[ "${1:-}" != "--yes" ]]; then
+        read -rp "Reset chemistry to baseline (keeps chat/memory)? [y/N] " ans
+        [[ "$ans" =~ ^[Yy]$ ]] || exit 0
+    fi
+    curl -sf -X POST "http://localhost:${BACKEND_PORT}/api/state/reset" | python3 -m json.tool
+    echo "Reset complete."
+    ;;
+
 factory-reset)
     confirm=false
     [[ "${1:-}" == "--yes" ]] && confirm=true
@@ -218,6 +232,7 @@ Service:
 Maintenance:
   rebuild          npm build + restart (no git pull)
   update           git pull + uv sync + npm build + restart
+  reset [--yes]    Chemistry only → Big-5 baselines (wake, clear adenosine)
   factory-reset [--yes]  Clear runtime state / events / history / RAG
 
 Open http://localhost:${UI_PORT}

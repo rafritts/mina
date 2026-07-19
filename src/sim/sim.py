@@ -146,6 +146,28 @@ class Sim:
             lvl.phasic = 0.0
             return True
 
+    def reset_to_baseline(self) -> dict[str, float]:
+        """
+        Full chemistry reset to natural Big-5-biased baselines.
+
+        Clears phasic reservoirs, restores setpoints/tonics/sensitivity,
+        wakes her if sleeping, and persists immediately. Does not wipe
+        conversation history or RAG — chemistry only.
+        """
+        with self._lock:
+            self._state = build_initial_state(self._big5)
+            self._sleeping = False
+            self._sleep_elapsed_s = 0.0
+            self._observer = Observer()
+            self._state.save(SIM_STATE_FILE)
+            norms = {
+                name: round(chemical_norm(self._state, name), 2)
+                for name in CHEMICAL_PARAMS
+                if CHEMICAL_PARAMS[name]["class"] != 4
+            }
+        log("SIM", "Reset to baseline (awake).")
+        return norms
+
     def advance(self, hours: float) -> None:
         """Fast-forward the simulation by the given number of hours (stepped ticks)."""
         steps = max(1, int(hours * 3600.0 / _TICK_INTERVAL_S))
