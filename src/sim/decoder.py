@@ -8,8 +8,9 @@ Output schema per chemical:
   rate        — change in normalized since last tick, signed whole number
 
 Core chemicals always present: DA, 5-HT, NE, epinephrine, cortisol, oxytocin.
-Conditional chemicals: shown only when |gap| >= 2 (misfiring diagnostic: if ~20
-chemicals appear, the chemistry function weights need review).
+Conditional chemicals: shown only when |gap| >= threshold (default 2).
+Sleep-axis chemicals (melatonin / adenosine / orexin) need a larger gap so
+mild evening circadian drift does not read as "sleepy."
 """
 from __future__ import annotations
 
@@ -17,7 +18,20 @@ from .state import ChemicalState
 from .params import CHEMICAL_PARAMS
 
 _CORE = frozenset({"dopamine", "serotonin", "norepinephrine", "epinephrine", "cortisol", "oxytocin"})
-_GAP_THRESHOLD = 2  # |gap| must exceed this for conditional chemicals to appear
+_GAP_THRESHOLD = 2  # default |gap| for most conditional chemicals
+
+# Sleep / circadian axis: only surface when the shift is hard to ignore.
+# Mild nocturnal melatonin (+1–2) is normal evening chemistry, not sleepiness.
+# Adenosine only matters near real sleep pressure (enter threshold ~8).
+_SLEEP_AXIS_GAP_THRESHOLD: dict[str, int] = {
+    "melatonin": 4,
+    "adenosine": 4,
+    "orexin": 3,
+}
+
+
+def _gap_threshold(name: str) -> int:
+    return _SLEEP_AXIS_GAP_THRESHOLD.get(name, _GAP_THRESHOLD)
 
 
 def decode(state: ChemicalState) -> dict[str, dict[str, int]]:
@@ -47,7 +61,7 @@ def decode(state: ChemicalState) -> dict[str, dict[str, int]]:
         rate       = normalized - round(state.prev_normalized.get(name, normalized))
 
         is_core = name in _CORE
-        if not is_core and abs(gap) < _GAP_THRESHOLD:
+        if not is_core and abs(gap) < _gap_threshold(name):
             continue
 
         output[name] = {

@@ -105,7 +105,21 @@ carry forward drowsy/flat/subdued from prior. Chemistry wins over narrative iner
 
 Valence: 0 = severely dysphoric, 50 = ordinary baseline (fine), 100 = elated.
 Arousal: 0 = completely shut down, 50 = calm-alert baseline, 100 = intense activation.
-Reserve "flat"/"subdued"/"drowsy" for when gaps actually support low energy or low mood.
+Reserve "flat"/"subdued" for when gaps actually support low mood — not for ordinary evenings.
+
+## Sleepiness (strict — ferocious only)
+
+"Drowsy" / "sleepy" / "heavy lids" / "need to sleep" are reserved for FEROCIOUS \
+sleep pressure — typically adenosine gap ≥ +4, or adenosine normalized near the \
+high end of the scale (crushing sleep drive).
+
+Mild melatonin is normal evening / night circadian chemistry. It may tint the \
+scene as later-in-the-day or slightly softer, but it must NOT become dominant \
+sleepy, drowsy, or "I should go to bed." Melatonin alone (without hard adenosine) \
+is never enough for sleepiness as dominant_affect.
+
+If adenosine is absent from the decoded list or only mildly off, she is awake \
+enough to talk — present, ordinary, maybe evening-soft, not fighting sleep.
 """
 
 
@@ -140,6 +154,7 @@ def run_insula(
         raw = resp.choices[0].message.content or ""
         result = _parse(raw)
         result = _nudge_baseline_misread(result, decoder_output)
+        result = _nudge_false_sleepiness(result, decoder_output)
         log("INSULA", f"affect={result.get('dominant_affect','')} "
                       f"valence={result.get('valence',50)} arousal={result.get('arousal',50)} "
                       f"availability={result.get('availability','')}")
@@ -244,6 +259,34 @@ _BASELINE_MISREAD_AFFECTS = frozenset({
     "numb", "lethargic", "tired", "exhausted", "low", "blah",
 })
 
+# Sleepy labels — only valid under ferocious adenosine pressure
+_SLEEPY_AFFECTS = frozenset({
+    "drowsy", "sleepy", "tired", "exhausted", "lethargic", "heavy",
+    "groggy", "somnolent", "fatigued", "weary",
+})
+
+
+def _chem_int(decoder_output: dict, name: str, field: str, default: int = 0) -> int:
+    vals = (decoder_output or {}).get(name)
+    if not isinstance(vals, dict):
+        return default
+    try:
+        return int(vals.get(field, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _ferocious_sleep_pressure(decoder_output: dict) -> bool:
+    """
+    True only when sleep drive is hard to ignore.
+
+    Adenosine gap ≥ +4, or absolute adenosine normalized ≥ 7 (near auto-sleep).
+    Mild melatonin does not qualify.
+    """
+    ade_gap = _chem_int(decoder_output, "adenosine", "gap")
+    ade_norm = _chem_int(decoder_output, "adenosine", "normalized")
+    return ade_gap >= 4 or ade_norm >= 7
+
 
 def _nudge_baseline_misread(result: dict, decoder_output: dict) -> dict:
     """
@@ -291,6 +334,54 @@ def _nudge_baseline_misread(result: dict, decoder_output: dict) -> dict:
         out["somatic"] = "Body is neutral-resting — no notable tension or heaviness."
         out["dominant_drive"] = "mild social presence"
         out["interpretation_bias"] = "Meet them as yourself at rest; no need to perform energy or gloom."
+    return out
+
+
+def _nudge_false_sleepiness(result: dict, decoder_output: dict) -> dict:
+    """
+    Strip sleepy/drowsy dominant affect when adenosine is not ferocious.
+    Mild melatonin must not win the mood label.
+    """
+    if _ferocious_sleep_pressure(decoder_output):
+        return result
+
+    affect = str(result.get("dominant_affect", "")).lower().strip()
+    summary = str(result.get("emotional_summary", "")).lower()
+    sleepy_words = (
+        "drows", "sleepy", "sleepiness", "need to sleep", "go to bed",
+        "falling asleep", "heavy lids", "can barely keep", "exhausted",
+        "groggy", "nodding off",
+    )
+    affect_sleepy = affect in _SLEEPY_AFFECTS
+    text_sleepy = any(w in summary for w in sleepy_words)
+    if not affect_sleepy and not text_sleepy:
+        return result
+
+    log("INSULA", f"false-sleepiness nudge: affect={affect} (no ferocious adenosine)")
+    out = dict(result)
+    if affect_sleepy:
+        out["dominant_affect"] = "calm"
+    try:
+        arousal = int(out.get("arousal", 50))
+    except (TypeError, ValueError):
+        arousal = 50
+    # Keep her talkable — not wired, not collapsing
+    out["arousal"] = max(arousal, 42)
+    if out.get("availability") in ("neutral", "guarded", "closed", ""):
+        out["availability"] = "open"
+    if text_sleepy or affect_sleepy:
+        out["emotional_summary"] = (
+            "You feel awake enough — ordinary and present. Evening softness is fine, "
+            "but you are not fighting sleep and you are not heavy with exhaustion."
+        )
+        out["emotional_response_texturing"] = (
+            "Clear enough for conversation; body may feel end-of-day soft without drowsiness taking over."
+        )
+        out["somatic"] = "Body is fine for talking — no crushing heaviness or lid-weight."
+        out["dominant_drive"] = "stay in the conversation"
+        out["interpretation_bias"] = (
+            "You are awake enough to engage; do not steer toward bed or sleep talk."
+        )
     return out
 
 
