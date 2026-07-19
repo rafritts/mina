@@ -11,6 +11,10 @@ Core chemicals always present: DA, 5-HT, NE, epinephrine, cortisol, oxytocin.
 Conditional chemicals: shown only when |gap| >= threshold (default 2).
 Sleep-axis chemicals (melatonin / adenosine / orexin) need a larger gap so
 mild evening circadian drift does not read as "sleepy."
+
+Noise floor: |raw gap| < 1.0 and |raw rate| < 1.0 round to 0. Integer
+rounding alone used to invent ±1 swings from 0.5–0.9 drift — pillars treated
+those as real mood moves.
 """
 from __future__ import annotations
 
@@ -19,6 +23,10 @@ from .params import CHEMICAL_PARAMS
 
 _CORE = frozenset({"dopamine", "serotonin", "norepinephrine", "epinephrine", "cortisol", "oxytocin"})
 _GAP_THRESHOLD = 2  # default |gap| for most conditional chemicals
+
+# Sub-unit drift on the 0–10 scale is measurement/rounding noise, not a swing.
+_GAP_NOISE_FLOOR = 1.0
+_RATE_NOISE_FLOOR = 1.0
 
 # Sleep / circadian axis: only surface when the shift is hard to ignore.
 # Mild nocturnal melatonin (+1–2) is normal evening chemistry, not sleepiness.
@@ -32,6 +40,13 @@ _SLEEP_AXIS_GAP_THRESHOLD: dict[str, int] = {
 
 def _gap_threshold(name: str) -> int:
     return _SLEEP_AXIS_GAP_THRESHOLD.get(name, _GAP_THRESHOLD)
+
+
+def _quantize_delta(raw: float, floor: float) -> int:
+    """Round a signed delta; force 0 when |raw| is under the noise floor."""
+    if abs(raw) < floor:
+        return 0
+    return int(round(raw))
 
 
 def decode(state: ChemicalState) -> dict[str, dict[str, int]]:
@@ -52,13 +67,17 @@ def decode(state: ChemicalState) -> dict[str, dict[str, int]]:
 
         norm_max = p["normalization_max"]
         combined = lvl.tonic + lvl.phasic
-        norm_raw = combined / norm_max * 10.0
-        setpoint_raw = lvl.setpoint / norm_max * 10.0
+        norm_raw = max(0.0, combined / norm_max * 10.0)
+        setpoint_raw = max(0.0, lvl.setpoint / norm_max * 10.0)
 
-        normalized = round(max(0.0, norm_raw))
-        setpoint   = round(max(0.0, setpoint_raw))
-        gap        = normalized - setpoint
-        rate       = normalized - round(state.prev_normalized.get(name, normalized))
+        normalized = int(round(norm_raw))
+        setpoint = int(round(setpoint_raw))
+        # Gap from raw levels so 1.4 vs 2.2 does not become a fake −1 after
+        # independent rounding of each side.
+        gap = _quantize_delta(norm_raw - setpoint_raw, _GAP_NOISE_FLOOR)
+
+        prev = state.prev_normalized.get(name, norm_raw)
+        rate = _quantize_delta(norm_raw - prev, _RATE_NOISE_FLOOR)
 
         is_core = name in _CORE
         if not is_core and abs(gap) < _gap_threshold(name):
@@ -71,14 +90,14 @@ def decode(state: ChemicalState) -> dict[str, dict[str, int]]:
             "rate":       rate,
         }
 
-    # Update prev_normalized for next tick's rate calculation
+    # Update prev_normalized for next tick's rate calculation (store raw 0–10)
     for name, lvl in state.levels.items():
         p = CHEMICAL_PARAMS.get(name)
         if not p or p["class"] == 4:
             continue
         norm_max = p["normalization_max"]
         combined = lvl.tonic + lvl.phasic
-        state.prev_normalized[name] = combined / norm_max * 10.0
+        state.prev_normalized[name] = max(0.0, combined / norm_max * 10.0)
 
     return output
 

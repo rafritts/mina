@@ -44,15 +44,19 @@ when gap is ~0.
 
   gap ≈ 0 on core chemicals  → ordinary baseline feeling: present, fine, calm-alert. \
 Not flat. Not subdued. Not heavy. Not "quietly depleted." Just normal.
-  |gap| = 1                  → mild tint only; may color texture slightly but must NOT \
-become dominant_affect (do not pick flat/subdued/drowsy/heavy for a lone −1).
-  |gap| = 2                  → clearly noticeable shift in mood/energy
-  |gap| ≥ 3                  → strong, hard to ignore
+  |gap| = 1                  → NOISE / faint tint only. Must NOT change dominant_affect, \
+valence band, or availability. Do not stack several ±1s into a crisis — they cancel \
+into "basically fine." A lone +1 or −1 is never a mood swing.
+  |gap| = 2                  → mild real shift; may color texture and slightly nudge \
+valence/arousal (±5–8), still not catastrophic
+  |gap| ≥ 3                  → strong, hard to ignore; may drive dominant_affect
+  |gap| ≥ 5                  → intense / dominant
 
 Examples:
-  5-HT normalized=3 setpoint=5 gap=−2 → below her baseline; real low mood risk
+  5-HT normalized=3 setpoint=5 gap=−2 → below her baseline; real low mood tint
   5-HT normalized=3 setpoint=3 gap=0  → at baseline; fine, even if absolute is "3"
   5-HT normalized=5 setpoint=3 gap=+2 → above baseline; steadier/lighter than usual
+  cortisol gap=−1 or DA gap=+1 alone → ignore for dominant story; stay ordinary
 
 ## Baseline output anchors (when overall_state says at_baseline or near_baseline)
 
@@ -68,10 +72,10 @@ not gloomy. Ordinary is allowed to be ordinary.
 ## Intensity bands (for |gap| magnitude only — not absolute level)
 
   0    not felt as deviation
-  1    faint tint
-  2–3  present, colors state
-  4–5  hard to ignore
-  6+   intense / dominant
+  1    noise / ignore for dominant affect (texture at most)
+  2    mild; colors state lightly
+  3–4  present, can steer affect
+  5+   hard to ignore / intense
 
 ## Big 5 influence
 
@@ -189,21 +193,42 @@ def _max_abs_gap(decoder_output: dict) -> int:
     return max(gaps) if gaps else 0
 
 
+def _max_significant_gap(decoder_output: dict) -> int:
+    """Largest |gap| that can actually steer affect (≥2). ±1 is noise."""
+    gaps = []
+    for vals in (decoder_output or {}).values():
+        if not isinstance(vals, dict) or "gap" not in vals:
+            continue
+        try:
+            g = abs(int(vals["gap"]))
+        except (TypeError, ValueError):
+            continue
+        if g >= 2:
+            gaps.append(g)
+    return max(gaps) if gaps else 0
+
+
 def _overall_label(decoder_output: dict) -> str:
-    m = _max_abs_gap(decoder_output)
+    # ±1 gaps do not leave baseline posture — they are tint/noise only.
+    m = _max_significant_gap(decoder_output)
     if m <= 0:
-        return "at_baseline"
-    if m == 1:
+        # Still distinguish pure zero vs only-±1 for logging/guidance wording.
+        if _max_abs_gap(decoder_output) <= 0:
+            return "at_baseline"
         return "near_baseline"
     if m == 2:
         return "mild_deviation"
-    return "clear_deviation"
+    if m <= 4:
+        return "clear_deviation"
+    return "strong_deviation"
 
 
 def _format_overall_state(decoder_output: dict) -> str:
     label = _overall_label(decoder_output)
     max_gap = _max_abs_gap(decoder_output)
+    max_sig = _max_significant_gap(decoder_output)
     notable = []
+    faint = []
     for name, vals in sorted((decoder_output or {}).items()):
         if not isinstance(vals, dict):
             continue
@@ -211,29 +236,43 @@ def _format_overall_state(decoder_output: dict) -> str:
             g = int(vals.get("gap", 0))
         except (TypeError, ValueError):
             continue
-        if g != 0:
-            notable.append(f"{name} gap={g:+d}")
-    notable_s = ", ".join(notable) if notable else "none (all gaps 0)"
+        if g == 0:
+            continue
+        entry = f"{name} gap={g:+d}"
+        if abs(g) >= 2:
+            notable.append(entry)
+        else:
+            faint.append(entry)
+    notable_s = ", ".join(notable) if notable else "none"
+    faint_s = ", ".join(faint) if faint else "none"
     guidance = {
         "at_baseline": (
             "She is chemically at personal baseline. Feel ordinary/present/fine. "
             "Valence ~52, arousal ~50. Do not invent flatness or fatigue."
         ),
         "near_baseline": (
-            "Near baseline (only ±1 gaps). Ordinary mood with at most a faint tint. "
-            "Do not use flat/subdued/drowsy as dominant_affect."
+            "Only ±1 gaps (noise/tint). Ordinary mood — do NOT swing dominant_affect. "
+            "Valence ~50–55, arousal ~45–55. Ignore faint_gaps for the main story."
         ),
         "mild_deviation": (
-            "Mild real deviation (|gap|=2). Let that chemical story show, without catastrophizing."
+            "Mild real deviation (max significant |gap|=2). Light texture shift only; "
+            "do not catastrophize or flip availability."
         ),
         "clear_deviation": (
-            "Clear chemical deviation. Dominant affect should track the largest gaps."
+            "Clear deviation (|gap| 3–4 on something). Dominant affect may track the "
+            "largest significant gaps — still proportional, not theatrical."
+        ),
+        "strong_deviation": (
+            "Strong chemical deviation (|gap|≥5). Dominant affect should track the "
+            "largest gaps; intensity is earned."
         ),
     }[label]
     return (
         f"overall_state: {label}\n"
         f"max_abs_gap: {max_gap}\n"
-        f"nonzero_gaps: {notable_s}\n"
+        f"max_significant_gap: {max_sig}  (|gap|≥2 only; ±1 is noise)\n"
+        f"significant_gaps: {notable_s}\n"
+        f"faint_gaps: {faint_s}  (ignore for dominant_affect)\n"
         f"guidance: {guidance}"
     )
 
