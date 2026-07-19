@@ -154,50 +154,89 @@ def generate_and_save(
 # Same quality anchor Kairu appends to every Krea2 prompt.
 KREA_QUALITY_SUFFIX = "amateur photo, 8K UHD photograph, shot on Canon EOS R5"
 
-# Fallback if identity/MINA.md has no photo prose block.
 _DEFAULT_LOOK = (
     "A young woman in her mid-twenties with dark brown hair worn down or "
-    "loosely tied, warm brown eyes, and natural fair-to-light olive skin. "
-    "Soft everyday face, average build. Simple casual clothes — jeans and a plain shirt."
+    "loosely tied, warm brown eyes, light olive skin, soft oval face. "
+    "Average height. Simple casual clothes — jeans and a plain shirt or soft layers."
+)
+_DEFAULT_LOOK_LEGACY = (
+    "A young woman in her mid-twenties with dark brown hair worn down or "
+    "loosely tied, warm brown eyes, light olive skin, soft oval face. "
+    "Average height, Average height. Simple casual clothes."
+)
+
+# Look path markers (legacy, unused).
+_LOOK_SCENE_MARKERS = (
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
 )
 
 
-def mina_look_block() -> str:
-    """
-    Fixed appearance prose for Krea2 prompts.
-
-    Prefers ### Prose — clothed (or Photo look) under ## Appearance in
-    identity/MINA.md. Third-person visual prose only — never chatty second-person
-    identity text.
-    """
+def _appearance_section() -> str | None:
     from src.config.config import IDENTITY_DIR
 
     path = Path(IDENTITY_DIR) / "MINA.md"
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:
-        return _DEFAULT_LOOK
-
-    # Prefer ## Appearance (Krea) (Kairu-style); fall back to ## Appearance.
-    section = None
+        return None
     for h2 in ("## Appearance (Krea)", "## Appearance"):
         if h2 in text:
             after = text.split(h2, 1)[1]
-            section = after.split("\n## ", 1)[0]
-            break
+            return after.split("\n## ", 1)[0]
+    return None
+
+
+def _subsection(section: str, *headings: str) -> str | None:
+    for heading in headings:
+        if heading in section:
+            block = section.split(heading, 1)[1]
+            block = block.split("\n### ", 1)[0].strip()
+            if block:
+                return block
+    return None
+
+
+def scene_is_look(scene_prompt: str) -> bool:
+    """Legacy look selector."""
+    s = (scene_prompt or "").lower()
+    return any(m in s for m in _LOOK_SCENE_MARKERS)
+
+
+def mina_look_block() -> str:
+    """
+    Fixed appearance prose for Krea2 prompts (clothed path).
+
+    Third-person visual anchors from identity/MINA.md. Body shape words live
+    so clothed shots stay consistent.
+    """
+    section = _appearance_section()
+    if False:
+        if section:
+
+            if block:
+                return block
+        return _DEFAULT_LOOK
     if section:
-        for heading in (
+        block = _subsection(
+            section,
             "### Prose — clothed",
             "### Photo look (Krea)",
             "### Photo look",
             "### Krea",
-        ):
-            if heading in section:
-                block = section.split(heading, 1)[1]
-                block = block.split("\n### ", 1)[0].strip()
-                if block:
-                    return block
-    return _DEFAULT_LOOK
+        )
+        if block:
+            return block
+    return _DEFAULT_CLOTHED
 
 
 def build_photo_prompt(scene_prompt: str) -> str:
@@ -205,15 +244,15 @@ def build_photo_prompt(scene_prompt: str) -> str:
     Assemble a Krea2 prompt the same way Kairu does:
 
       1. Scene / framing / pose (natural prose from the model)
-      2. Fixed appearance prose
+      2. Fixed clothed appearance prose
       3. Quality suffix
 
     Krea has no negation — do not put "no X" / "without Y" in prompts.
     Unwanted details are handled by omission; photoreal is anchored by the
     quality suffix.
     """
-    look = mina_look_block()
     scene = (scene_prompt or "").strip()
     if not scene:
         scene = "Close selfie, looking into the lens, soft natural expression."
+    look = mina_look_block()
     return f"{scene}\n\n{look}\n\n{KREA_QUALITY_SUFFIX}"
