@@ -43,11 +43,43 @@ Decoder normalization anchors (what "10" means per chemical):
   acetylcholine   — scaffold max
 """
 
+# ── Stability / control constants ─────────────────────────────────────────────
+# Tuned so a 24/7 wall-clock daemon does not walk into a death spiral.
+
+# Global scale on encoder→Class-1 deltas. Architecture target: one warm turn ≈ 0.5–1.5
+# norm units of DA, not a full-scale spike. Unscaled weights were ~6 DA norm / turn.
+EVENT_GAIN: float = 0.18
+
+# Adenosine accumulation per 10s tick while awake (nM into phasic reservoir).
+# ~0.07 → ≈16h from resting (norm≈2) to ceiling (norm≈10). Old value 0.5 maxed in ~4h.
+ADENOSINE_ACCUM_PER_TICK: float = 0.07
+
+# Auto-sleep thresholds (decoder 0–10 normalized).
+SLEEP_ENTER_ADENOSINE: float = 8.0   # fall asleep at/above this
+SLEEP_WAKE_ADENOSINE: float = 3.0    # wake at/below this after min sleep
+SLEEP_MIN_DURATION_S: float = 4 * 3600  # minimum continuous sleep (sim time via dt)
+
+# Setpoint adaptation: downward rate is this fraction of upward rate.
+# Stops transient opponent drag (e.g. adenosine) from ratcheting baselines permanently.
+SETPOINT_DOWN_SCALE: float = 0.10
+
+# Tonic cannot be opponent-drained below this fraction of the chemical's natural
+# tonic_setpoint. Old floor was 0.25 and became a sticky dead state.
+OPPONENT_TONIC_FLOOR_FRAC: float = 0.70
+
+# Setpoint hard floor as fraction of natural tonic_setpoint.
+SETPOINT_FLOOR_FRAC: float = 0.70
+
+# Total (tonic+phasic) hard cap as multiple of normalization_max. 1.0 = phys max.
+CHEMICAL_TOTAL_CAP_MULT: float = 1.0
+
+
 # ── Opponent processes (run each tick) ────────────────────────────────────────
 #
 # Format: (source_chemical, normalized_threshold, target_chemical, drag_per_tick_nM)
 # "If source normalized >= threshold, increase target's decay by drag_per_tick_nM per tick."
 # Drag is additive to normal phasic decay — pulls the target down continuously.
+# Opponents hit phasic first; tonic only down to OPPONENT_TONIC_FLOOR_FRAC.
 
 OPPONENT_PROCESSES: list[tuple[str, float, str, float]] = [
     # Cortisol suppresses bonding chemicals during sustained stress
@@ -62,10 +94,10 @@ OPPONENT_PROCESSES: list[tuple[str, float, str, float]] = [
     ("dynorphin",   4.0, "endorphins", 0.015),
     # Substance P drives cortisol and suppresses endorphins
     ("substance_p", 4.0, "endorphins", 0.012),
-    # CRH drives cortisol (mediated in tick HPA cascade, not opponent)
     # Adenosine suppresses dopamine and NE during sleep pressure buildup
-    ("adenosine",   5.0, "dopamine",   0.010),
-    ("adenosine",   6.0, "norepinephrine", 0.008),
+    # (milder than original — suppression is felt, not baseline-erasing)
+    ("adenosine",   6.0, "dopamine",   0.006),
+    ("adenosine",   7.0, "norepinephrine", 0.005),
     # Orexin suppresses adenosine (wakefulness opposes sleep pressure)
     ("orexin",      5.0, "adenosine",  0.015),
 ]
@@ -75,43 +107,46 @@ OPPONENT_PROCESSES: list[tuple[str, float, str, float]] = [
 #
 # Format: {target_chemical: {"drivers": {source: weight}, "threshold": float, "rate_nM_per_tick": float}}
 # Each tick: if weighted sum of driver normalized values > threshold, accumulate at rate.
+# Totals are hard-capped at normalization_max (see tick).
 
 CLASS2_ACCUMULATION: dict[str, dict] = {
     "oxytocin": {
-        # Warm/rewarding Class 1 elevation → OT buildup over many messages
+        # Warm/rewarding Class 1 elevation → OT buildup over many messages.
+        # Threshold 3.5 so chatbot-scale Class 1 (post EVENT_GAIN) still accumulates;
+        # hard cap at normalization_max prevents the old OT→120 runaway.
         "drivers": {"dopamine": 0.40, "serotonin": 0.30, "norepinephrine": 0.10},
-        "threshold": 4.5,
-        "rate_nM_per_tick": 0.025,
+        "threshold": 3.5,
+        "rate_nM_per_tick": 0.0025,
     },
     "endorphins": {
         # Reward + bonding Class 1 → endorphin accumulation
         "drivers": {"dopamine": 0.35, "serotonin": 0.25, "norepinephrine": 0.20},
         "threshold": 4.0,
-        "rate_nM_per_tick": 0.060,
+        "rate_nM_per_tick": 0.020,
     },
     "substance_p": {
         # Threat + social pain axis (proxied by NE and CRH levels) → substance P
         "drivers": {"norepinephrine": 0.40, "epinephrine": 0.30, "cortisol": 0.15},
         "threshold": 4.0,
-        "rate_nM_per_tick": 0.015,
+        "rate_nM_per_tick": 0.010,
     },
     "vasopressin": {
         # Deep bonding + oxytocin co-release → vasopressin (pair bonding signal)
         "drivers": {"oxytocin": 0.50, "dopamine": 0.20},
         "threshold": 4.0,
-        "rate_nM_per_tick": 0.003,
+        "rate_nM_per_tick": 0.002,
     },
     "dynorphin": {
         # High endorphin states → dynorphin opponent process buildup
         "drivers": {"endorphins": 0.70},
         "threshold": 5.5,
-        "rate_nM_per_tick": 0.020,
+        "rate_nM_per_tick": 0.015,
     },
     "npy": {
         # Stress-induced neuropeptide Y (resilience buffer) — rises under sustained cortisol
         "drivers": {"cortisol": 0.50, "norepinephrine": 0.30},
         "threshold": 4.5,
-        "rate_nM_per_tick": 0.012,
+        "rate_nM_per_tick": 0.010,
     },
 }
 
@@ -121,7 +156,8 @@ CLASS2_ACCUMULATION: dict[str, dict] = {
 # Cortisol rises from sustained CRH elevation (30-min lag modeled as slow rate).
 
 HPA: dict = {
-    "crh_driver_threshold_nM":   6.0,    # NE level that begins CRH accumulation
+    # Compared against *normalized* NE + 0.5*epi (0–10 scale), not raw nM.
+    "crh_driver_threshold_normalized": 6.0,
     "crh_accumulation_nM_per_s": 0.005,  # per second when NE above threshold
     "crh_decay_half_life_s":     600,    # CRH clears in ~10 min without sustained drive
     "cortisol_driver_threshold_normalized": 3.5,  # CRH normalized level → cortisol rise

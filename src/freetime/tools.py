@@ -105,6 +105,26 @@ FREETIME_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "sleep",
+            "description": (
+                "Go to sleep. Use when you feel heavy, drowsy, or ready to rest. "
+                "Sleep clears sleep pressure and lets your system recover."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "reason": {
+                        "type": "string",
+                        "description": "Optional: why you're going to sleep.",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "web_search",
             "description": "Search the web for current information, news, or anything you're curious about.",
             "parameters": {
@@ -186,6 +206,14 @@ def handle_do_action(args: dict, sim) -> str:
     return f"You {activity}. {description}".strip()
 
 
+def handle_sleep(args: dict, sim) -> str:
+    reason = (args.get("reason") or "").strip()
+    sim.set_sleeping(True)
+    if reason:
+        return f"You lie down and let sleep take you — {reason}"
+    return "You lie down and let sleep take you."
+
+
 _search_client = None
 
 
@@ -241,6 +269,8 @@ def call_tool(name: str, args: dict, sim) -> str:
         return handle_drink(args, sim)
     elif name == "do_action":
         return handle_do_action(args, sim)
+    elif name == "sleep":
+        return handle_sleep(args, sim)
     elif name == "web_search":
         return handle_web_search(args)
     elif name == "x_search":

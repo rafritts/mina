@@ -18,6 +18,7 @@ dependencies = [
 ]
 
 [tool.pytest.ini_options]
+pythonpath = ["."]
 markers = [
     "integration: full end-to-end sim runs (slow, require live LLM)",
 ]

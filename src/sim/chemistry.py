@@ -2,7 +2,8 @@
 Chemistry function — deterministic mapping from encoder output to Class 1 deltas.
 
 Encoder output → axis activations (0-10 integers) → weighted sum per chemical
-→ source-side negative feedback → PFC frontend regulation → apply delta.
+→ EVENT_GAIN scale → source-side negative feedback → PFC frontend regulation
+→ receptor sensitivity → apply delta.
 
 Only touches Class 1 chemicals (DA, 5-HT, NE, epinephrine). Class 2/3/4 are
 tick-only and never receive direct encoder deltas. The absence of axis_weights
@@ -12,10 +13,15 @@ Salience floor: axis values ≤ 2 are treated as zero (noise suppression).
 """
 from __future__ import annotations
 
-import math
-
 from .state import ChemicalState
-from .params import CHEMICAL_PARAMS, PFC_REGULATION_BASE, BIG5_GAIN_BIAS, BIG5_AXIS_BIAS
+from .params import (
+    CHEMICAL_PARAMS,
+    PFC_REGULATION_BASE,
+    BIG5_GAIN_BIAS,
+    BIG5_AXIS_BIAS,
+    EVENT_GAIN,
+    CHEMICAL_TOTAL_CAP_MULT,
+)
 
 _SALIENCE_FLOOR = 2  # axis values ≤ this are ignored
 
@@ -74,6 +80,9 @@ def apply_chemistry(
         salience_scale = encoder_output.get("salience", 5) / 5.0
         raw_delta *= salience_scale * relationship_modifier
 
+        # Global event gain — keeps chatbot-scale inputs sub-physiological
+        raw_delta *= EVENT_GAIN
+
         # PFC frontend regulation
         neuroticism = big5.get("neuroticism", 50.0)
         raw_delta = _apply_pfc_regulation(raw_delta, p, neuroticism)
@@ -92,13 +101,22 @@ def apply_chemistry(
         gain = _compute_gain(chem, big5)
         raw_delta *= gain
 
+        # Receptor sensitivity (habituation / upregulation)
+        lvl = state.levels.get(chem)
+        if lvl:
+            raw_delta *= lvl.sensitivity
+
         # Convert normalized delta to nM and apply to phasic
         norm_max = p["normalization_max"]
         delta_nM = raw_delta * norm_max / 10.0
 
-        lvl = state.levels.get(chem)
         if lvl:
             lvl.phasic = max(0.0, lvl.phasic + delta_nM)
+            # Cap total so a burst of messages cannot exceed phys max
+            max_total = norm_max * CHEMICAL_TOTAL_CAP_MULT
+            excess = (lvl.tonic + lvl.phasic) - max_total
+            if excess > 0:
+                lvl.phasic = max(0.0, lvl.phasic - excess)
 
 
 def _apply_pfc_regulation(raw_delta: float, params: dict, neuroticism: float) -> float:

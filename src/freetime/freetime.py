@@ -32,9 +32,11 @@ from .tools import FREETIME_TOOLS, call_tool
 _MAX_TOOL_ROUNDS = 5
 _LAST_FREETIME_FILE = os.path.join(RUN_DIR, "last_freetime.json")
 
-# Cadence: orexin/adenosine thresholds
-_OREXIN_FLOOR      = 3   # skip if orexin normalized below this (sleepy)
-_ADENOSINE_CEILING = 7   # skip if adenosine normalized above this (heavy sleep pressure)
+# Cadence: while awake and not under crushing sleep pressure.
+# Auto-sleep in the sim owns recovery; FREETIME must not permanently refuse
+# when adenosine is high (that blocked the only autonomous loop).
+_OREXIN_FLOOR      = 2   # skip only if deeply hypo-aroused
+_ADENOSINE_SKIP    = 9   # skip active FREETIME only near forced sleep
 _MIN_INTERVAL_S    = 1800  # never fire more often than every 30 minutes
 
 
@@ -56,11 +58,18 @@ def should_fire(sim: Sim) -> bool:
     """Return True if FREETIME should fire now based on chemistry and cooldown."""
     if time.time() - _last_freetime_ts() < _MIN_INTERVAL_S:
         return False
+    # Sim auto-sleep handles recovery; no active free-time while asleep.
+    if sim.is_sleeping():
+        log("FREETIME", "Sleeping — skipping active free-time.")
+        return False
     snapshot = sim.snapshot()
     orexin   = snapshot.get("orexin",   {}).get("normalized", 5)
     adenosine = snapshot.get("adenosine", {}).get("normalized", 5)
-    if orexin < _OREXIN_FLOOR or adenosine > _ADENOSINE_CEILING:
-        log("FREETIME", f"Sleep pressure too high (orexin={orexin}, adenosine={adenosine}) — skipping.")
+    if orexin < _OREXIN_FLOOR:
+        log("FREETIME", f"Orexin too low ({orexin}) — skipping.")
+        return False
+    if adenosine >= _ADENOSINE_SKIP:
+        log("FREETIME", f"Adenosine near sleep threshold ({adenosine}) — skipping (sim will sleep).")
         return False
     return True
 
