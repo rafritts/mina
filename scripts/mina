@@ -22,6 +22,23 @@ _build_ui() {
     (cd "$REPO_DIR/ui" && npm install --silent && npm run build)
 }
 
+# Print the live UI build id in a form agents must surface to the user.
+_print_build_id() {
+    local raw id
+    raw="$(curl -sf "http://localhost:${UI_PORT}/api/build" 2>/dev/null || true)"
+    if [[ -z "$raw" ]]; then
+        echo "Build id: (unavailable — UI not answering /api/build)" >&2
+        return 1
+    fi
+    id="$(printf '%s' "$raw" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || true)"
+    if [[ -z "$id" ]]; then
+        # Fallback: whole body if not JSON
+        id="$raw"
+    fi
+    echo "GIVE THIS BUILD ID TO THE USER ${id}"
+    echo "Build: ${raw}"
+}
+
 cmd="${1:-help}"
 shift || true
 
@@ -79,11 +96,7 @@ restart)
         echo -n "."
         if [[ -f "$RUN_DIR/ready" ]] || curl -sf "http://localhost:${UI_PORT}/" &>/dev/null; then
             echo " ready."
-            if curl -sf "http://localhost:${UI_PORT}/api/build" &>/dev/null; then
-                echo -n "Build: "
-                curl -s "http://localhost:${UI_PORT}/api/build"
-                echo ""
-            fi
+            _print_build_id || true
             exit 0
         fi
     done
@@ -96,11 +109,7 @@ status)
     echo ""
     echo "UI:      http://localhost:${UI_PORT}"
     echo "Backend: http://localhost:${BACKEND_PORT}/health"
-    if curl -sf "http://localhost:${UI_PORT}/api/build" &>/dev/null; then
-        echo -n "Build:   "
-        curl -s "http://localhost:${UI_PORT}/api/build"
-        echo ""
-    fi
+    _print_build_id || true
     ;;
 
 enable)
@@ -140,11 +149,7 @@ rebuild)
         echo -n "."
         if [[ -f "$RUN_DIR/ready" ]] || curl -sf "http://localhost:${UI_PORT}/" &>/dev/null; then
             echo " ready."
-            if curl -sf "http://localhost:${UI_PORT}/api/build" &>/dev/null; then
-                echo -n "Build: "
-                curl -s "http://localhost:${UI_PORT}/api/build"
-                echo ""
-            fi
+            _print_build_id || true
             exit 0
         fi
     done
@@ -166,6 +171,7 @@ update)
         echo -n "."
         if [[ -f "$RUN_DIR/ready" ]] || curl -sf "http://localhost:${UI_PORT}/" &>/dev/null; then
             echo " ready."
+            _print_build_id || true
             exit 0
         fi
     done
@@ -236,7 +242,8 @@ Maintenance:
   factory-reset [--yes]  Clear runtime state / events / history / RAG
 
 Open http://localhost:${UI_PORT}
-Build id: header chip and GET /api/build must match (stale shell if not).
+After restart/rebuild/update/status, prints: GIVE THIS BUILD ID TO THE USER <id>
+(header chip and GET /api/build must match — stale shell if not).
 EOF
     ;;
 
