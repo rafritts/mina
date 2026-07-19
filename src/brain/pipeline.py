@@ -35,6 +35,7 @@ from .insula import run_insula, format_emotional_state_block
 from .hippocampus_pillar import run_hippocampus
 from .pfc import run_pfc, build_system_prompt
 from .context_assembly import assemble_window_context, assemble_rag_context
+from .context_log import build_record, write_last_context
 from .chat_tools import (
     CHAT_TOOLS,
     call_chat_tool,
@@ -170,6 +171,26 @@ async def run_turn(
         log("PIPELINE", "PFC chose silence.")
         _save_prior_emotional_state(insula_output)
         _trim_and_save_window(decoder_window)
+        _persist_context(
+            ts=ts,
+            username=username,
+            message=message,
+            encoder_output=encoder_output,
+            relationship_modifier=relationship_modifier,
+            decoder_snapshot=decoded,
+            big5=big5,
+            window_context=window_context,
+            rag_context=rag_context,
+            kag_context=kag_context or "",
+            sliding_result=sliding_result or "",
+            experiences_result=experiences_result or "",
+            insula_output=insula_output,
+            context_output=context_output,
+            pfc_output=pfc_output,
+            system_prompt="",
+            reply="",
+            skipped=True,
+        )
         return ""
 
     # ── 10. Build system prompt ─────────────────────────────────────────────
@@ -273,8 +294,8 @@ async def run_turn(
     _save_prior_emotional_state(insula_output)
     _trim_and_save_window(decoder_window)
 
-    # ── 13. Full turn log ───────────────────────────────────────────────────
-    _write_turn_log(
+    # ── 13. Full turn log + last_context.{json,md} ──────────────────────────
+    _persist_context(
         ts=ts,
         username=username,
         message=message,
@@ -282,10 +303,17 @@ async def run_turn(
         relationship_modifier=relationship_modifier,
         decoder_snapshot=decoded,
         big5=big5,
+        window_context=window_context,
+        rag_context=rag_context,
+        kag_context=kag_context or "",
+        sliding_result=sliding_result or "",
+        experiences_result=experiences_result or "",
         insula_output=insula_output,
         context_output=context_output,
         pfc_output=pfc_output,
+        system_prompt=system_prompt,
         reply=reply,
+        skipped=False,
     )
 
     return reply
@@ -302,7 +330,8 @@ def _strip_fake_images(text: str) -> str:
     return re.sub(r"!\[([^\]]*)\]\(([^)]+)\)", keep, text).strip()
 
 
-def _write_turn_log(
+def _persist_context(
+    *,
     ts: float,
     username: str,
     message: str,
@@ -310,30 +339,67 @@ def _write_turn_log(
     relationship_modifier: float,
     decoder_snapshot: dict,
     big5: dict,
+    window_context: str,
+    rag_context: str,
+    kag_context: str,
+    sliding_result: str,
+    experiences_result: str,
     insula_output: dict,
     context_output: dict,
     pfc_output: dict,
+    system_prompt: str,
     reply: str,
+    skipped: bool,
+    source: str = "chat",
 ) -> None:
+    """Write turns.jsonl append + run/last_context.{json,md}."""
+    record = build_record(
+        ts=ts,
+        username=username,
+        message=message,
+        source=source,
+        encoder_output=encoder_output,
+        relationship_modifier=relationship_modifier,
+        decoder_snapshot=decoder_snapshot,
+        big5=big5,
+        window_context=window_context,
+        rag_context=rag_context,
+        kag_context=kag_context,
+        sliding_result=sliding_result,
+        experiences_result=experiences_result,
+        insula_output=insula_output,
+        context_output=context_output,
+        pfc_output=pfc_output,
+        system_prompt=system_prompt,
+        reply=reply,
+        skipped=skipped,
+    )
+    write_last_context(record)
+
     path = os.path.join(RUN_DIR, "turns.jsonl")
     os.makedirs(RUN_DIR, exist_ok=True)
-    record = {
-        "ts":                   ts,
-        "ts_human":             time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts)),
-        "username":             username,
-        "message":              message,
-        "encoder":              encoder_output,
+    # Flat turn log keeps pillars + assembly nested for tooling
+    turn_row = {
+        "ts": ts,
+        "ts_human": record["ts_human"],
+        "username": username,
+        "source": source,
+        "message": message,
+        "encoder": encoder_output,
         "relationship_modifier": relationship_modifier,
-        "sim_snapshot":         decoder_snapshot,
-        "big5":                 big5,
-        "insula":               insula_output,
-        "hippocampus":          context_output,
-        "pfc":                  pfc_output,
-        "reply":                reply,
+        "sim_snapshot": decoder_snapshot,
+        "big5": big5,
+        "assembly": record["assembly"],
+        "insula": insula_output,
+        "hippocampus": context_output,
+        "pfc": pfc_output,
+        "system_prompt": system_prompt,
+        "reply": reply,
+        "skipped": skipped,
     }
     try:
         with open(path, "a") as f:
-            f.write(json.dumps(record) + "\n")
+            f.write(json.dumps(turn_row) + "\n")
     except OSError as e:
         log("PIPELINE/LOG/ERR", str(e))
 

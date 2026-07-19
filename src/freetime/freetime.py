@@ -241,5 +241,32 @@ async def run_freetime(sim: Sim) -> None:
         ]
         await asyncio.to_thread(sliding_rag_write, window_with_freetime)
 
+    # ── 6. Context assembly dump (same as chat turns) ─────────────────────────
+    try:
+        from src.brain.pipeline import _persist_context
+        _persist_context(
+            ts=time.time(),
+            username="freetime",
+            message=synthetic_message,
+            encoder_output=encoder_output,
+            relationship_modifier=1.0,
+            decoder_snapshot=decoded,
+            big5=big5,
+            window_context=window_ctx,
+            rag_context=rag_ctx,
+            kag_context=kag_ctx or "",
+            sliding_result=sliding_res or "",
+            experiences_result=experiences or "",
+            insula_output=insula_output,
+            context_output=context_output,
+            pfc_output=pfc_output,
+            system_prompt=system_prompt,
+            reply=final_reply or "",
+            skipped=False,
+            source="freetime",
+        )
+    except Exception as e:
+        log("FREETIME/CONTEXT", str(e))
+
     _save_freetime_ts()
     log("FREETIME", "Complete.")

@@ -116,3 +116,41 @@ export interface EventEntry {
   source?: string
   deltas?: Record<string, number>
 }
+
+/** Latest pillar context assembly (GET /api/context). */
+export interface ContextAssembly {
+  window_context?: string
+  rag_context?: string
+  kag_context?: string
+  sliding_raw?: string
+  experiences_raw?: string
+}
+
+export interface ContextRecord {
+  ts?: number
+  ts_human?: string
+  username?: string
+  source?: string
+  message?: string
+  encoder?: Record<string, unknown>
+  relationship_modifier?: number
+  sim_snapshot?: Record<string, { normalized?: number; setpoint?: number; gap?: number; rate?: number }>
+  big5?: Record<string, number>
+  assembly?: ContextAssembly
+  insula?: Record<string, unknown>
+  hippocampus?: Record<string, unknown>
+  pfc?: Record<string, unknown>
+  system_prompt?: string
+  reply?: string
+  skipped?: boolean
+}
+
+export async function fetchContext(): Promise<ContextRecord> {
+  return apiFetch<ContextRecord>('/api/context')
+}
+
+export async function fetchContextMarkdown(): Promise<string> {
+  const res = await fetch('/api/context/text')
+  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`)
+  return res.text()
+}

@@ -138,13 +138,22 @@ function NeuroPanel() {
             {state ? (state.sleeping ? 'sleeping' : 'awake') : error ? 'offline' : 'connecting…'}
           </div>
         </div>
-        <Link
-          href="/admin"
-          className="text-[11px] px-2 py-1 rounded border transition-colors hover:bg-white/5"
-          style={{ borderColor: 'rgba(232,228,221,0.15)', color: 'rgba(232,228,221,0.55)' }}
-        >
-          Admin →
-        </Link>
+        <div className="flex items-center gap-1.5">
+          <Link
+            href="/admin/context"
+            className="text-[11px] px-2 py-1 rounded border transition-colors hover:bg-white/5"
+            style={{ borderColor: 'rgba(232,228,221,0.15)', color: 'rgba(232,228,221,0.55)' }}
+          >
+            Context
+          </Link>
+          <Link
+            href="/admin"
+            className="text-[11px] px-2 py-1 rounded border transition-colors hover:bg-white/5"
+            style={{ borderColor: 'rgba(232,228,221,0.15)', color: 'rgba(232,228,221,0.55)' }}
+          >
+            Admin →
+          </Link>
+        </div>
       </div>
 
       {!state ? (

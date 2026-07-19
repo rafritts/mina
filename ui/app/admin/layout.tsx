@@ -10,6 +10,7 @@ import { BackgroundAmbience } from '../components/BackgroundAmbience'
 const NAV = [
   { href: '/admin', label: 'Overview', icon: '◉' },
   { href: '/admin/neuro', label: 'Neuro', icon: '⬡' },
+  { href: '/admin/context', label: 'Context', icon: '▣' },
   { href: '/admin/history', label: 'History', icon: '∿' },
   { href: '/admin/control', label: 'Control', icon: '⊕' },
   { href: '/admin/events', label: 'Events', icon: '≋' },

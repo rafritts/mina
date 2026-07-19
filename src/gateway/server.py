@@ -15,6 +15,8 @@ State / admin (proxied by Next):
   GET  /api/stream
   POST /api/heartbeat
   GET  /api/heartbeat/status
+  GET  /api/context           — latest pillar assembly (JSON; ?format=md for markdown)
+  GET  /api/context/text     — same assembly as markdown
   GET  /api/substance         — stub
   GET  /api/billing          — stub
 
@@ -28,7 +30,7 @@ import time
 import uuid
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from src.application.infra.log import log
 from src.sim.params import CHEMICAL_PARAMS
@@ -472,3 +474,52 @@ async def get_substances():
 @app.get("/api/billing")
 async def get_billing():
     return {"cap": 0.0, "used": 0.0, "remaining": 0.0, "period": "n/a"}
+
+
+# ── /api/context ──────────────────────────────────────────────────────────────
+
+@app.get("/api/context")
+async def get_context(request: Request):
+    """
+    Most recent pillar context assembly.
+
+    Default: JSON (structured for UI).
+    ?format=md|text  or Accept: text/markdown|text/plain → readable markdown.
+    Durable files: run/last_context.json and run/last_context.md (agent-friendly).
+    """
+    from src.brain.context_log import read_last_context, read_last_context_markdown
+
+    fmt = (request.query_params.get("format") or "").strip().lower()
+    accept = (request.headers.get("accept") or "").lower()
+    want_text = fmt in ("md", "markdown", "text", "plain") or (
+        ("text/markdown" in accept or "text/plain" in accept)
+        and "application/json" not in accept
+    )
+
+    if want_text:
+        body = read_last_context_markdown()
+        return Response(
+            content=body,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Cache-Control": "no-store"},
+        )
+
+    record = read_last_context()
+    if record is None:
+        return JSONResponse(
+            status_code=404,
+            content={"error": "No context assembly yet. Send a chat message first."},
+        )
+    return record
+
+
+@app.get("/api/context/text")
+async def get_context_text():
+    """Plain markdown of the latest assembly (agent-friendly)."""
+    from src.brain.context_log import read_last_context_markdown
+    body = read_last_context_markdown()
+    return Response(
+        content=body,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Cache-Control": "no-store"},
+    )
