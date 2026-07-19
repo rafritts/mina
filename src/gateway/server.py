@@ -253,7 +253,7 @@ async def chat_completions(request: Request):
 
     from src.brain.pipeline import run_turn
     try:
-        reply = await run_turn(
+        result = await run_turn(
             user_msg,
             username,
             _sim,
@@ -263,6 +263,14 @@ async def chat_completions(request: Request):
     except Exception as e:
         log("GATEWAY/ERR", str(e))
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+    # run_turn returns {"reply", "images"}; tolerate legacy bare string
+    if isinstance(result, dict):
+        reply = result.get("reply") or ""
+        images = result.get("images") or []
+    else:
+        reply = result or ""
+        images = []
 
     completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
     return {
@@ -274,6 +282,8 @@ async def chat_completions(request: Request):
             {"index": 0, "message": {"role": "assistant", "content": reply}, "finish_reason": "stop"}
         ],
         "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        # Explicit for the Next UI (markdown in content can be missed by clients)
+        "images": images,
     }
 
 

@@ -22,55 +22,94 @@ interface ChatMessage {
   id: string
   role: Role
   content: string
+  /** Host photo paths e.g. /images/abc.png (also may appear as markdown in content). */
+  images?: string[]
 }
 
 const STORAGE_KEY = 'mina-chat-messages'
 const PREFS_KEY = 'mina-chat-image-prefs'
 
-/** Split text into prose + host image markdown units for display. */
-function renderMessageBody(content: string) {
-  const re = /!\[([^\]]*)\]\((\/images\/[^)]+|\/api\/generate\/[^)]+)\)/g
-  const nodes: ReactNode[] = []
-  let last = 0
-  let m: RegExpExecArray | null
-  let i = 0
-  while ((m = re.exec(content)) !== null) {
-    if (m.index > last) {
-      nodes.push(
-        <span key={`t-${i++}`} className="whitespace-pre-wrap">
-          {content.slice(last, m.index)}
-        </span>,
-      )
-    }
-    const alt = m[1] || 'photo'
-    const src = m[2]
-    nodes.push(
-      <figure key={`img-${i++}`} className="my-2">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={src}
-          alt={alt}
-          className="max-w-full rounded-md border"
-          style={{ borderColor: 'rgba(232,228,221,0.12)', maxHeight: '28rem' }}
-          loading="lazy"
-        />
-        {alt && alt !== 'photo' && (
-          <figcaption className="mt-1 text-[11px]" style={{ color: 'rgba(232,228,221,0.4)' }}>
-            {alt}
-          </figcaption>
-        )}
-      </figure>,
-    )
-    last = m.index + m[0].length
+const HOST_IMAGE_MD =
+  /!\[([^\]]*)\]\((\/images\/[^)\s]+|\/api\/generate\/[^)\s]+)\)/g
+const HOST_IMAGE_BARE = /(?<![(/])(\/images\/[A-Za-z0-9._-]+\.(?:png|jpe?g|webp|gif))/g
+
+function extractImageUrls(content: string, extra?: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  const add = (u: string) => {
+    if (!u || seen.has(u)) return
+    if (!u.startsWith('/images/') && !u.startsWith('/api/generate/')) return
+    seen.add(u)
+    out.push(u)
   }
-  if (last < content.length) {
+  for (const u of extra ?? []) add(u)
+  let m: RegExpExecArray | null
+  const md = new RegExp(HOST_IMAGE_MD.source, 'g')
+  while ((m = md.exec(content)) !== null) add(m[2])
+  const bare = new RegExp(HOST_IMAGE_BARE.source, 'g')
+  while ((m = bare.exec(content)) !== null) add(m[1])
+  return out
+}
+
+function stripHostImageMarkdown(content: string): string {
+  return content
+    .replace(new RegExp(HOST_IMAGE_MD.source, 'g'), '')
+    .replace(new RegExp(HOST_IMAGE_BARE.source, 'g'), '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+function ChatImage({ src, alt }: { src: string; alt: string }) {
+  const [failed, setFailed] = useState(false)
+  if (failed) {
+    return (
+      <div
+        className="my-2 rounded-md border px-3 py-2 text-[11px] value-mono"
+        style={{ borderColor: 'rgba(248,113,113,0.3)', color: 'rgba(248,113,113,0.85)' }}
+      >
+        image failed to load: {src}
+      </div>
+    )
+  }
+  return (
+    <figure className="my-2">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        className="max-w-full rounded-md border"
+        style={{ borderColor: 'rgba(232,228,221,0.12)', maxHeight: '28rem' }}
+        loading="lazy"
+        onError={() => setFailed(true)}
+      />
+      {alt && alt !== 'photo' && (
+        <figcaption className="mt-1 text-[11px]" style={{ color: 'rgba(232,228,221,0.4)' }}>
+          {alt}
+        </figcaption>
+      )}
+    </figure>
+  )
+}
+
+/** Split text into prose + host images (markdown and/or structured list). */
+function renderMessageBody(content: string, images?: string[]) {
+  const urls = extractImageUrls(content, images)
+  const prose = stripHostImageMarkdown(content)
+  const nodes: ReactNode[] = []
+  if (prose) {
     nodes.push(
-      <span key={`t-${i++}`} className="whitespace-pre-wrap">
-        {content.slice(last)}
+      <span key="prose" className="whitespace-pre-wrap">
+        {prose}
       </span>,
     )
   }
-  return nodes.length ? nodes : <span className="whitespace-pre-wrap">{content}</span>
+  urls.forEach((src, i) => {
+    nodes.push(<ChatImage key={`img-${i}-${src}`} src={src} alt="photo" />)
+  })
+  if (!nodes.length) {
+    return <span className="whitespace-pre-wrap">{content}</span>
+  }
+  return nodes
 }
 
 function loadMessages(): ChatMessage[] {
@@ -307,14 +346,30 @@ export function ChatApp() {
           image_aspect: imageAspect,
         }),
       })
-      const data = (await res.json()) as { reply?: string; error?: string }
+      const data = (await res.json()) as {
+        reply?: string
+        images?: string[]
+        error?: string
+      }
       if (!res.ok) {
         throw new Error(data.error ?? `HTTP ${res.status}`)
       }
-      const reply = (data.reply ?? '').trim() || '(empty reply)'
+      let reply = (data.reply ?? '').trim() || '(empty reply)'
+      const images = extractImageUrls(reply, data.images)
+      // Ensure markdown carries the paths so reloads from localStorage still show photos
+      for (const url of images) {
+        if (!reply.includes(url)) {
+          reply = `${reply}\n\n![photo](${url})`
+        }
+      }
       setMessages((prev) => [
         ...prev,
-        { id: `a-${Date.now()}`, role: 'assistant', content: reply },
+        {
+          id: `a-${Date.now()}`,
+          role: 'assistant',
+          content: reply,
+          images: images.length ? images : undefined,
+        },
       ])
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Send failed'
@@ -465,7 +520,7 @@ export function ChatApp() {
                       mina
                     </div>
                   )}
-                  {renderMessageBody(m.content)}
+                  {renderMessageBody(m.content, m.images)}
                 </div>
               </div>
             ))

@@ -64,9 +64,13 @@ export async function POST(request: NextRequest) {
 
     const data = JSON.parse(upstream.body) as {
       choices?: { message?: { content?: string } }[]
+      images?: string[]
     }
     const reply = data.choices?.[0]?.message?.content ?? ''
-    return Response.json({ reply })
+    const images = Array.isArray(data.images)
+      ? data.images.filter((u): u is string => typeof u === 'string' && u.startsWith('/images/'))
+      : []
+    return Response.json({ reply, images })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Backend unreachable'
     return Response.json(

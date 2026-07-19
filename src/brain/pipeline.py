@@ -95,9 +95,12 @@ async def run_turn(
     *,
     image_count: str | int = "auto",
     image_aspect: str = "square",
-) -> str:
+) -> dict:
     """
-    Run the full per-turn pipeline. Returns Mina's reply.
+    Run the full per-turn pipeline.
+
+    Returns {"reply": str, "images": list[str]} where images are host paths
+    like /images/<id>.png for the UI (also embedded as markdown in reply).
 
     image_count: "auto" | 0 | 1..5 — UI pic preference (hard cap on send_photo).
     image_aspect: landscape | square | portrait — forced on host generate.
@@ -191,7 +194,7 @@ async def run_turn(
             reply="",
             skipped=True,
         )
-        return ""
+        return {"reply": "", "images": []}
 
     # ── 10. Build system prompt ─────────────────────────────────────────────
     system_prompt = build_system_prompt(insula_output, context_output, pfc_output)
@@ -261,7 +264,7 @@ async def run_turn(
                 result = await asyncio.to_thread(
                     call_chat_tool, name, args, image_aspect=aspect
                 )
-                if name == "send_photo" and "![" in result and "/images/" in result:
+                if name == "send_photo" and "/images/" in result:
                     photos_sent += 1
                     photo_units.append(result)
             messages.append({
@@ -273,18 +276,17 @@ async def run_turn(
         # Exhausted tool rounds without a pure text finish
         reply = content if content else ""
 
-    # Attach host photos after text if the model didn't already embed them
-    if photo_units:
-        units = "\n\n".join(photo_units)
-        if reply.strip():
-            # Drop model-invented fake image markdown; host photos are authoritative
-            reply = _strip_fake_images(reply)
-            if not any(u in reply for u in photo_units):
-                reply = f"{reply.rstrip()}\n\n{units}"
-        else:
-            reply = units
+    # Host photos are authoritative — strip fakes, then ensure every real URL is in reply
+    image_urls = _photo_urls(photo_units)
+    if photo_units or image_urls:
+        reply = _strip_fake_images(reply or "")
+        reply = _ensure_photos_in_reply(reply, photo_units, image_urls)
+        # Re-extract in case units carried multiple; keep order stable
+        image_urls = _photo_urls(photo_units) or _photo_urls([reply])
 
     log("MINA", (reply[:120] if reply else "(empty)"))
+    if image_urls:
+        log("MINA", f"images={image_urls}")
 
     # ── 12. Post-turn bookkeeping ───────────────────────────────────────────
     decoder_window.append({"role": "assistant", "content": reply, "ts": time.time()})
@@ -316,7 +318,56 @@ async def run_turn(
         skipped=False,
     )
 
-    return reply
+    return {"reply": reply, "images": image_urls}
+
+
+def _photo_urls(units: list[str]) -> list[str]:
+    """Extract ordered unique /images/... URLs from photo tool results or reply text."""
+    import re
+    seen: set[str] = set()
+    out: list[str] = []
+    for text in units:
+        if not text:
+            continue
+        for m in re.finditer(r"\((/images/[^)\s]+)\)", text):
+            url = m.group(1)
+            if url not in seen:
+                seen.add(url)
+                out.append(url)
+        # bare path fallback
+        for m in re.finditer(r"(?<![(\w])/images/[A-Za-z0-9._-]+\.(?:png|jpe?g|webp|gif)", text):
+            url = m.group(0)
+            if url not in seen:
+                seen.add(url)
+                out.append(url)
+    return out
+
+
+def _ensure_photos_in_reply(reply: str, photo_units: list[str], image_urls: list[str]) -> str:
+    """
+    Guarantee host photos appear as markdown in the reply the UI stores.
+
+    Prefer full photo_units (caption + markdown) when the URL is missing from reply;
+    otherwise inject a bare ![photo](url) for any missing URL.
+    """
+    text = (reply or "").rstrip()
+    missing_urls = [u for u in image_urls if u not in text]
+
+    if not missing_urls:
+        return text
+
+    # Append whole tool units that carry a missing URL (preserves caption)
+    for unit in photo_units:
+        if any(u in unit for u in missing_urls) and unit not in text:
+            text = f"{text}\n\n{unit}".strip() if text else unit
+            missing_urls = [u for u in image_urls if u not in text]
+            if not missing_urls:
+                return text
+
+    for url in missing_urls:
+        if url not in text:
+            text = f"{text}\n\n![photo]({url})".strip() if text else f"![photo]({url})"
+    return text
 
 
 def _strip_fake_images(text: str) -> str:
