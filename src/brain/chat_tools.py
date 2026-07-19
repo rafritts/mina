@@ -14,7 +14,7 @@ CHAT_TOOLS = [
         "function": {
             "name": "send_photo",
             "description": (
-                "Send a photoreal photo of yourself (selfie or scene shot) to the chat. "
+                "Send a photo of yourself (selfie or scene shot) to the chat. "
                 "Use when a picture fits the moment — when they ask, when you're "
                 "showing something, or when a photo is more honest than text. "
                 "Do not spam photos. Respect the photo count guidance in the prompt."
@@ -25,15 +25,15 @@ CHAT_TOOLS = [
                     "prompt": {
                         "type": "string",
                         "description": (
-                            "Visual brief only for the image model (Krea photoreal). "
-                            "Write natural scene prose: framing + pose first, then sparse "
-                            "place/light, then this-shot outfit/expression. "
-                            "Concrete visible details only (soft smile, half-lidded eyes, "
-                            "sitting on couch). Do NOT restate your full face/hair — the "
-                            "host adds your fixed look + photoreal quality suffix. "
-                            "Never use anime/Danbooru tags, never write 'not anime' / "
-                            "'not illustration' (negation makes those styles appear), "
-                            "never write phone/camera/holding phone (they get drawn in-frame)."
+                            "Krea2 visual brief as natural prose only. "
+                            "Order: framing + pose first, sparse place/light, then this-shot "
+                            "outfit and expression. Concrete visible details "
+                            "(soft smile, half-lidded eyes, sitting on the couch). "
+                            "Do not restate your face/hair — the host adds your fixed look "
+                            "prose and the quality suffix. "
+                            "Selfies: pose language only (close, arm's-length, looking into "
+                            "the lens) — never write phone, camera, or holding phone. "
+                            "Adults only: woman."
                         ),
                     },
                     "caption": {
@@ -90,14 +90,15 @@ def photo_turn_context(image_count, image_aspect: str) -> str:
         f"[Photo settings]\n"
         f"{count_line}\n"
         f"Preferred aspect: {aspect_hint}.\n"
-        f"Photos are photoreal Krea only — real-camera look, not anime/illustration.\n"
-        f"When you send a photo, call send_photo with a concrete scene brief:\n"
+        f"Photos use Krea2 with natural scene prose only.\n"
+        f"When you send a photo, call send_photo with a concrete prose brief:\n"
         f"  framing + pose first, sparse place/light, this-shot outfit + expression.\n"
-        f"Host adds your fixed appearance and the quality suffix.\n"
-        f"Rules for prompt=: natural prose only (no Danbooru tags); omit unwanted "
-        f"things instead of writing 'no X' / 'not anime'; describe selfies with "
-        f"pose only (close, arm's-length, looking into the lens) — never write "
-        f"phone, camera, or holding phone; adults only (woman, not girl)."
+        f"Host appends your fixed look prose and the quality suffix "
+        f"(amateur photo, 8K UHD photograph, shot on Canon EOS R5).\n"
+        f"Selfies: close, arm's-length, looking into the lens — pose only; "
+        f"never write phone, camera, or holding phone. "
+        f"Only describe what is visible. Adults: woman. "
+        f"Omit things you do not want in frame; do not write 'no X' or 'without Y'."
     )
 
 

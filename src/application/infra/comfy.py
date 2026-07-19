@@ -151,24 +151,24 @@ def generate_and_save(
     raise TimeoutError(f"comfy job {job_id} timed out (last={last_status})")
 
 
-# Same photoreal anchor Kairu appends to every krea prompt.
+# Same quality anchor Kairu appends to every Krea2 prompt.
 KREA_QUALITY_SUFFIX = "amateur photo, 8K UHD photograph, shot on Canon EOS R5"
 
-# Fallback if identity/MINA.md has no Photo look block.
+# Fallback if identity/MINA.md has no photo prose block.
 _DEFAULT_LOOK = (
     "A young woman in her mid-twenties with dark brown hair worn down or "
     "loosely tied, warm brown eyes, and natural fair-to-light olive skin. "
-    "Soft everyday face, average build. Simple casual clothes."
+    "Soft everyday face, average build. Simple casual clothes — jeans and a plain shirt."
 )
 
 
 def mina_look_block() -> str:
     """
-    Appearance prose for Krea prompts.
+    Fixed appearance prose for Krea2 prompts.
 
-    Prefers ### Photo look (Krea) under ## Appearance in identity/MINA.md —
-    that block is third-person visual prose. Falls back to a hard default
-    rather than dumping chatty second-person identity text into the image model.
+    Prefers ### Prose — clothed (or Photo look) under ## Appearance in
+    identity/MINA.md. Third-person visual prose only — never chatty second-person
+    identity text.
     """
     from src.config.config import IDENTITY_DIR
 
@@ -178,19 +178,22 @@ def mina_look_block() -> str:
     except OSError:
         return _DEFAULT_LOOK
 
-    # Prefer explicit photo look subsection (### Photo look / ### Krea …)
-    if "## Appearance" in text:
-        after = text.split("## Appearance", 1)[1]
-        section = after.split("\n## ", 1)[0]
+    # Prefer ## Appearance (Krea) (Kairu-style); fall back to ## Appearance.
+    section = None
+    for h2 in ("## Appearance (Krea)", "## Appearance"):
+        if h2 in text:
+            after = text.split(h2, 1)[1]
+            section = after.split("\n## ", 1)[0]
+            break
+    if section:
         for heading in (
+            "### Prose — clothed",
             "### Photo look (Krea)",
             "### Photo look",
             "### Krea",
-            "### Prose — clothed",
         ):
             if heading in section:
                 block = section.split(heading, 1)[1]
-                # until next ### or end of appearance section
                 block = block.split("\n### ", 1)[0].strip()
                 if block:
                     return block
@@ -199,15 +202,15 @@ def mina_look_block() -> str:
 
 def build_photo_prompt(scene_prompt: str) -> str:
     """
-    Assemble a Krea prompt the same way Kairu does:
+    Assemble a Krea2 prompt the same way Kairu does:
 
-      1. Scene / framing / pose (from the model)
-      2. Fixed appearance block
+      1. Scene / framing / pose (natural prose from the model)
+      2. Fixed appearance prose
       3. Quality suffix
 
-    Critical: Krea has no negation. Phrases like "not anime" / "not illustration"
-    actively pull the image toward anime/illustration. Anchor photoreal with the
-    quality suffix only — never by naming the styles you want to avoid.
+    Krea has no negation — do not put "no X" / "without Y" in prompts.
+    Unwanted details are handled by omission; photoreal is anchored by the
+    quality suffix.
     """
     look = mina_look_block()
     scene = (scene_prompt or "").strip()
