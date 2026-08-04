@@ -162,12 +162,47 @@ def _tools_section(tools: list[dict]) -> str:
     )
 
 
-_TOOL_CALL_SCHEMA: dict[str, Any] = {
+_NAME_CLOTHING_ITEM: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string"},
+        "clothing": {"type": "string"},
+    },
+    "required": ["name", "clothing"],
+}
+
+_NAME_POSITION_ITEM: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string"},
+        "position": {"type": "string"},
+    },
+    "required": ["name", "position"],
+}
+
+_WHEN_WHAT_ITEM: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "when": {"type": "string"},
+        "what": {"type": "string"},
+    },
+    "required": ["when", "what"],
+}
+
+# Mouth reply: voice + optional host tools + live scene snapshot (Kaiya pattern).
+_MOUTH_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "content": {
             "type": ["string", "null"],
-            "description": "Final reply text when done; null or empty if calling tools.",
+            "description": (
+                "What the user reads (Mina's voice). Null/empty only when calling tools "
+                "this round. Alias: response_in_mina_voice."
+            ),
+        },
+        "response_in_mina_voice": {
+            "type": ["string", "null"],
+            "description": "Alias for content — Mina's spoken/text reply.",
         },
         "tool_calls": {
             "type": "array",
@@ -182,21 +217,65 @@ _TOOL_CALL_SCHEMA: dict[str, Any] = {
                 },
                 "required": ["name", "arguments"],
             },
-            "description": "Host tools to run this round; empty array if content is final.",
+            "description": "Host tools this round; empty array on final voice reply.",
+        },
+        "scene_time": {
+            "type": "string",
+            "description": "Soft fiction Now (phase/day/place). Empty only for pure logistics.",
+        },
+        "timeline": {
+            "type": "array",
+            "items": _WHEN_WHAT_ITEM,
+            "description": "Past→now beats that still matter for continuity (max ~12).",
+        },
+        "plans": {
+            "type": "array",
+            "items": _WHEN_WHAT_ITEM,
+            "description": "Open future commitments relative to scene_time (max 6).",
+        },
+        "current_clothing_scene_members": {
+            "type": "array",
+            "items": _NAME_CLOTHING_ITEM,
+            "description": "Full clothing/presentation snapshot of people in scene.",
+        },
+        "current_position_in_scene": {
+            "type": "array",
+            "items": _NAME_POSITION_ITEM,
+            "description": "Full body-placement snapshot of people in scene.",
         },
     },
-    "required": ["content", "tool_calls"],
+    "required": ["tool_calls"],
 }
 
+# Back-compat name used by older call sites.
+_TOOL_CALL_SCHEMA = _MOUTH_SCHEMA
 
-def _build_prompt(messages: list[dict], tools: list[dict] | None) -> str:
-    if tools:
+
+def _build_prompt(
+    messages: list[dict],
+    tools: list[dict] | None,
+    *,
+    mouth: bool = False,
+) -> str:
+    if mouth or tools:
         preamble = (
             "Follow the instructions exactly. Do not use Grok Build filesystem, shell, "
             "or web tools. Reply only with the structured JSON required by the schema."
         )
         body = _format_messages_body(messages)
-        return "\n".join([preamble, "", _tools_section(tools), "", body])
+        parts = [preamble, ""]
+        if tools:
+            parts.extend([_tools_section(tools), ""])
+        elif mouth:
+            parts.extend([
+                "## Host tools\n"
+                "No host tools this turn. Set tool_calls to []. "
+                "Put the user-facing reply in content (or response_in_mina_voice). "
+                "Always include scene fields on the final reply.",
+                "",
+            ])
+        parts.append(body)
+        return "\n".join(parts)
     preamble = (
         "Follow the instructions exactly. Do not use tools. "
         "Reply with only the requested output — no preamble."
@@ -226,18 +305,29 @@ class _ToolCall:
 
 
 class _Message:
-    __slots__ = ("content", "tool_calls")
+    __slots__ = ("content", "tool_calls", "mouth")
 
-    def __init__(self, content: str, tool_calls: list[_ToolCall] | None):
+    def __init__(
+        self,
+        content: str,
+        tool_calls: list[_ToolCall] | None,
+        mouth: dict | None = None,
+    ):
         self.content = content
         self.tool_calls = tool_calls
+        self.mouth = mouth  # full structured mouth object when present
 
 
 class _Choice:
     __slots__ = ("message", "finish_reason")
 
-    def __init__(self, content: str, tool_calls: list[_ToolCall] | None):
-        self.message = _Message(content, tool_calls)
+    def __init__(
+        self,
+        content: str,
+        tool_calls: list[_ToolCall] | None,
+        mouth: dict | None = None,
+    ):
+        self.message = _Message(content, tool_calls, mouth)
         self.finish_reason = "tool_calls" if tool_calls else "stop"
 
 
@@ -274,8 +364,9 @@ class _CompatResponse:
         tool_calls: list[_ToolCall] | None,
         usage: dict | None,
         raw: dict | None = None,
+        mouth: dict | None = None,
     ):
-        self.choices = [_Choice(content, tool_calls)]
+        self.choices = [_Choice(content, tool_calls, mouth)]
         self.usage = _Usage(usage)
         self.raw = raw
 
@@ -336,30 +427,40 @@ def _extract_text(payload: dict) -> str:
     return ""
 
 
-def _parse_tool_envelope(payload: dict) -> tuple[str, list[_ToolCall] | None]:
-    """Return (content, tool_calls) from structured tool-call schema output."""
+def _voice_from_mouth(data: dict) -> str:
+    """User-facing voice from mouth JSON (content or response_in_mina_voice)."""
+    for key in ("content", "response_in_mina_voice"):
+        val = data.get(key)
+        if isinstance(val, str) and val.strip():
+            return val
+        if val is not None and not isinstance(val, str) and val != "":
+            return str(val)
+    return ""
+
+
+def _parse_tool_envelope(payload: dict) -> tuple[str, list[_ToolCall] | None, dict | None]:
+    """
+    Return (content, tool_calls, raw_mouth_dict) from structured mouth/tool output.
+    raw_mouth_dict is the full parsed object when available (for scene fields).
+    """
     so = payload.get("structuredOutput")
     data = so if isinstance(so, dict) else None
     if data is None:
         raw_text = _extract_text(payload).strip()
         if not raw_text:
-            return "", None
+            return "", None, None
         try:
             data = json.loads(raw_text)
         except json.JSONDecodeError:
-            return raw_text, None
+            return raw_text, None, None
     if not isinstance(data, dict):
-        return _extract_text(payload), None
+        return _extract_text(payload), None, None
 
-    content = data.get("content")
-    if content is None:
-        content = ""
-    elif not isinstance(content, str):
-        content = str(content)
+    content = _voice_from_mouth(data)
 
     raw_tcs = data.get("tool_calls") or []
     if not isinstance(raw_tcs, list) or not raw_tcs:
-        return content, None
+        return content, None, data
 
     tool_calls: list[_ToolCall] = []
     for tc in raw_tcs:
@@ -376,7 +477,7 @@ def _parse_tool_envelope(payload: dict) -> tuple[str, list[_ToolCall] | None]:
         tool_calls.append(
             _ToolCall(id_=f"call_{uuid.uuid4().hex[:12]}", name=name, arguments=args_str)
         )
-    return content, tool_calls or None
+    return content, tool_calls or None, data
 
 
 def run_grok_oneshot(
@@ -494,10 +595,16 @@ def chat_create(**kwargs) -> _CompatResponse:
 
     Accepts the same kwargs as openai.chat.completions.create() and returns
     an object with choices[0].message.content / .tool_calls and .usage.
+
+    Extra kwargs:
+      mouth=True — force Mina mouth schema (voice + scene + optional tool_calls)
+                   even when tools are empty.
     """
     model: str = kwargs.pop("model", MODEL)
     raw_messages: list[dict] = kwargs.pop("messages", []) or []
-    raw_tools: list[dict] = kwargs.pop("tools", None) or []
+    tools_arg = kwargs.pop("tools", None)
+    raw_tools: list[dict] = tools_arg if isinstance(tools_arg, list) else []
+    mouth: bool = bool(kwargs.pop("mouth", False))
     kwargs.pop("tool_choice", None)
     kwargs.pop("temperature", None)  # CLI has no temperature
     kwargs.pop("max_tokens", None)   # CLI has no max_tokens
@@ -507,21 +614,22 @@ def chat_create(**kwargs) -> _CompatResponse:
     # Discard remaining unknown kwargs
     kwargs.clear()
 
-    want_tools = bool(raw_tools)
-    prompt = _build_prompt(raw_messages, raw_tools if want_tools else None)
+    use_mouth = mouth or bool(raw_tools)
+    prompt = _build_prompt(
+        raw_messages,
+        raw_tools if raw_tools else None,
+        mouth=use_mouth,
+    )
 
     json_schema: dict | None = None
-    if want_tools:
-        json_schema = _TOOL_CALL_SCHEMA
+    if use_mouth:
+        json_schema = _MOUTH_SCHEMA
     elif response_format:
         # Call sites request JSON; constrain to an object when type is json_object.
-        # (Some sites expect a top-level array — they parse freeform text themselves,
-        # so only force a schema for the common object case and leave arrays freeform.)
         rf_type = response_format if isinstance(response_format, str) else (
             response_format.get("type") if isinstance(response_format, dict) else None
         )
         if rf_type == "json_object":
-            # Soft constraint: object. Nested shape is guided by the system prompt.
             json_schema = {"type": "object"}
 
     payload = run_grok_oneshot(
@@ -534,9 +642,11 @@ def chat_create(**kwargs) -> _CompatResponse:
 
     usage = payload.get("usage") if isinstance(payload.get("usage"), dict) else None
 
-    if want_tools:
-        content, tool_calls = _parse_tool_envelope(payload)
-        return _CompatResponse(content or "", tool_calls, usage, raw=payload)
+    if use_mouth:
+        content, tool_calls, mouth_obj = _parse_tool_envelope(payload)
+        return _CompatResponse(
+            content or "", tool_calls, usage, raw=payload, mouth=mouth_obj
+        )
 
     # Prefer structuredOutput dump for json_object calls when text is empty
     text = _extract_text(payload)

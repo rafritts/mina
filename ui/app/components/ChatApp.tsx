@@ -26,6 +26,7 @@ import { AspectRatioSlider } from './AspectRatioSlider'
 import { ImageCountSelector } from './ImageCountSelector'
 import { ThoughtStream } from './ThoughtStream'
 import { ControlPane } from './ControlPane'
+import { ChatContextModal } from './ChatContextModal'
 import { AppRoot } from './shell/AppRoot'
 import { AppHeader } from './shell/AppHeader'
 
@@ -167,6 +168,7 @@ export function ChatApp() {
   const [imageCount, setImageCount] = useState<ImageCount>(IMAGE_COUNT_DEFAULT)
   const [imageAspect, setImageAspect] = useState<ImageAspect>(IMAGE_ASPECT_DEFAULT)
   const [controlOpen, setControlOpen] = useState(true)
+  const [contextOpen, setContextOpen] = useState(false)
   const [mind, setMind] = useState<TurnMind>(EMPTY_TURN_MIND)
 
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -376,6 +378,13 @@ export function ChatApp() {
       <button
         type="button"
         className="btn btn-ghost btn-sm"
+        onClick={() => setContextOpen(true)}
+      >
+        Context
+      </button>
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
         onClick={clearView}
         disabled={sending || messages.length === 0}
       >
@@ -550,6 +559,11 @@ export function ChatApp() {
           />
         </div>
       )}
+
+      <ChatContextModal
+        open={contextOpen}
+        onClose={() => setContextOpen(false)}
+      />
     </AppRoot>
   )
 }

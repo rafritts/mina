@@ -37,6 +37,16 @@ from .hippocampus_pillar import run_hippocampus
 from .pfc import run_pfc, build_system_prompt
 from .context_assembly import assemble_window_context, assemble_rag_context
 from .context_log import build_record, write_last_context
+from .scene_context import (
+    apply_scene_from_mouth,
+    clear_scene,
+    format_scene_block,
+    load_scene,
+    mouth_scene_instructions,
+    save_scene,
+    scene_fields_from_mouth,
+    scene_has_content,
+)
 from .chat_tools import (
     CHAT_TOOLS,
     call_chat_tool,
@@ -201,7 +211,11 @@ async def run_turn(
                     "excerpt": line[:200],
                 })
 
-    # ── 7. Context assembly ──────────────────────────────────────────────────
+    # ── 7. Context assembly + prior live scene ───────────────────────────────
+    # Scene is agent-authored last turn; pillars consume it, mouth re-authors.
+    prior_scene = load_scene()
+    scene_block = format_scene_block(prior_scene, for_agent=True) if scene_has_content(prior_scene) else ""
+
     window_context, rag_context = await asyncio.gather(
         asyncio.to_thread(assemble_window_context, decoder_window),
         asyncio.to_thread(assemble_rag_context, sliding_result, experiences_result),
@@ -210,7 +224,7 @@ async def run_turn(
     # ── 8. Hippocampus pillar ────────────────────────────────────────────────
     _emit_stage("situate", "Situating")
     context_output = await asyncio.to_thread(
-        run_hippocampus, insula_output, window_context, rag_context
+        run_hippocampus, insula_output, window_context, rag_context, scene_block
     )
     stream_bus.emit("context_pillar", {
         "social_context": context_output.get("social_context", ""),
@@ -222,7 +236,7 @@ async def run_turn(
     # ── 9. PFC pillar ────────────────────────────────────────────────────────
     _emit_stage("decide", "Deciding")
     pfc_output = await asyncio.to_thread(
-        run_pfc, insula_output, context_output, message, big5
+        run_pfc, insula_output, context_output, message, big5, scene_block
     )
     stream_bus.emit("reasoning", {
         "approach": pfc_output.get("approach", ""),
@@ -260,17 +274,21 @@ async def run_turn(
             system_prompt="",
             reply="",
             skipped=True,
+            scene=prior_scene if scene_has_content(prior_scene) else None,
         )
         return {"reply": "", "images": []}
 
     # ── 10. Build system prompt ─────────────────────────────────────────────
-    system_prompt = build_system_prompt(insula_output, context_output, pfc_output)
+    system_prompt = build_system_prompt(
+        insula_output, context_output, pfc_output, scene_block=scene_block
+    )
 
     # Append KAG context to system prompt
     if kag_context:
         system_prompt += f"\n\n[Memory]\n{kag_context}"
 
     system_prompt += "\n\n" + photo_turn_context(image_count, aspect)
+    system_prompt += "\n\n" + mouth_scene_instructions()
 
     # ── 11. Mina LLM call (+ optional send_photo tool loop) ────────────────
     _emit_stage("speak", "Speaking")
@@ -285,6 +303,8 @@ async def run_turn(
     photo_units: list[str] = []
     photos_sent = 0
     reply = ""
+    final_mouth: dict | None = None
+    mouth_obj: dict | None = None
 
     for round_num in range(_MAX_TOOL_ROUNDS):
         create_kwargs: dict = dict(
@@ -292,6 +312,7 @@ async def run_turn(
             messages=messages,
             max_tokens=1024,
             reasoning_effort="none",
+            mouth=True,  # voice + scene JSON every mouth call
         )
         if tools and photos_sent < photo_cap:
             create_kwargs["tools"] = tools
@@ -301,9 +322,12 @@ async def run_turn(
         msg = resp.choices[0].message
         content = msg.content or ""
         tool_calls = getattr(msg, "tool_calls", None) or []
+        mouth_obj = getattr(msg, "mouth", None)
 
         if not tool_calls:
             reply = content
+            if isinstance(mouth_obj, dict):
+                final_mouth = mouth_obj
             break
 
         messages.append({
@@ -343,6 +367,8 @@ async def run_turn(
     else:
         # Exhausted tool rounds without a pure text finish
         reply = content if content else ""
+        if isinstance(mouth_obj, dict):
+            final_mouth = mouth_obj
 
     # Host photos are authoritative — strip fakes, then ensure every real URL is in reply
     image_urls = _photo_urls(photo_units)
@@ -351,6 +377,33 @@ async def run_turn(
         reply = _ensure_photos_in_reply(reply, photo_units, image_urls)
         # Re-extract in case units carried multiple; keep order stable
         image_urls = _photo_urls(photo_units) or _photo_urls([reply])
+
+    # ── 11b. Persist agent-authored live scene ──────────────────────────────
+    next_scene = prior_scene
+    if isinstance(final_mouth, dict):
+        fields = scene_fields_from_mouth(final_mouth)
+        if fields:
+            applied = apply_scene_from_mouth(prior_scene, fields)
+            if applied is not None:
+                save_scene(applied)
+                next_scene = applied
+                log(
+                    "SCENE",
+                    f"time={applied.get('scene_time', '')[:60]!r} "
+                    f"clothing={len(applied.get('clothing') or [])} "
+                    f"timeline={len(applied.get('timeline') or [])} "
+                    f"plans={len(applied.get('plans') or [])}",
+                )
+            else:
+                clear_scene()
+                next_scene = {}
+        stream_bus.emit("scene_update", {
+            "scene_time": (next_scene or {}).get("scene_time", ""),
+            "clothing": (next_scene or {}).get("clothing") or [],
+            "positions": (next_scene or {}).get("positions") or [],
+            "timeline": (next_scene or {}).get("timeline") or [],
+            "plans": (next_scene or {}).get("plans") or [],
+        })
 
     log("MINA", (reply[:120] if reply else "(empty)"))
     if image_urls:
@@ -391,6 +444,7 @@ async def run_turn(
         system_prompt=system_prompt,
         reply=reply,
         skipped=False,
+        scene=next_scene if scene_has_content(next_scene) else None,
     )
 
     return {"reply": reply, "images": image_urls}
@@ -477,6 +531,7 @@ def _persist_context(
     reply: str,
     skipped: bool,
     source: str = "chat",
+    scene: dict | None = None,
 ) -> None:
     """Write turns.jsonl append + run/last_context.{json,md}."""
     record = build_record(
@@ -499,6 +554,7 @@ def _persist_context(
         system_prompt=system_prompt,
         reply=reply,
         skipped=skipped,
+        scene=scene,
     )
     write_last_context(record)
 
@@ -522,6 +578,7 @@ def _persist_context(
         "system_prompt": system_prompt,
         "reply": reply,
         "skipped": skipped,
+        "scene": scene or {},
     }
     try:
         with open(path, "a") as f:
@@ -541,7 +598,7 @@ def erase_chat_history() -> dict:
     Wipe conversation-facing history so the next turn starts fresh.
 
     Clears: conversation logs, decoder window, turn/context dumps, prior
-    emotional state from chat, and sliding (short-term) RAG.
+    emotional state from chat, live scene, and sliding (short-term) RAG.
 
     Keeps: chemistry, episodic RAG, KAG, relationship files.
     """
@@ -553,6 +610,7 @@ def erase_chat_history() -> dict:
     targets = [
         run / "decoder_window.json",
         run / "prior_emotional_state.json",
+        run / "scene_context.json",
         run / "turns.jsonl",
         run / "last_context.json",
         run / "last_context.md",

@@ -66,7 +66,7 @@ _MINA_SYSTEM_TEMPLATE = """\
 
 [Situational Context]
 {situational_context}
-
+{live_scene_section}
 [Response Strategy]
 {response_strategy}
 """
@@ -77,16 +77,24 @@ def run_pfc(
     context_output: dict,
     message: str,
     big5: dict[str, float],
+    scene_block: str = "",
 ) -> dict:
     """Run the PFC reasoning pillar. Returns strategy dict."""
     emotional_block    = _format_emotional(insula_output)
     context_block      = _format_context(context_output)
     big5_block         = _format_big5(big5)
 
+    scene_section = ""
+    if scene_block and scene_block.strip():
+        scene_section = (
+            f"## Live scene (prior snapshot)\n{scene_block.strip()}\n\n"
+        )
+
     user_prompt = (
         f"## Current message\n{message}\n\n"
         f"## Emotional state\n{emotional_block}\n\n"
         f"## Situational context\n{context_block}\n\n"
+        f"{scene_section}"
         f"{big5_block}"
     )
 
@@ -114,6 +122,7 @@ def build_system_prompt(
     insula_output: dict,
     context_output: dict,
     pfc_output: dict,
+    scene_block: str = "",
 ) -> str:
     """Construct Mina's system prompt from pillar outputs."""
     identity      = _load_identity()
@@ -129,11 +138,18 @@ def build_system_prompt(
     if "internal_reaction" in pfc_output:
         strategy_block = f"internal_reaction: {pfc_output['internal_reaction']}\n" + strategy_block
 
+    live_scene_section = ""
+    if scene_block and scene_block.strip():
+        live_scene_section = f"\n{scene_block.strip()}\n\n"
+    else:
+        live_scene_section = "\n"
+
     return _MINA_SYSTEM_TEMPLATE.format(
         identity=identity.strip(),
         customization=customization.strip(),
         emotional_state=emotional_block,
         situational_context=context_block,
+        live_scene_section=live_scene_section,
         response_strategy=strategy_block,
     ).strip()
 

@@ -48,6 +48,7 @@ def build_record(
     system_prompt: str = "",
     reply: str = "",
     skipped: bool = False,
+    scene: dict | None = None,
 ) -> dict[str, Any]:
     """Build the canonical assembly record."""
     return {
@@ -70,6 +71,7 @@ def build_record(
         "insula": insula_output or {},
         "hippocampus": context_output or {},
         "pfc": pfc_output or {},
+        "scene": scene or {},
         "system_prompt": system_prompt or "",
         "reply": reply or "",
         "skipped": skipped,
@@ -161,6 +163,37 @@ def format_markdown(record: dict[str, Any]) -> str:
     lines.append("")
     lines.append(_kv_block(record.get("pfc") or {}))
     lines.append("")
+
+    scene = record.get("scene") or {}
+    lines.append("## Live scene")
+    lines.append("")
+    if scene:
+        if scene.get("scene_time"):
+            lines.append(f"**Now:** {scene['scene_time']}")
+            lines.append("")
+        if scene.get("timeline"):
+            lines.append("**Timeline**")
+            for e in scene["timeline"]:
+                lines.append(f"- {e.get('when')}: {e.get('what')}")
+            lines.append("")
+        if scene.get("plans"):
+            lines.append("**Plans**")
+            for e in scene["plans"]:
+                lines.append(f"- {e.get('when')}: {e.get('what')}")
+            lines.append("")
+        if scene.get("clothing"):
+            lines.append("**Clothing**")
+            for e in scene["clothing"]:
+                lines.append(f"- {e.get('name')}: {e.get('clothing')}")
+            lines.append("")
+        if scene.get("positions"):
+            lines.append("**Positions**")
+            for e in scene["positions"]:
+                lines.append(f"- {e.get('name')}: {e.get('position')}")
+            lines.append("")
+    else:
+        lines.append("_(none yet)_")
+        lines.append("")
 
     lines.append("## System prompt (what Mina receives)")
     lines.append("")

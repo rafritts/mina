@@ -18,8 +18,15 @@ from src.config.config import CONTEXT_MODEL
 _SYSTEM = """\
 You are the hippocampus — Mina's context and memory integrator.
 
-You receive Mina's current emotional state and assembled context (recent conversation \
-and memory). Your job is to synthesize what is situationally relevant given how she feels.
+You receive Mina's current emotional state, assembled conversation/memory context, and \
+(when present) her prior live scene snapshot (clothing, positions, fiction time, timeline, \
+plans — authored by her last reply and stored by the host).
+
+Your job: synthesize what is situationally relevant given how she feels.
+
+Ground physical/situational facts in the live scene when it is present — do not invent \
+a different location, outfit, or fiction-time. Window context is dialogue texture; live \
+scene is durable body/place/time state.
 
 Felt state reframes what counts as notable. If she is anxious, ambiguous signals matter more. \
 If she is content, minor friction may not register. Let the emotional state guide what you flag.
@@ -42,14 +49,18 @@ def run_hippocampus(
     insula_output: dict,
     window_context: str,
     rag_context: str,
+    scene_block: str = "",
 ) -> dict:
     """Run the hippocampus context pillar."""
     emotional_block = "\n".join(f"{k}: {v}" for k, v in insula_output.items())
-    user_prompt = (
-        f"## Emotional state\n{emotional_block}\n\n"
-        f"## Window context\n{window_context or '(none)'}\n\n"
-        f"## Memory context\n{rag_context or '(none)'}"
-    )
+    parts = [
+        f"## Emotional state\n{emotional_block}",
+    ]
+    if scene_block and scene_block.strip():
+        parts.append(f"## Live scene (prior snapshot — ground truth for place/clothes/time)\n{scene_block.strip()}")
+    parts.append(f"## Window context\n{window_context or '(none)'}")
+    parts.append(f"## Memory context\n{rag_context or '(none)'}")
+    user_prompt = "\n\n".join(parts)
 
     try:
         resp = chat_create(

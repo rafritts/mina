@@ -17,6 +17,7 @@ State / admin (proxied by Next):
   GET  /api/heartbeat/status
   GET  /api/context           — latest pillar assembly (JSON; ?format=md for markdown)
   GET  /api/context/text     — same assembly as markdown
+  GET  /api/scene            — live scene snapshot (agent-authored short-term coherence)
   POST /api/conversation/erase — wipe chat logs + window + sliding RAG (keeps chem/KAG)
   GET  /api/substance         — stub
   GET  /api/billing          — stub
@@ -580,3 +581,35 @@ async def get_context_text():
         media_type="text/markdown; charset=utf-8",
         headers={"Cache-Control": "no-store"},
     )
+
+
+@app.get("/api/scene")
+async def get_scene():
+    """
+    Live scene snapshot: clothing, positions, scene_time, timeline, plans.
+    Agent-authored each reply; host stores and re-injects next turn.
+    """
+    from src.brain.scene_context import (
+        format_scene_block,
+        load_scene,
+        scene_has_content,
+    )
+    from src.brain.context_log import read_last_context
+
+    sc = load_scene()
+    has = scene_has_content(sc)
+    last = read_last_context() or {}
+    return {
+        "scene": sc if has else {
+            "clothing": [],
+            "positions": [],
+            "scene_time": "",
+            "timeline": [],
+            "plans": [],
+            "updated_at": 0,
+        },
+        "has_content": has,
+        "inject": format_scene_block(sc, for_agent=True) if has else "",
+        "system_prompt": last.get("system_prompt") or "",
+        "updated_at": sc.get("updated_at") if has else 0,
+    }
