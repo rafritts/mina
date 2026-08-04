@@ -17,7 +17,7 @@ import signal
 import sys
 from pathlib import Path
 
-# Load .env before any src imports that read XAI_API_KEY / MODEL at import time.
+# Load .env before any src imports that read env-backed config at import time.
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent / ".env")
 

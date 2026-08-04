@@ -28,10 +28,13 @@ def get_conversation_file() -> str:
 
 
 # ── LLM configuration ────────────────────────────────────────────────────────
+# Primary path: headless Grok Build CLI (see src/application/infra/client.py).
+# CLI auth only — log in with `grok login`. XAI_API_KEY is unused for chat_create.
+# Optional overrides: GROK_BIN, GROK_MODEL, MINA_GROK_CWD, MINA_GROK_TIMEOUT_MS.
 
-MODEL         = os.getenv("MODEL",         "grok-4.3")
-CONTEXT_MODEL = os.getenv("CONTEXT_MODEL", "grok-4.3")  # cheaper pillar calls
-BASE_URL      = os.getenv("BASE_URL",      "https://api.x.ai/v1")
+MODEL         = os.getenv("MODEL",         "grok-4.3")  # label only; CLI default model used
+CONTEXT_MODEL = os.getenv("CONTEXT_MODEL", "grok-4.3")  # cheaper pillar calls (label)
+BASE_URL      = os.getenv("BASE_URL",      "https://api.x.ai/v1")  # freetime web/x search only
 API_KEY       = os.getenv("XAI_API_KEY",   os.getenv("OPENAI_API_KEY", "sk-placeholder"))
 
 

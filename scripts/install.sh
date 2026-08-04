@@ -122,11 +122,17 @@ if [[ "$SETUP_ONLY" != "--setup-only" ]]; then
     systemctl --user enable mina
     echo "Autostart enabled."
 
+    if ! command -v grok >/dev/null 2>&1 && [[ ! -x "$HOME/.grok/bin/grok" ]]; then
+        echo ""
+        echo "WARNING: Grok Build CLI not found (expected grok on PATH or ~/.grok/bin/grok)."
+        echo "Install/login with Grok Build, then: mina start"
+        echo ""
+    fi
     if [[ ! -f "$REPO_DIR/.env" ]]; then
         echo ""
-        echo "WARNING: $REPO_DIR/.env not found."
-        echo "Create it with at minimum:"
-        echo "  XAI_API_KEY=your-key-here"
+        echo "Note: $REPO_DIR/.env not found (optional)."
+        echo "Chat uses headless grok CLI auth — no XAI_API_KEY required for turns."
+        echo "Optional: XAI_API_KEY only if FREETIME web/x search should use the API."
         echo ""
         echo "Then run: mina start"
     else

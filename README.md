@@ -106,18 +106,19 @@ Typical turn cost breakdown:
 
 - Python 3.13+
 - `uv` (package manager)
-- Node.js 20+ (for the dashboard)
-- An xAI API key
-- A Discord bot token
+- Node.js 20+ (for the UI)
+- **Grok Build CLI** logged in (`grok` on `PATH` or `~/.grok/bin/grok`) — same pattern as Kaiya
+- Optional: `XAI_API_KEY` only if FREETIME web/x search should use the Responses API
 
 ### Setup
 
 ```bash
 git clone https://github.com/yourname/mina
 cd mina
-cp .env.example .env
-# Fill in: MINA_BOT_TOKEN, XAI_API_KEY, XAI_MANAGEMENT_KEY, XAI_TEAM_ID, DASHBOARD_TOKEN
+# Log in once: grok login
+# Optional .env for FREETIME search / ports
 uv sync
+./scripts/install.sh   # or: mina start after install
 ```
 
 ### Run
