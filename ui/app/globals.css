@@ -596,12 +596,44 @@ body {
   color: var(--text);
   border-bottom-left-radius: 0.35rem;
 }
+.msg-assistant-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: min(36rem, 92%);
+  gap: 0.25rem;
+}
+.msg-assistant-wrap .msg-assistant {
+  max-width: 100%;
+}
 .msg-label {
   font-size: 0.625rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-faint);
   margin-bottom: 0.35rem;
+}
+.msg-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding-left: 0.15rem;
+}
+.msg-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2rem;
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+.msg-action-btn:hover:not(:disabled) {
+  color: var(--text-secondary);
+}
+.msg-action-icon {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex-shrink: 0;
 }
 
 /* ── Thought / mind stream ────────────────────────────────── */

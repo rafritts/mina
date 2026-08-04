@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { RotateCcw } from 'lucide-react'
 import {
   IMAGE_ASPECT_DEFAULT,
   type ImageAspect,
@@ -255,6 +256,94 @@ export function ChatApp() {
     return () => window.removeEventListener('mina:erase-chat', onErase)
   }, [])
 
+  /**
+   * Run a chat completion for `text`, appending an assistant bubble on success.
+   * `history` is prior messages only (not including the user turn being sent).
+   * When `redo` is true, the server rewinds the trailing matching turn first.
+   */
+  const runCompletion = useCallback(
+    async (
+      text: string,
+      history: ChatMessage[],
+      opts?: { redo?: boolean },
+    ) => {
+      setSending(true)
+      sendingRef.current = true
+      setError(null)
+      setMind(EMPTY_TURN_MIND)
+      mindRef.current = EMPTY_TURN_MIND
+
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: text,
+            history: history.slice(-12).map((m) => ({
+              role: m.role,
+              content: m.content,
+            })),
+            image_count: imageCount,
+            image_aspect: imageAspect,
+            redo: Boolean(opts?.redo),
+          }),
+        })
+        const data = (await res.json()) as {
+          reply?: string
+          images?: string[]
+          error?: string
+        }
+        if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
+
+        let reply = (data.reply ?? '').trim() || '(empty reply)'
+        const images = extractImageUrls(reply, data.images)
+        for (const url of images) {
+          if (!reply.includes(url)) reply = `${reply}\n\n![photo](${url})`
+        }
+
+        const captured = hasMindContent(mindRef.current)
+          ? snapshotMind(mindRef.current)
+          : undefined
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `a-${Date.now()}`,
+            role: 'assistant',
+            content: reply,
+            images: images.length ? images : undefined,
+            mind: captured,
+          },
+        ])
+        setMind(EMPTY_TURN_MIND)
+        mindRef.current = EMPTY_TURN_MIND
+      } catch (e) {
+        const captured = hasMindContent(mindRef.current)
+          ? snapshotMind(mindRef.current)
+          : undefined
+        if (captured) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `a-err-${Date.now()}`,
+              role: 'assistant',
+              content: '(no reply — see mind above)',
+              mind: captured,
+            },
+          ])
+        }
+        setError(e instanceof Error ? e.message : 'Send failed')
+        setMind(EMPTY_TURN_MIND)
+        mindRef.current = EMPTY_TURN_MIND
+      } finally {
+        setSending(false)
+        sendingRef.current = false
+        textareaRef.current?.focus()
+      }
+    },
+    [imageCount, imageAspect],
+  )
+
   const send = useCallback(async () => {
     const text = input.trim()
     if (!text || sending) return
@@ -264,85 +353,50 @@ export function ChatApp() {
       role: 'user',
       content: text,
     }
+    // history is prior turns only (before this user message)
+    const history = messages
 
     setMessages((prev) => [...prev, userMsg])
     setInput('')
-    setSending(true)
-    sendingRef.current = true
-    setError(null)
-    setMind(EMPTY_TURN_MIND)
-    mindRef.current = EMPTY_TURN_MIND
-
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
 
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          history: messages.slice(-12).map((m) => ({ role: m.role, content: m.content })),
-          image_count: imageCount,
-          image_aspect: imageAspect,
-        }),
-      })
-      const data = (await res.json()) as {
-        reply?: string
-        images?: string[]
-        error?: string
-      }
-      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
+    await runCompletion(text, history)
+  }, [input, sending, messages, runCompletion])
 
-      let reply = (data.reply ?? '').trim() || '(empty reply)'
-      const images = extractImageUrls(reply, data.images)
-      for (const url of images) {
-        if (!reply.includes(url)) reply = `${reply}\n\n![photo](${url})`
+  /**
+   * Redo: drop this assistant bubble (and everything after), re-run from the
+   * preceding user message. Server rewinds decoder window / conversation log.
+   */
+  const handleRedo = useCallback(
+    async (messageId: string) => {
+      if (sending) return
+      const idx = messages.findIndex((m) => m.id === messageId)
+      if (idx < 0) return
+      const target = messages[idx]
+      if (target.role !== 'assistant') return
+
+      let userIdx = -1
+      for (let i = idx - 1; i >= 0; i--) {
+        if (messages[i].role === 'user') {
+          userIdx = i
+          break
+        }
+      }
+      if (userIdx < 0) {
+        setError('Nothing to regenerate from')
+        return
       }
 
-      const captured = hasMindContent(mindRef.current)
-        ? snapshotMind(mindRef.current)
-        : undefined
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `a-${Date.now()}`,
-          role: 'assistant',
-          content: reply,
-          images: images.length ? images : undefined,
-          mind: captured,
-        },
-      ])
-      setMind(EMPTY_TURN_MIND)
-      mindRef.current = EMPTY_TURN_MIND
-    } catch (e) {
-      // Keep partial mind as an orphaned note on a synthetic error-adjacent message?
-      // Prefer: leave mind visible until clear — attach to empty assistant if we have content.
-      const captured = hasMindContent(mindRef.current)
-        ? snapshotMind(mindRef.current)
-        : undefined
-      if (captured) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `a-err-${Date.now()}`,
-            role: 'assistant',
-            content: '(no reply — see mind above)',
-            mind: captured,
-          },
-        ])
-      }
-      setError(e instanceof Error ? e.message : 'Send failed')
-      setMind(EMPTY_TURN_MIND)
-      mindRef.current = EMPTY_TURN_MIND
-    } finally {
-      setSending(false)
-      sendingRef.current = false
-      textareaRef.current?.focus()
-    }
-  }, [input, sending, messages, imageCount, imageAspect])
+      const userText = messages[userIdx].content
+      const history = messages.slice(0, userIdx)
+      // Keep user bubble; drop failed/stale assistant and any later messages
+      setMessages(messages.slice(0, idx))
+      await runCompletion(userText, history, { redo: true })
+    },
+    [sending, messages, runCompletion],
+  )
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -440,7 +494,7 @@ export function ChatApp() {
                     )
                   }
 
-                  // Assistant turn: mind (collapsible) + reply
+                  // Assistant turn: mind (collapsible) + reply + redo
                   return (
                     <div key={m.id} className="assistant-turn space-y-2">
                       {hasMindContent(m.mind) && m.mind && (
@@ -453,9 +507,28 @@ export function ChatApp() {
                         />
                       )}
                       <div className="msg-row msg-row-assistant">
-                        <div className="msg msg-assistant">
-                          <div className="msg-label">Mina</div>
-                          {renderMessageBody(m.content, m.images)}
+                        <div className="msg-assistant-wrap">
+                          <div className="msg msg-assistant">
+                            <div className="msg-label">Mina</div>
+                            {renderMessageBody(m.content, m.images)}
+                          </div>
+                          {!sending && (
+                            <div className="msg-actions">
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm msg-action-btn"
+                                onClick={() => void handleRedo(m.id)}
+                                title="Redo response"
+                                aria-label="Redo response"
+                              >
+                                <RotateCcw
+                                  className="msg-action-icon"
+                                  aria-hidden
+                                />
+                                Redo
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

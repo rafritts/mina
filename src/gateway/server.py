@@ -250,9 +250,24 @@ async def chat_completions(request: Request):
     raw_aspect = body.get("image_aspect", "square")
     image_aspect = raw_aspect if raw_aspect in ("landscape", "square", "portrait") else "square"
 
-    log("GATEWAY", f"Received: {user_msg[:80]} (photos={image_count} aspect={image_aspect})")
+    redo = bool(body.get("redo"))
+    log(
+        "GATEWAY",
+        f"Received: {user_msg[:80]} (photos={image_count} aspect={image_aspect}"
+        f"{', redo' if redo else ''})",
+    )
 
-    from src.brain.pipeline import run_turn
+    from src.brain.pipeline import rewind_for_redo, run_turn
+    if redo:
+        try:
+            rewind_for_redo(user_msg)
+        except Exception as e:
+            log("GATEWAY/ERR", f"redo rewind failed: {e}")
+            return JSONResponse(
+                status_code=500,
+                content={"error": f"Redo rewind failed: {e}"},
+            )
+
     try:
         result = await run_turn(
             user_msg,

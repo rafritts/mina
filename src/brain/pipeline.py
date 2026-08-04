@@ -97,6 +97,68 @@ def _append_conversation(role: str, content) -> None:
         f.write(json.dumps({"role": role, "content": content, "ts": time.time()}) + "\n")
 
 
+def rewind_for_redo(user_message: str) -> dict:
+    """
+    Drop the trailing turn so redo can re-run without duplicating the user message.
+
+    Pops a trailing assistant (if present), then a trailing user whose content
+    matches user_message, from decoder_window and today's conversation log.
+    Safe no-op when nothing matches (e.g. failed mouth before window save).
+    """
+    target = (user_message or "").strip()
+    popped_window: list[str] = []
+    window = _load_decoder_window()
+    if window and window[-1].get("role") == "assistant":
+        window.pop()
+        popped_window.append("assistant")
+    if (
+        window
+        and window[-1].get("role") == "user"
+        and (window[-1].get("content") or "").strip() == target
+    ):
+        window.pop()
+        popped_window.append("user")
+    if popped_window:
+        _save_decoder_window(window)
+
+    popped_log: list[str] = []
+    path = get_conversation_file()
+    try:
+        with open(path) as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        lines = []
+    rows: list[dict] = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    if rows and rows[-1].get("role") == "assistant":
+        rows.pop()
+        popped_log.append("assistant")
+    if (
+        rows
+        and rows[-1].get("role") == "user"
+        and (rows[-1].get("content") or "").strip() == target
+    ):
+        rows.pop()
+        popped_log.append("user")
+    if popped_log:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            for row in rows:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+    result = {"window": popped_window, "conversation": popped_log}
+    if popped_window or popped_log:
+        log("PIPELINE", f"redo rewind: window={popped_window} conversation={popped_log}")
+    return result
+
+
 def _load_prior_emotional_state() -> dict | None:
     path = os.path.join(RUN_DIR, "prior_emotional_state.json")
     try:

@@ -15,6 +15,7 @@ const BACKEND_PORT = Number(process.env.MINA_BACKEND_PORT ?? '5100')
  *   history?: { role: string; content: string }[]
  *   image_count?: "auto" | 0 | 1..5
  *   image_aspect?: "landscape" | "square" | "portrait"
+ *   redo?: boolean — drop trailing matching turn server-side before re-running
  * }
  */
 export async function POST(request: NextRequest) {
@@ -23,6 +24,7 @@ export async function POST(request: NextRequest) {
     history?: { role: string; content: string }[]
     image_count?: string | number
     image_aspect?: string
+    redo?: boolean
   }
   try {
     body = await request.json()
@@ -47,6 +49,7 @@ export async function POST(request: NextRequest) {
     stream: false,
     image_count: body.image_count ?? 'auto',
     image_aspect: body.image_aspect ?? 'square',
+    redo: Boolean(body.redo),
   })
 
   try {
