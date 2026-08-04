@@ -300,10 +300,15 @@ export function ThoughtStream({
   const panelId = useId()
   const [open, setOpen] = useState(defaultOpen || live)
 
-  // Live always open; if defaultOpen flips for newest, open once
+  // Live always expanded. Archived: only the current "last" stays open by default;
+  // when a newer turn takes that role, older minds auto-collapse.
   useEffect(() => {
-    if (live) setOpen(true)
-  }, [live])
+    if (live) {
+      setOpen(true)
+      return
+    }
+    setOpen(defaultOpen)
+  }, [live, defaultOpen])
 
   if (collapsible && !live) {
     return (

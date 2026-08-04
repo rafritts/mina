@@ -369,7 +369,8 @@ export function ChatApp() {
 
   const status = sending ? 'busy' : connected ? 'live' : 'off'
 
-  // Newest assistant message with mind opens by default once
+  // Newest archived mind is open; all older ones stay collapsed.
+  // While a turn is in flight, the live stream is the open mind — collapse archives.
   const lastAssistantWithMindId = [...messages]
     .reverse()
     .find((m) => m.role === 'assistant' && hasMindContent(m.mind))?.id
@@ -446,7 +447,9 @@ export function ChatApp() {
                         <ThoughtStream
                           mind={m.mind}
                           collapsible
-                          defaultOpen={m.id === lastAssistantWithMindId}
+                          defaultOpen={
+                            !sending && m.id === lastAssistantWithMindId
+                          }
                         />
                       )}
                       <div className="msg-row msg-row-assistant">
