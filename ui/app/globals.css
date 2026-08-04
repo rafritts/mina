@@ -613,12 +613,26 @@ body {
   overflow: hidden;
   animation: rise 0.35s ease both;
 }
+.mind-archived {
+  animation: none;
+}
 .mind-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.75rem;
   padding: 0.625rem 1rem;
   border-bottom: 1px solid var(--border-subtle);
+}
+.mind-toggle {
+  border-bottom: none;
+  transition: background 0.12s ease;
+}
+.mind-toggle:hover {
+  background: var(--surface) !important;
+}
+.assistant-turn {
+  width: 100%;
 }
 .mind-body {
   padding: 1rem;

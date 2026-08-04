@@ -36,6 +36,8 @@ interface ChatMessage {
   role: Role
   content: string
   images?: string[]
+  /** Pillar thought process captured for this turn (assistant only). */
+  mind?: TurnMind
 }
 
 const STORAGE_KEY = 'mina-chat-messages'
@@ -116,6 +118,26 @@ function renderMessageBody(content: string, images?: string[]) {
   return nodes
 }
 
+function hasMindContent(mind: TurnMind | undefined): boolean {
+  if (!mind) return false
+  return Boolean(
+    mind.emotion ||
+      mind.context ||
+      mind.reasoning ||
+      mind.memory.length > 0 ||
+      mind.active,
+  )
+}
+
+function snapshotMind(mind: TurnMind): TurnMind {
+  return {
+    ...mind,
+    active: true,
+    completed: true,
+    memory: [...mind.memory],
+  }
+}
+
 function loadMessages(): ChatMessage[] {
   if (typeof window === 'undefined') return []
   try {
@@ -132,7 +154,7 @@ function saveMessages(msgs: ChatMessage[]) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs))
   } catch {
-    /* ignore */
+    /* ignore quota */
   }
 }
 
@@ -146,12 +168,11 @@ export function ChatApp() {
   const [imageAspect, setImageAspect] = useState<ImageAspect>(IMAGE_ASPECT_DEFAULT)
   const [controlOpen, setControlOpen] = useState(true)
   const [mind, setMind] = useState<TurnMind>(EMPTY_TURN_MIND)
-  const [lastMind, setLastMind] = useState<TurnMind | null>(null)
-  const [showLastMind, setShowLastMind] = useState(false)
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const sendingRef = useRef(false)
+  const mindRef = useRef<TurnMind>(EMPTY_TURN_MIND)
 
   const onStreamEvent = useCallback((event: StreamEvent) => {
     if (!sendingRef.current) return
@@ -166,7 +187,11 @@ export function ChatApp() {
       event.type === 'response_complete' ||
       event.type === 'encoder'
     ) {
-      setMind((prev) => reduceTurnMind(prev, event))
+      setMind((prev) => {
+        const next = reduceTurnMind(prev, event)
+        mindRef.current = next
+        return next
+      })
     }
   }, [])
 
@@ -214,15 +239,14 @@ export function ChatApp() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, sending, mind, showLastMind])
+  }, [messages, sending, mind])
 
   useEffect(() => {
     const onErase = () => {
       setMessages([])
       saveMessages([])
       setMind(EMPTY_TURN_MIND)
-      setLastMind(null)
-      setShowLastMind(false)
+      mindRef.current = EMPTY_TURN_MIND
     }
     window.addEventListener('mina:erase-chat', onErase)
     return () => window.removeEventListener('mina:erase-chat', onErase)
@@ -244,8 +268,7 @@ export function ChatApp() {
     sendingRef.current = true
     setError(null)
     setMind(EMPTY_TURN_MIND)
-    setShowLastMind(false)
-    setLastMind(null)
+    mindRef.current = EMPTY_TURN_MIND
 
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
@@ -275,6 +298,10 @@ export function ChatApp() {
         if (!reply.includes(url)) reply = `${reply}\n\n![photo](${url})`
       }
 
+      const captured = hasMindContent(mindRef.current)
+        ? snapshotMind(mindRef.current)
+        : undefined
+
       setMessages((prev) => [
         ...prev,
         {
@@ -282,18 +309,31 @@ export function ChatApp() {
           role: 'assistant',
           content: reply,
           images: images.length ? images : undefined,
+          mind: captured,
         },
       ])
-      setMind((prev) => {
-        if (prev.active) setLastMind({ ...prev, completed: true })
-        return EMPTY_TURN_MIND
-      })
+      setMind(EMPTY_TURN_MIND)
+      mindRef.current = EMPTY_TURN_MIND
     } catch (e) {
+      // Keep partial mind as an orphaned note on a synthetic error-adjacent message?
+      // Prefer: leave mind visible until clear — attach to empty assistant if we have content.
+      const captured = hasMindContent(mindRef.current)
+        ? snapshotMind(mindRef.current)
+        : undefined
+      if (captured) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `a-err-${Date.now()}`,
+            role: 'assistant',
+            content: '(no reply — see mind above)',
+            mind: captured,
+          },
+        ])
+      }
       setError(e instanceof Error ? e.message : 'Send failed')
-      setMind((prev) => {
-        if (prev.active) setLastMind(prev)
-        return EMPTY_TURN_MIND
-      })
+      setMind(EMPTY_TURN_MIND)
+      mindRef.current = EMPTY_TURN_MIND
     } finally {
       setSending(false)
       sendingRef.current = false
@@ -319,24 +359,20 @@ export function ChatApp() {
     if (sending) return
     setMessages([])
     setError(null)
-    setLastMind(null)
-    setShowLastMind(false)
+    setMind(EMPTY_TURN_MIND)
+    mindRef.current = EMPTY_TURN_MIND
     saveMessages([])
   }
 
   const status = sending ? 'busy' : connected ? 'live' : 'off'
 
+  // Newest assistant message with mind opens by default once
+  const lastAssistantWithMindId = [...messages]
+    .reverse()
+    .find((m) => m.role === 'assistant' && hasMindContent(m.mind))?.id
+
   const headerActions = (
     <>
-      {lastMind && !sending && (
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm hidden sm:inline-flex"
-          onClick={() => setShowLastMind((v) => !v)}
-        >
-          {showLastMind ? 'Hide mind' : 'Last mind'}
-        </button>
-      )}
       <button
         type="button"
         className="btn btn-ghost btn-sm"
@@ -349,7 +385,6 @@ export function ChatApp() {
         type="button"
         className="btn btn-soft btn-sm"
         onClick={() => setControlOpen((o) => !o)}
-        data-active={controlOpen}
         style={
           controlOpen
             ? {
@@ -370,60 +405,72 @@ export function ChatApp() {
       <AppHeader status={status} actions={headerActions} />
 
       <div className="app-body">
-        {/* Experience */}
         <section className="flex flex-1 min-w-0 flex-col">
           <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-5">
-            <div className="mx-auto max-w-2xl space-y-4">
+            <div className="mx-auto max-w-2xl space-y-5">
               {!hydrated ? null : messages.length === 0 && !sending ? (
                 <div className="empty">
                   <div className="empty-mark">M</div>
                   <h1 className="empty-title">Say something real.</h1>
                   <p className="empty-desc">
-                    Each message runs chemistry, feeling, memory, and strategy
-                    before she answers. Watch her mind assemble on the way.
+                    Each reply keeps the mind that made it — open any turn to see
+                    feeling, memory, and strategy again.
                   </p>
                 </div>
               ) : (
-                messages.map((m) => (
-                  <div
-                    key={m.id}
-                    className={`msg-row ${m.role === 'user' ? 'msg-row-user' : 'msg-row-assistant'}`}
-                  >
-                    <div
-                      className={`msg ${m.role === 'user' ? 'msg-user' : 'msg-assistant'}`}
-                    >
-                      {m.role === 'assistant' && (
-                        <div className="msg-label">Mina</div>
+                messages.map((m) => {
+                  if (m.role === 'user') {
+                    return (
+                      <div key={m.id} className="msg-row msg-row-user">
+                        <div className="msg msg-user">
+                          {renderMessageBody(m.content, m.images)}
+                        </div>
+                      </div>
+                    )
+                  }
+
+                  // Assistant turn: mind (collapsible) + reply
+                  return (
+                    <div key={m.id} className="assistant-turn space-y-2">
+                      {hasMindContent(m.mind) && m.mind && (
+                        <ThoughtStream
+                          mind={m.mind}
+                          collapsible
+                          defaultOpen={m.id === lastAssistantWithMindId}
+                        />
                       )}
-                      {renderMessageBody(m.content, m.images)}
+                      <div className="msg-row msg-row-assistant">
+                        <div className="msg msg-assistant">
+                          <div className="msg-label">Mina</div>
+                          {renderMessageBody(m.content, m.images)}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  )
+                })
               )}
 
-              {sending && mind.active && (
-                <div className="pt-1">
-                  <ThoughtStream mind={mind} />
-                </div>
-              )}
-
-              {sending && !mind.active && (
-                <div className="msg-row msg-row-assistant">
-                  <div className="msg msg-assistant flex items-center gap-2 text-xs mono text-muted">
-                    <span className="status-pill" data-tone="busy">
-                      <span className="dot dot-pulse" />
-                      Starting
-                    </span>
-                    Running pipeline…
-                  </div>
-                </div>
-              )}
-
-              {!sending && showLastMind && lastMind && (
-                <div className="pt-1 opacity-95">
-                  <ThoughtStream
-                    mind={{ ...lastMind, active: true, completed: true }}
-                  />
+              {/* Live mind while pipeline runs — becomes the message mind when reply lands */}
+              {sending && (
+                <div className="assistant-turn space-y-2">
+                  {mind.active || hasMindContent(mind) ? (
+                    <ThoughtStream mind={mind} live />
+                  ) : (
+                    <div className="mind">
+                      <div className="mind-head">
+                        <span className="status-pill" data-tone="busy">
+                          <span className="dot dot-pulse" />
+                          Starting
+                        </span>
+                        <span className="label">Live</span>
+                      </div>
+                      <div className="mind-body">
+                        <p className="m-0 text-center text-[12px] mono text-faint py-1">
+                          Pipeline starting…
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -481,7 +528,6 @@ export function ChatApp() {
           </div>
         </section>
 
-        {/* Control — desktop */}
         {controlOpen && (
           <div className="hidden lg:flex h-full shrink-0">
             <ControlPane streamConnected={connected} />
@@ -489,7 +535,6 @@ export function ChatApp() {
         )}
       </div>
 
-      {/* Control — mobile / tablet drawer */}
       {controlOpen && (
         <div className="lg:hidden control-drawer-backdrop">
           <button
