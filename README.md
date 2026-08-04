@@ -178,16 +178,16 @@ The effects of discretionary actions are determined by the subconscious, not pre
 
 ---
 
-## Dashboard
+## UI
 
-The web dashboard (`http://localhost:7843`) has four sections:
+The product UI (Next.js, default `http://localhost:2050`) is one shell:
 
-| Route | What it shows |
-|-------|--------------|
-| `/state` | Live view of all 50+ biological markers across 6 tiers — bar charts, physiological labels (e.g. CALM / ELEVATED / SEVERE), normalized 0–1 display with real unit hover |
-| `/control` | State presets, manual chemical adjustment, heartbeat trigger, HPA cascade visualization |
-| `/substances` | Dosing interface for pharmacokinetic substances (alcohol, caffeine, etc.) |
-| `/events` | Encoder event log — shows what stimuli fired, what deltas were applied, and when |
+| Route | What it is |
+|-------|------------|
+| `/` | **Chat** — conversation plus live mind stream; **Control** panel for presence, chemistry, presets, and tools |
+| `/admin` | **Lab** — instrumentation: overview, full chemistry editors, context assembly, history charts, events, system |
+
+Control for mental state lives next to chat. Lab is the same design system, for deeper inspection.
 
 ---
 
