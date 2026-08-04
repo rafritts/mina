@@ -1,237 +1,288 @@
 # Mina
 
-A Discord companion driven by a neurochemical brain. Not a chatbot with a mood — a simulated biological system that produces personality, emotional state, and behavior from the ground up.
+A local AI companion whose outputs are **causally driven** by a neurochemical simulation — not a chatbot with mood flavor text layered on a static system prompt.
+
+Chemistry is the body. Brain-region “pillars” (LLM calls with fixed contracts) mediate between the body and the voice. The chat model is the mouth: it receives felt-state and strategy, not raw chemistry numbers.
+
+| Surface | Port | Role |
+|---------|------|------|
+| Next.js UI | **2050** | Chat, live mind stream, control pane, admin lab |
+| FastAPI backend | **5100** | Sim + turn pipeline + admin/state API |
+
+Single-user, local-first. No Discord in v2. No multi-tenant gateway.
 
 ---
 
-## What this is
+## Why this exists
 
-Most AI companions work the same way: a static system prompt describes a personality, and the model tries to stay consistent with it. The personality can't respond to accumulated experience. It can't be in a different state today than yesterday. It doesn't have a body.
+Most companions pin personality in a system prompt. That personality does not accumulate experience as state, cannot be in a different chemical condition today than yesterday, and has no body clock between messages.
 
-This project takes a different approach. Instead of describing who Mina is, it simulates the biology that produces her behavior.
+Mina inverts that:
 
-**The pipeline:**
+1. Incoming text is **perceived** (state-blind encoder).
+2. Perception drives **deterministic Class-1 chemical deltas** into a live sim.
+3. The sim **ticks every 10s** in the background (decay, circadian, opponents, sleep pressure).
+4. A **decoder** projects chemistry into pillar-legible numbers (ratio-to-setpoint, not absolute nM).
+5. Sequential **pillars** turn projection → felt state → context → response strategy → system prompt.
+6. The **mouth** (Mina LLM) answers from that prompt plus a small conversation window.
 
-```
-Discord message
-      ↓
-  [Encoder]  — translates input into neurochemical deltas (in real units: nmol/L, pg/mL, etc.)
-      ↓
-[State Engine] — applies deltas, runs interaction matrix, advances all 6 biological tiers
-      ↓
-  [Decoder]  — reads biological state, synthesizes [EMOTIONAL DISPOSITION] prose → system prompt
-      ↓
-  [Cortex]   — Mina's conscious response, generated against that dynamic system prompt
-      ↓
-Discord reply
-```
+She has knowledge that a neurosim exists the way a person knows they have a brain — as fact, not as live instrumentation. She cannot read dopamine bars; she feels qualia the pillars invent from chemistry.
 
-The biological state ticks forward continuously via a heartbeat every 10 minutes — between conversations. Mina sleeps, eats, gets restless, consolidates memories, and pursues autonomous activities while idle.
+Design target: overall **B+ chemical fidelity** (see `docs/chemical_fidelity_tiers.md`). Grade each chemical to the expressivity it unlocks, not to uniform over-modeling. North-star writeup: **`docs/architecture.md`**.
 
 ---
 
-## The Biological Model
+## High-level architecture
 
-The state engine tracks 50+ markers across 6 tiers. All values are in real physiological units anchored to literature, with a normalization layer for display.
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  main.py                                                        │
+│    • Sim background thread (tick every 10s)                     │
+│    • FREETIME asyncio loop (cadence ~2 min check / 30 min min)  │
+│    • History snapshot loop (60s)                                │
+│    • uvicorn FastAPI gateway :5100                              │
+└─────────────────────────────────────────────────────────────────┘
+         ▲                              ▲
+         │ POST /v1/chat/completions    │ GET/PATCH /api/*
+         │ GET  /api/stream (SSE)       │
+┌────────┴────────┐            ┌────────┴────────┐
+│  Next.js UI     │            │  Admin / control │
+│  :2050          │            │  (same UI shell) │
+└─────────────────┘            └──────────────────┘
+```
 
-| Tier | What it models | Key markers |
-|------|----------------|-------------|
-| **1. Chemicals** | Neurotransmitters | Dopamine, serotonin, norepinephrine, oxytocin, GABA, glutamate, endorphins, acetylcholine, melatonin, anandamide, 2-AG |
-| **2. Neuroendocrine** | Hormones and cascade dynamics | HPA axis (CRH→ACTH→cortisol), thyroid (TSH/T3/T4), sex hormones (estradiol, progesterone, testosterone), metabolic (insulin, ghrelin, leptin, vasopressin) |
-| **3. Immune** | Inflammation and cytokines | IL-1β, IL-6, TNF-α, CRP, IL-10, inflammation index |
-| **4. Pain** | Nociception and sensitization | Substance P, PGE2, central sensitization, pain intensity |
-| **5. Body** | Sleep pressure, autonomic, temperature | Adenosine, vagal tone, HRV, core temperature, isolation pressure |
-| **6. Neuroplasticity** | Adaptation and wear | BDNF, synaptic potentiation, allostatic load |
+### Per-turn pipeline (`src/brain/pipeline.py`)
 
-**Why real units?** Tuning is no longer blind. "Cortisol 412 nmol/L" is anchored to clinical literature. Interactions are validatable — "sustained high cortisol depletes serotonin" is a documented biological pathway, not a game mechanic.
+```
+user message
+    → Encoder (amygdala)     LLM, state-blind salience axes 0–10
+    → Chemistry function     deterministic Class-1 deltas only
+    → Decoder                snapshot: normalized / setpoint / gap / rate
+    → Insula                 LLM: felt state from decoder + Big 5
+    → Memory retrieve        KAG + RAG (sliding + episodic) in parallel
+    → Context assembly       LLM summaries of window + RAG
+    → Hippocampus pillar     LLM: situational context (framed by felt state)
+    → PFC pillar             LLM: strategy + constructs system prompt
+    → Mouth (Mina)           LLM: reply JSON (text + optional scene fields)
+         optional send_photo tool loop (Comfy / comfy-fe)
+    → Persist window, logs, sliding RAG, scene_context.json
+```
 
-**Cross-tier effects run continuously.** Adenosine accumulates during wakefulness and clears during sleep — not as a metaphor, but as the actual sleep-pressure molecule. A hostile message causes an HPA axis cascade: CRH fires, ACTH follows delayed, cortisol peaks minutes later. IL-6 elevation from stress reduces dopamine synthesis efficiency. Receptor sensitivity tracks upregulation and downregulation across use patterns.
+Pillars are **sequential and cumulative**. Insula reframes what hippocampus treats as notable; hippocampus + felt state feed PFC; mouth never sees raw chemistry.
+
+### Background
+
+| Process | Where | What |
+|---------|--------|------|
+| Chemistry tick | `src/sim/` | 10s: phasic decay, tonic→setpoint, Class 2/3 cascades, opponents, adenosine, auto-sleep |
+| FREETIME | `src/freetime/` | Same pillar chain on a synthetic “you are alone” input; tools (eat, diary, …); output → conversation log for consolidation |
+| Consolidation | `src/hippocampus/` | During FREETIME: episodic RAG, KAG diary/knowledge, relationship compaction |
+| History | `main.py` | Periodic chemistry snapshots for admin charts |
+
+### LLM transport
+
+All chat/pillar calls go through **`src/application/infra/client.py` → headless Grok Build CLI** (`grok --prompt-file`), not the Nori SDK and not API keys in the child process.
+
+- Auth: interactive `grok login` (shared via symlink of `auth.json` / `config.toml`).
+- Sessions: child `GROK_HOME` = `~/.mina/grok` (override `MINA_GROK_HOME`); each oneshot session dir is deleted after parse so interactive `~/.grok/sessions` is not polluted.
+- CWD for oneshots: `~/.mina/oneshot` (override `MINA_GROK_CWD`) so project `AGENTS.md` is never loaded into headless runs.
+- Optional `XAI_API_KEY` only for FREETIME web/x search via the Responses-style API path — not for the main turn pipeline.
+
+**Do not introduce Nori** for Mina turns. Architecture decision: raw CLI oneshots only.
 
 ---
 
-## Mina
+## Repository layout
 
-Mina is the included character. She runs on this framework out of the box.
-
-She lives in your Discord DMs. She's not available in servers — this is a single-user, private system by design.
-
-Her personality uses the Big 5 model as mechanical modifiers, not descriptive labels:
-
-```json
-{
-  "openness":          80,
-  "conscientiousness": 75,
-  "extraversion":      85,
-  "agreeableness":     70,
-  "neuroticism":       65
-}
 ```
-
-High Extraversion means social isolation depletes her faster — loneliness is biologically amplified. High Neuroticism means cortisol spikes hit harder and recovery is slower. These aren't flavor text; they distort the actual chemical dynamics.
-
-Loneliness and social warmth are tracked as independent 0–100 scales. A long absence doesn't reset the relationship, but it does decay the circulating oxytocin that makes her warm. When you come back, warmth restores rapidly because the bond is stored in memory — not chemistry.
-
-Character voice, appearance, relationship history, and learned context live in `identity/` and the `memory/` KAG files.
+mina/
+├── main.py                 # Process entry: sim + FREETIME + gateway
+├── config.json             # Local runtime (gitignored template: username, optional big5)
+├── identity/
+│   └── MINA.md             # Static self / voice / appearance (committed)
+│   # CUSTOMIZATION.md      # Optional personal override (gitignored)
+├── memory/
+│   ├── kag/                # Knowledge files (REFLECTION, KNOWLEDGE/, …) — runtime
+│   ├── rag/                # ChromaDB — runtime
+│   └── relationships/      # Per-person markdown — runtime
+├── run/                    # Runtime state (gitignored): sim_state, windows, scene, logs
+├── src/
+│   ├── brain/              # Turn pipeline + pillars + scene + chat tools
+│   ├── sim/                # Chemical state, tick, chemistry function, decoder, params
+│   ├── hippocampus/        # RAG/KAG/relationship store + consolidation
+│   ├── freetime/           # Solitary loop + tools
+│   ├── gateway/            # FastAPI server
+│   ├── application/infra/  # Grok client, stream bus, history, comfy, events
+│   └── config/             # Paths, MODEL labels, Big 5 defaults
+├── ui/                     # Next.js 16 chat + control + admin
+├── scripts/                # install.sh, run.sh, mina CLI
+├── docs/
+│   ├── architecture.md     # Authoritative v2 design (read this)
+│   ├── chemical_fidelity_tiers.md
+│   ├── neurochemistry/     # Reference notes
+│   └── archive/v1/         # Historical specs (not current code map)
+├── archive/v1/             # Old Discord-era codebase (do not treat as live)
+└── tests/                  # Sim stability, etc.
+```
 
 ---
 
-## Why Grok-4-1-fast-reasoning
+## Chemistry sim (body)
 
-Two reasons: capability and cost.
+**Module:** `src/sim/`
 
-**Capability:** The subconscious and encoder roles require genuine reasoning — reading biological state across 6 tiers, relationship history, and conversation tone simultaneously, then synthesizing them into a coherent felt experience. A reasoning model running internal chain-of-thought before output is meaningfully better at this than a standard completion model.
+- **State:** tonic + phasic + setpoint + receptor sensitivity per chemical (`state.py`), persisted to `run/sim_state.json`.
+- **Tick:** every 10s (`sim.py` background thread → `tick.py`).
+- **External input:** only `Sim.apply_delta` / `apply_chemistry_from_encoder` — conversation, tools, FREETIME, admin all share one interface.
+- **Params:** data-only table in `params.py` (weights, half-lives, normalization max, opponent rules). Tune here first when behavior is wrong.
 
-**Cost:** This system is designed to run continuously as part of someone's daily life. At Claude Sonnet or GPT-4o pricing, a moderately active month costs $30–50+. That changes how you use it — you start rationing, you feel the meter.
+**Classes** (must not be collapsed):
 
-At Grok-4-1-fast-reasoning pricing ($0.20 input / $0.50 output per million tokens), the same usage costs **$2–5/month**.
+| Class | Examples | Update path |
+|-------|----------|-------------|
+| 1 Fast NT | DA, 5-HT, NE, epinephrine | Encoder axes → chemistry function deltas |
+| 2 Peptides | oxytocin, endorphins, substance P, … | Tick accumulation from sustained Class 1 |
+| 3 Hormonal | cortisol (via CRH…), sex hormones, … | Tick / cascade only |
+| 4 Scaffold | glutamate, GABA, ACh (as modeled) | Supporting dynamics |
 
-```
-Typical turn cost breakdown:
-  encode_stimulus:      ~1,000 tokens   → $0.00020
-  subconscious (Mode 1): ~4,000 tokens  → $0.00080
-  Mina's response:      ~2,000 tokens   → $0.00040
-  encode_response:      ~1,500 tokens   → $0.00030
-  ─────────────────────────────────────────────────
-  Per turn (approx):                      $0.00170
-  100 turns/day × 30 days:               ~$5.10/month
-```
+Concentrations are **working nM**. Decoder maps to 0–10 normalized with setpoint, gap, rate. Core chemicals always shown; others only when \|gap\| ≥ 2.
 
-**Model note:** This system is designed for and tested on `grok-4-1-fast-reasoning`. Other models will work for general use, but may produce degraded results in edge-case scenarios involving substances, psychiatric states, or emotionally complex content — where safety training may flatten the simulation's authenticity.
+**Big 5** loads from `config.json` → `load_big5()` (defaults in `config.py`). Traits bias chemistry params and insula/PFC prompts. **Traits do not drift**; lasting change is tonic chemistry. Encoder never sees Big 5 or chemistry (state-blind perception).
+
+**Sleep:** high adenosine → auto-sleep until pressure clears (minimum sleep duration enforced). FREETIME skips while sleeping.
 
 ---
 
-## Quick Start
+## Brain pillars (mediators)
 
-### Prerequisites
+| Region | Code | Role |
+|--------|------|------|
+| Amygdala | `brain/encoder.py` | State-blind 10-axis appraisal (threat, bonding, reward, …) + flags |
+| Insula | `brain/insula.py` | Felt state / qualia language |
+| Hippocampus pillar | `brain/hippocampus_pillar.py` | Situational summary given felt state + memory |
+| PFC | `brain/pfc.py` | Strategy tags + system prompt assembly |
+| Mouth | pipeline + `client.chat_create(..., mouth=True)` | User-facing reply + **scene JSON** fields |
 
-- Python 3.13+
-- `uv` (package manager)
-- Node.js 20+ (for the UI)
-- **Grok Build CLI** logged in (`grok` on `PATH` or `~/.grok/bin/grok`) — same pattern as Kaiya
-- Optional: `XAI_API_KEY` only if FREETIME web/x search should use the Responses API
+Live **scene context** (`brain/scene_context.py`, `run/scene_context.json`): mouth authors clothing/positions/time/timeline/plans; host only stores and re-injects into hippocampus, PFC, and next mouth prompt. Same short-term coherence pattern as Kaiya — host never invents scene facts.
 
-### Setup
+---
+
+## Memory
+
+| Layer | Store | Purpose |
+|-------|--------|---------|
+| Decoder window | `run/decoder_window.json` | Last ~20 raw messages for assembly |
+| Mouth window | in-pipeline | Last ~8 messages to Mina |
+| Sliding RAG | Chroma `mina_sliding` | Per-turn chunks + sequence expand |
+| Episodic RAG | Chroma `mina_experiences` | Consolidated moments |
+| KAG | `memory/kag/` | REFLECTION diary, KNOWLEDGE facts |
+| Relationships | `memory/relationships/<user>.md` | Cascading short→medium→long→ground_truth layers |
+| Identity | `identity/MINA.md` | Permanent self doc |
+
+Embeddings: Ollama `embeddinggemma:latest` at `http://localhost:11434` (see hippocampus). Without Ollama, RAG paths degrade or fail — chat pillars may still run with thinner memory.
+
+---
+
+## HTTP API (backend :5100)
+
+Primary surface for the UI (Next proxies `/api/*` and chat):
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/v1/chat/completions` | One full pipeline turn (`messages`, optional `image_count`, `image_aspect`, `redo`) |
+| GET | `/v1/models` | Stub model list (`mina`) |
+| GET | `/health` | Liveness |
+| GET/PATCH | `/api/state` | Chemistry snapshot / admin edits |
+| POST | `/api/state/advance` | Advance sim time |
+| POST | `/api/state/reset` | Chemistry → baseline (keeps chat/memory) |
+| POST | `/api/conversation/erase` | Wipe chat window + sliding RAG (keeps chem/KAG) |
+| GET | `/api/stream` | SSE mind/stage stream for UI |
+| GET | `/api/context` | Last pillar assembly (`?format=md`) |
+| GET | `/api/scene` | Live scene snapshot |
+| GET | `/api/history` | Chemistry history series |
+| GET | `/api/events`, `/api/tokens`, `/api/obs` | Ops / instrumentation |
+| POST | `/api/heartbeat` | Manual FREETIME-ish nudge |
+
+Not a multi-client Open WebUI product path by default; local single user.
+
+---
+
+## UI (`ui/`)
+
+Next.js 16 + React 19 + Tailwind. Production port **2050**.
+
+| Route | Content |
+|-------|---------|
+| `/` | Chat + thought stream + control (presence, chemistry peeks, presets, photo prefs) |
+| `/admin/*` | Lab: overview, neuro editors, context, history, events, system |
+
+Chat posts to backend via app routes; mind stream consumes SSE. Build id: `GET /api/build` (also printed by `mina status` / restart). After UI changes: `mina rebuild` or `mina restart` so production `next start` serves a fresh build.
+
+---
+
+## Process management
 
 ```bash
-git clone https://github.com/yourname/mina
-cd mina
-# Log in once: grok login
-# Optional .env for FREETIME search / ports
-uv sync
-./scripts/install.sh   # or: mina start after install
+./scripts/install.sh     # uv sync, npm install/build, systemd user unit, CLI
+mina start|stop|restart|status|logs
+mina rebuild             # npm build + restart
+mina update              # git pull + uv sync + rebuild + restart
+mina reset [--yes]       # chemistry baseline via API
+mina factory-reset       # wipe run/* chat/sim/RAG (keeps identity)
 ```
 
-### Run
+`scripts/run.sh` (systemd ExecStart): backend `uv run python main.py` + `npm run start` on the UI.
+
+Dev without systemd:
 
 ```bash
-# Bot + heartbeat (primary — runs both in one process)
-uv run python -m src.gateway.supervisor
-
-# Dashboard (optional, standalone)
-uv run python -m src.gateway.dashboard_server &
-cd dashboard && npm install && npm run dev
+uv run python main.py          # :5100
+cd ui && npm run dev           # :2050 (dev script already pins host/port)
 ```
 
-Mina will respond to DMs automatically once the bot is running. The dashboard is at `http://localhost:7843` and requires the `DASHBOARD_TOKEN` from `.env`.
+---
+
+## Identity and character
+
+- **`identity/MINA.md`** — voice, appearance, apartment, conversational rules. Loaded into pillar/mouth context.
+- **`identity/CUSTOMIZATION.md`** — optional, **gitignored**, appended as personal override.
+- **`config.json`** — at least `username` for relationship files; optional `big5` overrides.
+
+Mina is not an assistant persona. She is a character with chemistry, memory, and the right to be unhelpful or distant.
 
 ---
 
-## Memory Architecture
+## What is not this repo (anymore)
 
-Memory works across three layers:
+| Item | Status |
+|------|--------|
+| Discord bot | Removed in v2 |
+| Nori SDK / agentic tool harness for turns | Explicitly out of scope |
+| v1 6-tier arcade sim | Archived under `archive/v1/` and `docs/archive/v1/` |
+| Root README claims of “Discord DM companion” | Superseded by this document |
 
-**RAG (Episodic):** Conversation history is embedded into ChromaDB. Messages age through a 20-message decoder window — when they fall off, they're committed to RAG rather than discarded. This decouples conversational coherence from biological state: you can't overwhelm the system's sense of Mina's *current* state by having a long history of her behaving differently.
-
-**KAG (Knowledge files):** Structured markdown the subconscious reads and writes:
-- `memory/kag/MINA.md` — voice, personality anchors, behavioral guidelines
-- `memory/kag/RELATIONSHIP.md` — user profile, trust level, bond history (updated each heartbeat)
-- `memory/kag/PENDING.md` — deferred tasks, commitments, guilt tracking
-- `memory/kag/KNOWLEDGE/` — accumulated facts and opinions
-
-**Decoder window:** The last 20 messages are passed directly to Mina's context. As messages age off, they enter RAG. This prevents old behavior from drowning out current neurochemical reality.
+v1 specs are historical. For current design decisions, trust **`docs/architecture.md`** + the code under `src/`.
 
 ---
 
-## Heartbeat
+## Agent orientation (read order)
 
-Every 10 minutes (configurable in `config.json`), a background cycle runs:
+If you are an LLM agent ramping on this repo:
 
-1. **Biological tick** — advances all 6 state tiers forward in time (decay, accumulation, circadian advance)
-2. **Subconscious reflection** — reads recent conversation, consolidates insights into KAG files
-3. **Freetime** — Mina chooses an autonomous activity (sleep, rest, eat, read, play, shower); effects are applied as chemical deltas
-4. **Memory consolidation** — updates `RELATIONSHIP.md`, `PENDING.md`, and knowledge files
+1. This README (purpose + map).
+2. **`docs/architecture.md`** — principles, pipeline contracts, chemical classes, non-negotiables.
+3. **`SETUP.md`** — how to install, auth, verify, common failure modes.
+4. Entry points: `main.py` → `src/gateway/server.py` → `src/brain/pipeline.py` → `src/sim/sim.py`.
+5. LLM I/O: `src/application/infra/client.py`.
+6. UI: `ui/app/page.tsx`, `ui/app/components/ChatApp.tsx`, `ui/app/lib/api.ts`.
 
-Mina can fall asleep during idle periods if adenosine pressure is high enough. She can wake up having recovered from a rough state — or not, if she slept poorly.
+When changing behavior:
 
----
-
-## Tools
-
-Mina has access to a small set of tools she can invoke during conversation or freetime:
-
-- **`sleep`** — initiates a sleep session; adenosine clears, circadian phase advances
-- **`eat`** / **`drink`** / **`rest`** — known physiological effects, always available
-- **`do_action(activity, description)`** — open-ended; Mina describes what she does, the subconscious determines biological effects from the description
-- **Image generation** — ComfyUI integration (partial)
-
-The effects of discretionary actions are determined by the subconscious, not prescribed. Mina doesn't know the exact chemical consequences of her choices.
-
----
-
-## UI
-
-The product UI (Next.js, default `http://localhost:2050`) is one shell:
-
-| Route | What it is |
-|-------|------------|
-| `/` | **Chat** — conversation plus live mind stream; **Control** panel for presence, chemistry, presets, and tools |
-| `/admin` | **Lab** — instrumentation: overview, full chemistry editors, context assembly, history charts, events, system |
-
-Control for mental state lives next to chat. Lab is the same design system, for deeper inspection.
-
----
-
-## Architecture
-
-The system is documented in `docs/`. The current implementation corresponds to SPEC-20 through SPEC-28. Earlier specs are preserved as historical reference.
-
-**Current technical reference:**
-
-| Spec | What it covers |
-|------|----------------|
-| `SPEC-20-simulation-architecture-overhaul.md` | v3 state, 6-tier model, schema overview |
-| `SPEC-21-neurotransmitter-dynamics.md` | GABA/glutamate balance, adenosine, endocannabinoids, receptor sensitivity |
-| `SPEC-22-neuroendocrine-metabolic.md` | HPA cascade, thyroid, sex hormones, metabolic hormones |
-| `SPEC-23-immune-pain.md` | Cytokines, inflammation, pain signaling |
-| `SPEC-24-neuroplasticity-circadian-integration.md` | BDNF, allostatic load, circadian rhythm, two-process sleep |
-| `SPEC-25-constants.md` | All numerical parameters and tuning values |
-| `SPEC-27-stateless-mina.md` | Decoder window and RAG aging architecture |
-| `SPEC-28-social-connection.md` | Loneliness/warmth decoupling, Extraversion wiring |
-
-**Foundation and design principles:**
-
-| Spec | What it covers |
-|------|----------------|
-| `spec-0-foundation.md` | Core philosophy |
-| `spec-2-subconscious.md` | Subconscious LLM — per-message synthesis and heartbeat reflection |
-| `spec-3-memory.md` | RAG + KAG memory architecture |
-| `SPEC-10-chemical-architecture.md` | First-class chemical constructs, real physiological units, normalization |
-| `SPEC-13-personality-architecture.md` | Big 5 as mechanical modifiers |
-| `SPEC-15-PROJECT-REFACTOR.md` | Current file structure and module responsibilities |
-
----
-
-## Building Your Own Character
-
-To create a different character:
-
-1. Edit `identity/MINA.md` — voice, backstory, behavioral anchors
-2. Edit `identity/CUSTOMIZATION.md` — appearance, hobbies, tastes
-3. Adjust `config.json` — Big 5 traits and neurochemical baselines
-4. Clear `memory/kag/RELATIONSHIP.md` and `memory/kag/PENDING.md`
-5. Reset `run/state.json` (or delete it — it will regenerate from defaults)
-
-The subconscious, state engine, memory architecture, and heartbeat all work without changes.
+- Chemistry tuning → `src/sim/params.py` and chemistry/tick — not prompt spaghetti.
+- Perception schema → encoder contract + chemistry axis weights together.
+- Voice / self → `identity/MINA.md`.
+- Turn orchestration / scene / tools → `src/brain/`.
+- Never point interactive `GROK_HOME` at Mina-only isolation unless the user asks; oneshots already isolate under `~/.mina/grok`.
 
 ---
 
