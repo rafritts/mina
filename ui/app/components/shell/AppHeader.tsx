@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { MinaMark } from '@/app/components/MinaMark'
 
 type Props = {
   status?: 'live' | 'busy' | 'off'
@@ -26,16 +27,7 @@ export function AppHeader({ status = 'off', statusLabel, actions, className }: P
     <header className={cn('app-header', className)}>
       <div className="flex items-center gap-4 min-w-0">
         <Link href="/" className="flex items-center gap-2.5 shrink-0 no-underline">
-          <span
-            className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold tracking-wide"
-            style={{
-              background: 'var(--accent-dim)',
-              border: '1px solid var(--accent-border)',
-              color: 'var(--accent-bright)',
-            }}
-          >
-            M
-          </span>
+          <MinaMark className="h-7 w-7" />
           <span className="text-sm font-medium tracking-wide text-[var(--text)]">Mina</span>
         </Link>
 

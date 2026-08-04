@@ -29,6 +29,7 @@ import { ControlPane } from './ControlPane'
 import { ChatContextModal } from './ChatContextModal'
 import { AppRoot } from './shell/AppRoot'
 import { AppHeader } from './shell/AppHeader'
+import { MinaMark } from './MinaMark'
 
 type Role = 'user' | 'assistant'
 
@@ -419,7 +420,7 @@ export function ChatApp() {
             <div className="mx-auto max-w-2xl space-y-5">
               {!hydrated ? null : messages.length === 0 && !sending ? (
                 <div className="empty">
-                  <div className="empty-mark">M</div>
+                  <MinaMark className="empty-mark" />
                   <h1 className="empty-title">Say something real.</h1>
                   <p className="empty-desc">
                     Each reply keeps the mind that made it — open any turn to see

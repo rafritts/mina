@@ -888,16 +888,7 @@ body {
   width: 3.25rem;
   height: 3.25rem;
   margin: 0 auto 1.25rem;
-  border-radius: 999px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.875rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--accent);
-  background: var(--accent-dim);
-  border: 1px solid var(--accent-border);
+  display: block;
   box-shadow: 0 0 48px rgba(212, 165, 116, 0.08);
 }
 .empty-title {
