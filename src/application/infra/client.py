@@ -503,6 +503,10 @@ def run_grok_oneshot(
         with open(prompt_file, "w", encoding="utf-8") as f:
             f.write(prompt)
 
+        # Tool strip: `--tools ""` is a no-op (CLI treats empty as "use
+        # defaults" and leaves the full Build toolset). Real empty toolset:
+        # allow one dummy, then deny it plus always-on MCP meta-tools.
+        # Host tools stay prompt+json-schema only (not CLI builtins).
         args = [
             bin_path,
             "--prompt-file", prompt_file,
@@ -513,9 +517,8 @@ def run_grok_oneshot(
             "--verbatim",
             "--no-subagents",
             "--disable-web-search",
-            # Empty allow-list: no Build builtins (bash/read/…). Host tools are
-            # described in the prompt and returned via --json-schema instead.
-            "--tools", "",
+            "--tools", "todo_write",
+            "--disallowed-tools", "todo_write,search_tool,use_tool,Agent",
         ]
         if json_schema is not None:
             args.extend(["--json-schema", json.dumps(json_schema)])
