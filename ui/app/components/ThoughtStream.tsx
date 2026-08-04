@@ -206,13 +206,12 @@ function MindBody({ mind, live }: { mind: TurnMind; live: boolean }) {
               )}
             </div>
             {mind.context.situational_summary && (
-              <p className="m-0">
+              <p className="m-0 whitespace-pre-wrap">
                 <Typewriter
                   enabled={live}
-                  text={mind.context.situational_summary.slice(0, 480)}
+                  text={mind.context.situational_summary}
                   speed={72}
                 />
-                {mind.context.situational_summary.length > 480 ? '…' : ''}
               </p>
             )}
             {mind.context.notable && (
