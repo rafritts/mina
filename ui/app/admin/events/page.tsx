@@ -1,17 +1,9 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { apiFetch } from '../../lib/api'
-import type { EventEntry } from '../../lib/api'
+import { apiFetch, type EventEntry } from '../../lib/api'
 
-const TYPE_COLORS: Record<string, string> = {
-  stimulus: 'text-blue-400 border-blue-500/30 bg-blue-500/10',
-  response: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10',
-  activity: 'text-amber-400 border-amber-500/30 bg-amber-500/10',
-  tool: 'text-purple-400 border-purple-500/30 bg-purple-500/10',
-}
-
-const TYPE_FILTERS = ['all', 'stimulus', 'response', 'activity', 'tool']
+const TYPE_FILTERS = ['all', 'stimulus', 'response', 'activity', 'tool'] as const
 
 function eventText(ev: EventEntry): string {
   if (ev.preview) return ev.preview
@@ -20,151 +12,144 @@ function eventText(ev: EventEntry): string {
   return '—'
 }
 
-function eventLabel(ev: EventEntry): string | undefined {
-  // For tool events, show the tool name as a sub-label
-  return ev.type === 'tool' && ev.tool ? ev.tool : undefined
-}
-
 function formatTs(ts: number): { relative: string; absolute: string } {
   const d = new Date(ts * 1000)
   const diff = Date.now() - d.getTime()
   let relative: string
-  if (diff < 60000) relative = 'just now'
-  else if (diff < 3600000) relative = `${Math.floor(diff / 60000)}m ago`
-  else if (diff < 86400000) relative = `${Math.floor(diff / 3600000)}h ago`
-  else relative = `${Math.floor(diff / 86400000)}d ago`
+  if (diff < 60_000) relative = 'just now'
+  else if (diff < 3_600_000) relative = `${Math.floor(diff / 60_000)}m ago`
+  else if (diff < 86_400_000) relative = `${Math.floor(diff / 3_600_000)}h ago`
+  else relative = `${Math.floor(diff / 86_400_000)}d ago`
   return { relative, absolute: d.toLocaleString() }
 }
 
 export default function EventsPage() {
   const [events, setEvents] = useState<EventEntry[]>([])
-  const [filter, setFilter] = useState('all')
+  const [filter, setFilter] = useState<string>('all')
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const load = async (limit = 100) => {
     try {
-      const data = await apiFetch<EventEntry[]>(`/api/events?limit=${limit}`)
-      setEvents(data)
-    } catch {}
+      setEvents(await apiFetch<EventEntry[]>(`/api/events?limit=${limit}`))
+    } catch {
+      /* ignore */
+    }
   }
 
   useEffect(() => {
-    load()
+    void load()
     if (autoRefresh) {
-      timerRef.current = setInterval(() => load(), 5000)
+      timerRef.current = setInterval(() => void load(), 5000)
     }
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
   }, [autoRefresh])
 
-  const visible = filter === 'all' ? events : events.filter(e => e.type === filter)
-
-  const toggleExpand = (i: number) => {
-    setExpanded(s => {
-      const n = new Set(s)
-      n.has(i) ? n.delete(i) : n.add(i)
-      return n
-    })
-  }
+  const visible = filter === 'all' ? events : events.filter((e) => e.type === filter)
 
   return (
-    
-      <div className="p-8 mx-auto max-w-3xl space-y-4">
-        {/* Controls */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex gap-1">
-            {TYPE_FILTERS.map(t => (
-              <button
-                key={t}
-                onClick={() => setFilter(t)}
-                className="px-3 py-1.5 text-xs rounded border capitalize transition-colors"
-                style={{
-                  borderColor: filter === t ? 'rgba(232,228,221,0.3)' : 'rgba(232,228,221,0.1)',
-                  color: filter === t ? '#e8e4dd' : 'rgba(232,228,221,0.35)',
-                  background: filter === t ? 'rgba(232,228,221,0.08)' : 'transparent',
-                }}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
-          <label className="flex items-center gap-2 text-xs cursor-pointer" style={{ color: 'rgba(232,228,221,0.4)' }}>
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={e => setAutoRefresh(e.target.checked)}
-              className="accent-zinc-400"
-            />
-            Auto-refresh
-          </label>
-        </div>
+    <div className="page">
+      <h1 className="page-title">Events</h1>
+      <p className="page-desc">Stimulus, response, activity, and tool log from the sim process.</p>
 
-        {/* Event list */}
-        <div className="gallery-card rounded-lg divide-y" style={{ borderColor: 'rgba(232,228,221,0.04)' }}>
-          {visible.length === 0 && (
-            <p className="p-4 text-xs value-mono" style={{ color: 'rgba(232,228,221,0.2)' }}>No events</p>
-          )}
-          {visible.map((ev, i) => {
-            const isOpen = expanded.has(i)
-            const { relative, absolute } = formatTs(ev.ts)
-            return (
-              <div
-                key={i}
-                className="px-4 py-3 cursor-pointer transition-colors"
-                style={{ background: isOpen ? 'rgba(232,228,221,0.02)' : 'transparent' }}
-                onClick={() => toggleExpand(i)}
-              >
-                <div className="flex items-start gap-3">
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded border mt-0.5 flex-shrink-0 ${TYPE_COLORS[ev.type] ?? TYPE_COLORS.activity}`}>
-                    {ev.type}
-                  </span>
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center gap-2 min-w-0">
-                      {eventLabel(ev) && (
-                        <span className="text-[10px] value-mono flex-shrink-0" style={{ color: 'rgba(232,228,221,0.3)' }}>{eventLabel(ev)}</span>
-                      )}
-                      <p className="text-xs truncate" style={{ color: 'rgba(232,228,221,0.7)' }}>{eventText(ev)}</p>
-                    </div>
-                    {ev.deltas && Object.keys(ev.deltas).length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {Object.entries(ev.deltas).slice(0, 5).map(([k, v]) => (
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+        <div className="flex gap-1 flex-wrap">
+          {TYPE_FILTERS.map((t) => (
+            <button
+              key={t}
+              type="button"
+              className="btn btn-sm capitalize"
+              style={
+                filter === t
+                  ? {
+                      background: 'var(--accent-dim)',
+                      border: '1px solid var(--accent-border)',
+                      color: 'var(--accent-bright)',
+                    }
+                  : { border: '1px solid var(--border)' }
+              }
+              onClick={() => setFilter(t)}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+        <label className="flex items-center gap-2 text-xs text-muted cursor-pointer">
+          <input
+            type="checkbox"
+            checked={autoRefresh}
+            onChange={(e) => setAutoRefresh(e.target.checked)}
+          />
+          Auto-refresh
+        </label>
+      </div>
+
+      <div className="surface divide-y divide-[var(--border-subtle)]">
+        {visible.length === 0 && (
+          <p className="p-4 text-xs mono text-faint m-0">No events</p>
+        )}
+        {visible.map((ev, i) => {
+          const isOpen = expanded.has(i)
+          const { relative, absolute } = formatTs(ev.ts)
+          return (
+            <button
+              key={i}
+              type="button"
+              className="w-full text-left px-4 py-3 border-0 bg-transparent cursor-pointer transition-colors hover:bg-[var(--surface)]"
+              onClick={() =>
+                setExpanded((s) => {
+                  const n = new Set(s)
+                  if (n.has(i)) n.delete(i)
+                  else n.add(i)
+                  return n
+                })
+              }
+            >
+              <div className="flex items-start gap-3">
+                <span className="chip shrink-0 mt-0.5">{ev.type}</span>
+                <div className="flex-1 min-w-0 space-y-1">
+                  <p className="text-xs text-secondary truncate m-0">{eventText(ev)}</p>
+                  {ev.deltas && Object.keys(ev.deltas).length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {Object.entries(ev.deltas)
+                        .slice(0, 5)
+                        .map(([k, v]) => (
                           <span
                             key={k}
-                            className="text-[10px] px-1.5 py-0.5 rounded value-mono"
+                            className="chip mono"
                             style={{
-                              background: v > 0 ? 'rgba(52,211,153,0.1)' : 'rgba(248,113,113,0.1)',
-                              color: v > 0 ? '#34d399' : '#f87171',
+                              color: v > 0 ? 'var(--success)' : 'var(--danger)',
+                              borderColor:
+                                v > 0 ? 'var(--success-border)' : 'var(--danger-border)',
                             }}
                           >
-                            {v > 0 ? '+' : ''}{v.toFixed(1)} {k}
+                            {v > 0 ? '+' : ''}
+                            {v.toFixed(1)} {k}
                           </span>
                         ))}
-                      </div>
-                    )}
-                    {isOpen && (
-                      <p className="text-xs whitespace-pre-wrap mt-2 pt-2 border-t" style={{ color: 'rgba(232,228,221,0.5)', borderColor: 'rgba(232,228,221,0.06)' }}>
-                        {eventText(ev)}
-                      </p>
-                    )}
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <span className="text-xs value-mono block" style={{ color: 'rgba(232,228,221,0.25)' }} title={absolute}>{relative}</span>
-                  </div>
+                    </div>
+                  )}
+                  {isOpen && (
+                    <p className="text-xs whitespace-pre-wrap mt-2 pt-2 border-t border-[var(--border-subtle)] text-muted m-0">
+                      {eventText(ev)}
+                    </p>
+                  )}
                 </div>
+                <span className="mono text-[11px] text-faint shrink-0" title={absolute}>
+                  {relative}
+                </span>
               </div>
-            )
-          })}
-        </div>
-
-        <button
-          onClick={() => load(500)}
-          className="text-xs px-4 py-2 rounded border transition-colors"
-          style={{ borderColor: 'rgba(232,228,221,0.1)', color: 'rgba(232,228,221,0.4)' }}
-        >
-          Load more
-        </button>
+            </button>
+          )
+        })}
       </div>
-    
+
+      <button type="button" className="btn btn-soft btn-sm mt-4" onClick={() => void load(500)}>
+        Load more
+      </button>
+    </div>
   )
 }

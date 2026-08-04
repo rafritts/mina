@@ -1,32 +1,20 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import Link from 'next/link'
-import { apiFetch, type StateData } from '../lib/api'
+import { apiFetch } from '../lib/api'
 import { useStatePoller } from '../lib/hooks/useStatePoller'
 import { PRESETS } from '../lib/presets'
 import { getLabel, COLOR_CLASSES, DISPLAY_RANGES } from '../lib/labels'
-import { BUILD_INFO } from '../lib/build-info'
+import {
+  FIELD_LABELS,
+  SECOND_ORDER,
+  THIRD_ORDER,
+  presenceLabel,
+} from '../lib/presence'
+import { cn } from '@/lib/utils'
 
-type Tab = 'presence' | 'chemistry' | 'instruments'
-
-const SECOND_ORDER = [
-  'energy',
-  'mood_valence',
-  'social_warmth',
-  'cognitive_clarity',
-  'arousal',
-  'hedonic_tone',
-] as const
-
-const THIRD_ORDER = [
-  'anxiety',
-  'depression',
-  'boredom',
-  'loneliness',
-  'flow',
-  'physical_distress',
-] as const
+type Tab = 'presence' | 'chemistry' | 'tools'
 
 const CHEM_GROUPS: { label: string; chemicals: string[] }[] = [
   { label: 'Monoamines', chemicals: ['dopamine', 'serotonin', 'norepinephrine'] },
@@ -36,32 +24,12 @@ const CHEM_GROUPS: { label: string; chemicals: string[] }[] = [
   { label: 'Body', chemicals: ['adenosine', 'melatonin', 'glucose', 'hydration', 'sleep_pressure'] },
 ]
 
-const FIELD_LABELS: Record<string, string> = {
-  energy: 'Energy',
-  cognitive_clarity: 'Clarity',
-  hedonic_tone: 'Hedonic',
-  social_warmth: 'Warmth',
-  arousal: 'Arousal',
-  mood_valence: 'Mood',
-  anxiety: 'Anxiety',
-  depression: 'Low mood',
-  boredom: 'Boredom',
-  loneliness: 'Loneliness',
-  flow: 'Flow',
-  physical_distress: 'Distress',
-}
-
-function dominantLabel(state: StateData): string {
-  if (state.sleeping) return 'Sleeping'
-  const so = state.second_order ?? {}
-  const to = state.third_order ?? {}
-  if ((to.anxiety ?? 0) > 65) return 'Anxious'
-  if ((so.energy ?? 50) > 70 && (so.mood_valence ?? 50) > 65) return 'Elevated'
-  if ((so.cognitive_clarity ?? 50) > 65 && (so.energy ?? 50) > 55) return 'Focused'
-  if ((so.social_warmth ?? 50) > 65) return 'Warm'
-  if ((so.mood_valence ?? 50) < 35) return 'Low'
-  if ((so.energy ?? 50) < 30) return 'Depleted'
-  return 'Present'
+function chipClass(color?: string): string {
+  if (color === 'success') return 'chip chip-success'
+  if (color === 'warning') return 'chip chip-warning'
+  if (color === 'error') return 'chip chip-error'
+  if (color === 'info') return 'chip chip-info'
+  return 'chip'
 }
 
 function MetricBar({
@@ -74,28 +42,21 @@ function MetricBar({
   field: string
 }) {
   const entry = getLabel(field, value)
-  const colorCls = entry ? COLOR_CLASSES[entry.color] : COLOR_CLASSES.neutral
   return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px]" style={{ color: 'rgba(232,228,221,0.5)' }}>
-          {label}
-        </span>
+    <div className="metric">
+      <div className="metric-top">
+        <span className="text-[11.5px] text-muted">{label}</span>
         <div className="flex items-center gap-1.5">
-          {entry && (
-            <span className={`text-[9px] px-1 py-0.5 rounded border ${colorCls.badge}`}>
-              {entry.name}
-            </span>
-          )}
-          <span className="text-[11px] value-mono w-7 text-right" style={{ color: 'rgba(232,228,221,0.7)' }}>
+          {entry && <span className={chipClass(entry.color)}>{entry.name}</span>}
+          <span className="mono text-[11px] text-secondary w-7 text-right">
             {Math.round(value)}
           </span>
         </div>
       </div>
-      <div className="h-1 rounded-full overflow-hidden" style={{ background: 'rgba(232,228,221,0.07)' }}>
+      <div className="metric-track">
         <div
-          className={`h-full rounded-full transition-all duration-700 ${colorCls.bar}`}
-          style={{ width: `${Math.min(100, Math.max(0, value))}%`, opacity: 0.75 }}
+          className="metric-fill"
+          style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
         />
       </div>
     </div>
@@ -122,24 +83,21 @@ function ChemRow({
   const min = range?.min ?? 0
   const max = range?.max ?? Math.max(entry.value * 3, 1)
   const labelEntry = getLabel(field, value)
-  const colorCls = labelEntry ? COLOR_CLASSES[labelEntry.color] : COLOR_CLASSES.neutral
   const dirty = pending !== undefined
 
   return (
-    <div className="py-2.5 space-y-1.5">
+    <div className="py-2.5 space-y-1.5 border-b border-[var(--border-subtle)] last:border-0">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] capitalize" style={{ color: 'rgba(232,228,221,0.55)' }}>
+        <span className="text-[11.5px] capitalize text-muted">
           {field.replace(/_/g, ' ')}
         </span>
         <div className="flex items-center gap-1.5">
           {labelEntry && (
-            <span className={`text-[9px] px-1 py-0.5 rounded border ${colorCls.badge}`}>
-              {labelEntry.name}
-            </span>
+            <span className={chipClass(labelEntry.color)}>{labelEntry.name}</span>
           )}
-          <span className="text-[11px] value-mono" style={{ color: '#e8e4dd' }}>
+          <span className="mono text-[11px]">
             {value < 10 ? value.toFixed(2) : Math.round(value)}
-            <span style={{ color: 'rgba(232,228,221,0.3)' }}> {entry.unit}</span>
+            <span className="text-faint"> {entry.unit}</span>
           </span>
         </div>
       </div>
@@ -151,20 +109,10 @@ function ChemRow({
           step={value < 10 ? 0.01 : 1}
           value={value}
           onChange={(e) => onPending(parseFloat(e.target.value))}
-          className="flex-1 h-1 accent-amber-400/80"
+          className="flex-1"
         />
         {dirty && (
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={saving}
-            className="text-[10px] px-2 py-1 rounded border transition-colors"
-            style={{
-              borderColor: 'rgba(251,191,36,0.35)',
-              color: 'rgba(251,191,36,0.9)',
-              background: 'rgba(251,191,36,0.08)',
-            }}
-          >
+          <button type="button" className="btn btn-soft btn-sm" onClick={onSave} disabled={saving}>
             {saving ? '…' : 'Set'}
           </button>
         )}
@@ -173,7 +121,15 @@ function ChemRow({
   )
 }
 
-export function ControlPane({ streamConnected }: { streamConnected: boolean }) {
+export function ControlPane({
+  streamConnected,
+  onClose,
+  className,
+}: {
+  streamConnected: boolean
+  onClose?: () => void
+  className?: string
+}) {
   const { state, error, lastUpdate } = useStatePoller(2500)
   const [tab, setTab] = useState<Tab>('presence')
   const [pending, setPending] = useState<Record<string, number>>({})
@@ -265,7 +221,7 @@ export function ControlPane({ streamConnected }: { streamConnected: boolean }) {
   const eraseHistory = async () => {
     if (
       !confirm(
-        'Erase chat history?\n\nWipes conversation logs, rolling window, and short-term memory.\nKeeps chemistry, RAG, KAG, relationships.',
+        'Erase conversation history?\n\nWipes chat logs, rolling window, and short-term memory.\nKeeps chemistry and long-term memory.',
       )
     ) {
       return
@@ -282,107 +238,60 @@ export function ControlPane({ streamConnected }: { streamConnected: boolean }) {
     }
   }
 
-  // Refresh pending when state updates for fields not dirty
-  useEffect(() => {
-    if (!state) return
-  }, [state])
-
   const tabs: { id: Tab; label: string }[] = [
     { id: 'presence', label: 'Presence' },
     { id: 'chemistry', label: 'Chemistry' },
-    { id: 'instruments', label: 'Tools' },
+    { id: 'tools', label: 'Tools' },
   ]
 
   return (
-    <aside className="flex h-full flex-col min-h-0 border-l" style={{ borderColor: 'rgba(232,228,221,0.07)' }}>
-      {/* Header */}
-      <div
-        className="flex-shrink-0 px-4 py-3 border-b flex items-center justify-between gap-2"
-        style={{
-          borderColor: 'rgba(232,228,221,0.07)',
-          background: 'rgba(6,6,8,0.85)',
-        }}
-      >
-        <div>
-          <div className="text-[10px] tracking-[0.2em] uppercase" style={{ color: 'rgba(232,228,221,0.35)' }}>
-            Control
-          </div>
-          <div className="text-sm font-medium mt-0.5" style={{ color: '#f0ebe2' }}>
-            {state ? dominantLabel(state) : error ? 'Offline' : '…'}
+    <aside className={cn('control-panel', className)}>
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] px-4 py-3">
+        <div className="min-w-0">
+          <div className="label">Control</div>
+          <div className="text-sm font-medium mt-0.5 truncate">
+            {state ? presenceLabel(state) : error ? 'Offline' : '…'}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div
-            className="flex items-center gap-1.5 text-[10px] value-mono px-2 py-1 rounded-full border"
-            style={{
-              borderColor: streamConnected
-                ? 'rgba(52,211,153,0.25)'
-                : 'rgba(232,228,221,0.1)',
-              color: streamConnected
-                ? 'rgba(52,211,153,0.85)'
-                : 'rgba(232,228,221,0.3)',
-            }}
-          >
-            <span
-              className="w-1.5 h-1.5 rounded-full"
-              style={{
-                background: streamConnected ? 'rgba(52,211,153,0.9)' : 'rgba(232,228,221,0.25)',
-                boxShadow: streamConnected ? '0 0 6px rgba(52,211,153,0.7)' : undefined,
-              }}
-            />
-            {streamConnected ? 'live' : '…'}
-          </div>
-          {state && (
-            <div
-              className="w-1.5 h-1.5 rounded-full"
-              title={state.sleeping ? 'sleeping' : 'awake'}
-              style={{
-                background: state.sleeping ? 'rgba(96,165,250,0.9)' : 'rgba(52,211,153,0.9)',
-                boxShadow: state.sleeping
-                  ? '0 0 6px rgba(96,165,250,0.7)'
-                  : '0 0 6px rgba(52,211,153,0.7)',
-              }}
-            />
+        <div className="flex items-center gap-1.5">
+          <span className="status-pill" data-tone={streamConnected ? 'live' : 'off'}>
+            <span className="dot" />
+            {streamConnected ? 'Stream' : '…'}
+          </span>
+          {onClose && (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Close control">
+              ✕
+            </button>
           )}
         </div>
       </div>
 
-      {/* Tabs */}
-      <div
-        className="flex-shrink-0 flex border-b px-2"
-        style={{ borderColor: 'rgba(232,228,221,0.06)', background: 'rgba(4,4,6,0.5)' }}
-      >
+      <div className="tabs shrink-0">
         {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
+            className="tab"
+            data-active={tab === t.id ? 'true' : 'false'}
             onClick={() => setTab(t.id)}
-            className="flex-1 py-2.5 text-[11px] tracking-wide transition-colors"
-            style={{
-              color: tab === t.id ? 'rgba(251,191,36,0.95)' : 'rgba(232,228,221,0.35)',
-              borderBottom: tab === t.id ? '2px solid rgba(251,191,36,0.5)' : '2px solid transparent',
-            }}
           >
             {t.label}
           </button>
         ))}
       </div>
 
-      {/* Body */}
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {!state ? (
-          <div className="p-5 text-xs value-mono space-y-2" style={{ color: 'rgba(232,228,221,0.3)' }}>
-            <p>{error ?? 'Waiting for sim…'}</p>
-            <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(232,228,221,0.22)' }}>
-              Start the backend: <code className="value-mono">uv run python main.py</code>
+          <div className="p-5 space-y-2">
+            <p className="text-xs mono text-muted m-0">{error ?? 'Waiting for sim…'}</p>
+            <p className="text-[11.5px] text-faint leading-relaxed m-0">
+              Start the backend with <code className="mono">uv run python main.py</code>
             </p>
           </div>
         ) : tab === 'presence' ? (
           <div className="p-4 space-y-5">
             <section>
-              <h3 className="text-[10px] uppercase tracking-[0.16em] mb-3" style={{ color: 'rgba(232,228,221,0.3)' }}>
-                Felt state
-              </h3>
+              <div className="label section-head">Felt state</div>
               <div className="space-y-3">
                 {SECOND_ORDER.map((key) => (
                   <MetricBar
@@ -395,9 +304,7 @@ export function ControlPane({ streamConnected }: { streamConnected: boolean }) {
               </div>
             </section>
             <section>
-              <h3 className="text-[10px] uppercase tracking-[0.16em] mb-3" style={{ color: 'rgba(232,228,221,0.3)' }}>
-                Signals
-              </h3>
+              <div className="label section-head">Signals</div>
               <div className="space-y-3">
                 {THIRD_ORDER.map((key) => (
                   <MetricBar
@@ -411,7 +318,7 @@ export function ControlPane({ streamConnected }: { streamConnected: boolean }) {
             </section>
           </div>
         ) : tab === 'chemistry' ? (
-          <div className="p-4 space-y-5">
+          <div className="p-4 space-y-4">
             {CHEM_GROUPS.map(({ label, chemicals }) => {
               const rows = chemicals
                 .map((c) => ({ c, entry: state.chemicals[c] }))
@@ -419,33 +326,26 @@ export function ControlPane({ streamConnected }: { streamConnected: boolean }) {
               if (!rows.length) return null
               return (
                 <section key={label}>
-                  <h3 className="text-[10px] uppercase tracking-[0.16em] mb-1" style={{ color: 'rgba(232,228,221,0.3)' }}>
-                    {label}
-                  </h3>
-                  <div className="divide-y" style={{ borderColor: 'rgba(232,228,221,0.05)' }}>
-                    {rows.map(({ c, entry }) => (
-                      <ChemRow
-                        key={c}
-                        field={c}
-                        entry={entry!}
-                        pending={pending[c]}
-                        onPending={(v) => setPending((p) => ({ ...p, [c]: v }))}
-                        onSave={() => void saveChem(c)}
-                        saving={Boolean(saving[c])}
-                      />
-                    ))}
-                  </div>
+                  <div className="label mb-1">{label}</div>
+                  {rows.map(({ c, entry }) => (
+                    <ChemRow
+                      key={c}
+                      field={c}
+                      entry={entry!}
+                      pending={pending[c]}
+                      onPending={(v) => setPending((p) => ({ ...p, [c]: v }))}
+                      onSave={() => void saveChem(c)}
+                      saving={Boolean(saving[c])}
+                    />
+                  ))}
                 </section>
               )
             })}
           </div>
         ) : (
-          <div className="p-4 space-y-6">
-            {/* Presets */}
+          <div className="p-4 space-y-5">
             <section>
-              <h3 className="text-[10px] uppercase tracking-[0.16em] mb-3" style={{ color: 'rgba(232,228,221,0.3)' }}>
-                Mood presets
-              </h3>
+              <div className="label section-head">Mood presets</div>
               <div className="grid grid-cols-2 gap-2">
                 {PRESETS.map((preset) => (
                   <button
@@ -453,16 +353,10 @@ export function ControlPane({ streamConnected }: { streamConnected: boolean }) {
                     type="button"
                     disabled={busy === `preset:${preset.name}`}
                     onClick={() => void applyPreset(preset.name, preset.values)}
-                    className="text-left rounded-lg px-3 py-2.5 border transition-all hover:border-amber-400/25"
-                    style={{
-                      background: 'rgba(232,228,221,0.03)',
-                      borderColor: 'rgba(232,228,221,0.08)',
-                    }}
+                    className="surface-interactive p-2.5 text-left"
                   >
-                    <div className="text-[12px] font-medium" style={{ color: '#e8e4dd' }}>
-                      {preset.name}
-                    </div>
-                    <div className="text-[10px] mt-0.5 leading-snug" style={{ color: 'rgba(232,228,221,0.35)' }}>
+                    <div className="text-[12.5px] font-medium">{preset.name}</div>
+                    <div className="text-[10.5px] text-muted leading-snug mt-0.5">
                       {preset.description}
                     </div>
                   </button>
@@ -470,128 +364,76 @@ export function ControlPane({ streamConnected }: { streamConnected: boolean }) {
               </div>
             </section>
 
-            {/* Time */}
             <section>
-              <h3 className="text-[10px] uppercase tracking-[0.16em] mb-3" style={{ color: 'rgba(232,228,221,0.3)' }}>
-                Time
-              </h3>
+              <div className="label section-head">Time</div>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
+                  className="field w-20 mono text-sm"
                   value={advanceHours}
                   onChange={(e) => setAdvanceHours(e.target.value)}
                   min={0.25}
                   max={168}
                   step={0.25}
-                  className="w-20 rounded-md border px-2 py-1.5 text-sm value-mono outline-none"
-                  style={{
-                    background: 'rgba(232,228,221,0.04)',
-                    borderColor: 'rgba(232,228,221,0.12)',
-                    color: '#e8e4dd',
-                  }}
                 />
-                <span className="text-[11px]" style={{ color: 'rgba(232,228,221,0.4)' }}>
-                  hours
-                </span>
+                <span className="text-[11.5px] text-muted">hours</span>
                 <button
                   type="button"
+                  className="btn btn-soft btn-sm ml-auto"
                   onClick={() => void advance()}
                   disabled={busy === 'advance'}
-                  className="ml-auto text-[11px] px-3 py-1.5 rounded-md border"
-                  style={{
-                    borderColor: 'rgba(232,228,221,0.15)',
-                    color: 'rgba(232,228,221,0.7)',
-                    background: 'rgba(232,228,221,0.05)',
-                  }}
                 >
                   {busy === 'advance' ? '…' : 'Advance'}
                 </button>
               </div>
             </section>
 
-            {/* Actions */}
             <section className="space-y-2">
-              <h3 className="text-[10px] uppercase tracking-[0.16em] mb-3" style={{ color: 'rgba(232,228,221,0.3)' }}>
-                Actions
-              </h3>
+              <div className="label section-head">Actions</div>
               <button
                 type="button"
+                className="btn btn-soft btn-block"
                 onClick={() => void runHeartbeat()}
                 disabled={busy === 'heartbeat'}
-                className="w-full text-left text-[12px] px-3 py-2.5 rounded-lg border transition-colors"
-                style={{
-                  borderColor: 'rgba(232,228,221,0.1)',
-                  color: 'rgba(232,228,221,0.75)',
-                  background: 'rgba(232,228,221,0.03)',
-                }}
               >
-                {busy === 'heartbeat' ? 'Running freetime…' : '▶ Run freetime heartbeat'}
+                {busy === 'heartbeat' ? 'Running freetime…' : 'Run freetime heartbeat'}
               </button>
               <button
                 type="button"
+                className="btn btn-danger btn-block"
                 onClick={() => void resetBaseline()}
                 disabled={busy === 'reset'}
-                className="w-full text-left text-[12px] px-3 py-2.5 rounded-lg border transition-colors"
-                style={{
-                  borderColor: 'rgba(248,113,113,0.2)',
-                  color: 'rgba(248,113,113,0.8)',
-                  background: 'rgba(248,113,113,0.05)',
-                }}
               >
                 {busy === 'reset' ? 'Resetting…' : 'Reset chemistry to baseline'}
               </button>
               <button
                 type="button"
+                className="btn btn-danger btn-block"
                 onClick={() => void eraseHistory()}
                 disabled={busy === 'erase'}
-                className="w-full text-left text-[12px] px-3 py-2.5 rounded-lg border transition-colors"
-                style={{
-                  borderColor: 'rgba(248,113,113,0.25)',
-                  color: 'rgba(248,113,113,0.75)',
-                  background: 'rgba(248,113,113,0.04)',
-                }}
               >
                 {busy === 'erase' ? 'Erasing…' : 'Erase conversation history'}
               </button>
             </section>
 
-            <section>
-              <Link
-                href="/admin"
-                className="text-[11px] value-mono block"
-                style={{ color: 'rgba(232,228,221,0.3)' }}
-              >
-                Advanced admin →
-              </Link>
-            </section>
+            <Link href="/admin" className="text-[12px] text-muted no-underline hover:text-secondary">
+              Open Lab for history, context & system →
+            </Link>
           </div>
         )}
       </div>
 
-      {/* Footer */}
-      <div
-        className="flex-shrink-0 px-4 py-2 border-t flex items-center justify-between text-[10px] value-mono"
-        style={{ borderColor: 'rgba(232,228,221,0.06)', color: 'rgba(232,228,221,0.22)' }}
-      >
+      <div className="shrink-0 border-t border-[var(--border)] px-4 py-2 flex justify-between text-[10px] mono text-faint">
         <span>
           {lastUpdate
             ? `updated ${Math.max(0, Math.round((Date.now() - lastUpdate) / 1000))}s ago`
             : '—'}
         </span>
-        <span title={BUILD_INFO.builtAt}>build {BUILD_INFO.id}</span>
+        <span>{state?.sleeping ? 'sleeping' : state ? 'awake' : '—'}</span>
       </div>
 
       {toast && (
-        <div
-          className="fixed bottom-6 right-6 z-50 px-3 py-2 rounded-lg text-xs value-mono shadow-xl"
-          style={{
-            background: toast.ok ? 'rgba(16,40,32,0.95)' : 'rgba(40,16,16,0.95)',
-            border: `1px solid ${toast.ok ? 'rgba(52,211,153,0.35)' : 'rgba(248,113,113,0.35)'}`,
-            color: toast.ok ? '#34d399' : '#f87171',
-          }}
-        >
-          {toast.text}
-        </div>
+        <div className={cn('toast', toast.ok ? 'toast-ok' : 'toast-err')}>{toast.text}</div>
       )}
     </aside>
   )

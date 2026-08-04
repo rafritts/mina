@@ -61,22 +61,14 @@ function fmtVal(v: unknown): string {
 
 function KvList({ data }: { data: Record<string, unknown> | undefined }) {
   if (!data || Object.keys(data).length === 0) {
-    return <p className="text-xs value-mono" style={{ color: 'rgba(232,228,221,0.3)' }}>(none)</p>
+    return <p className="text-xs mono text-faint m-0">(none)</p>
   }
   return (
-    <dl className="space-y-3">
+    <dl className="space-y-3 m-0">
       {Object.entries(data).map(([k, v]) => (
         <div key={k}>
-          <dt
-            className="text-[10px] uppercase tracking-widest mb-1"
-            style={{ color: 'rgba(232,228,221,0.32)' }}
-          >
-            {k.replace(/_/g, ' ')}
-          </dt>
-          <dd
-            className="text-sm leading-relaxed whitespace-pre-wrap break-words value-mono"
-            style={{ color: 'rgba(232,228,221,0.82)' }}
-          >
+          <dt className="label mb-1">{k.replace(/_/g, ' ')}</dt>
+          <dd className="text-sm leading-relaxed whitespace-pre-wrap break-words mono text-secondary m-0">
             {fmtVal(v)}
           </dd>
         </div>
@@ -88,13 +80,10 @@ function KvList({ data }: { data: Record<string, unknown> | undefined }) {
 function Prose({ text }: { text: string | undefined }) {
   const t = (text ?? '').trim()
   if (!t) {
-    return <p className="text-xs value-mono" style={{ color: 'rgba(232,228,221,0.3)' }}>(empty)</p>
+    return <p className="text-xs mono text-faint m-0">(empty)</p>
   }
   return (
-    <p
-      className="text-sm leading-relaxed whitespace-pre-wrap break-words"
-      style={{ color: 'rgba(232,228,221,0.85)' }}
-    >
+    <p className="text-sm leading-relaxed whitespace-pre-wrap break-words text-secondary m-0">
       {t}
     </p>
   )
@@ -114,30 +103,19 @@ function Section({
   children: ReactNode
 }) {
   return (
-    <section
-      className="rounded-lg border overflow-hidden"
-      style={{
-        borderColor: 'rgba(232,228,221,0.08)',
-        background: 'rgba(8,8,10,0.55)',
-      }}
-    >
+    <section className="surface overflow-hidden">
       <button
         type="button"
         onClick={onToggle}
-        className="w-full flex items-center justify-between px-4 py-3 text-left transition-colors hover:bg-white/[0.02]"
+        className="w-full flex items-center justify-between px-4 py-3 text-left border-0 bg-transparent cursor-pointer hover:bg-[var(--surface-hover)] transition-colors"
       >
-        <span
-          className="text-[11px] uppercase tracking-[0.14em] font-medium"
-          style={{ color: accent }}
-        >
+        <span className="text-[11px] uppercase tracking-[0.14em] font-medium" style={{ color: accent }}>
           {label}
         </span>
-        <span className="text-xs value-mono" style={{ color: 'rgba(232,228,221,0.28)' }}>
-          {open ? '−' : '+'}
-        </span>
+        <span className="text-xs mono text-faint">{open ? '−' : '+'}</span>
       </button>
       {open && (
-        <div className="px-4 pb-4 pt-0 border-t" style={{ borderColor: 'rgba(232,228,221,0.05)' }}>
+        <div className="px-4 pb-4 border-t border-[var(--border-subtle)]">
           <div className="pt-3">{children}</div>
         </div>
       )}
@@ -238,114 +216,71 @@ export default function ContextPage() {
   const a = record?.assembly
 
   return (
-    <div className="p-4 sm:p-8 mx-auto max-w-3xl space-y-4">
+    <div className="page space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1
-            className="text-sm font-medium tracking-widest uppercase"
-            style={{ color: 'rgba(232,228,221,0.55)' }}
-          >
-            Context assembly
-          </h1>
-          <p className="text-xs mt-1 value-mono" style={{ color: 'rgba(232,228,221,0.28)' }}>
-            Latest pillar chain · also at{' '}
-            <code style={{ color: 'rgba(232,228,221,0.4)' }}>run/last_context.md</code>
+          <h1 className="page-title">Context</h1>
+          <p className="page-desc mb-0">
+            Latest pillar chain — also written to <code className="mono">run/last_context.md</code>
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
             onClick={() => setAutoRefresh((v) => !v)}
-            className="text-[11px] px-2.5 py-1 rounded border value-mono"
-            style={{
-              borderColor: autoRefresh ? 'rgba(52,211,153,0.35)' : 'rgba(232,228,221,0.12)',
-              color: autoRefresh ? 'rgba(52,211,153,0.9)' : 'rgba(232,228,221,0.45)',
-              background: autoRefresh ? 'rgba(52,211,153,0.08)' : 'transparent',
-            }}
+            className="btn btn-sm mono"
+            style={
+              autoRefresh
+                ? {
+                    border: '1px solid var(--success-border)',
+                    color: 'var(--success)',
+                    background: 'var(--success-dim)',
+                  }
+                : { border: '1px solid var(--border)' }
+            }
           >
             {autoRefresh ? 'live' : 'paused'}
           </button>
           <button
             type="button"
             onClick={() => {
-              load()
-              loadMarkdown()
+              void load()
+              void loadMarkdown()
             }}
-            className="text-[11px] px-2.5 py-1 rounded border value-mono"
-            style={{ borderColor: 'rgba(232,228,221,0.12)', color: 'rgba(232,228,221,0.5)' }}
+            className="btn btn-soft btn-sm"
           >
-            refresh
+            Refresh
           </button>
-          <button
-            type="button"
-            onClick={() => copy('md')}
-            className="text-[11px] px-2.5 py-1 rounded border value-mono"
-            style={{ borderColor: 'rgba(232,228,221,0.12)', color: 'rgba(232,228,221,0.5)' }}
-          >
-            {copied === 'md' ? 'copied md' : 'copy md'}
+          <button type="button" onClick={() => void copy('md')} className="btn btn-soft btn-sm">
+            {copied === 'md' ? 'Copied md' : 'Copy md'}
           </button>
-          <button
-            type="button"
-            onClick={() => copy('json')}
-            className="text-[11px] px-2.5 py-1 rounded border value-mono"
-            style={{ borderColor: 'rgba(232,228,221,0.12)', color: 'rgba(232,228,221,0.5)' }}
-          >
-            {copied === 'json' ? 'copied json' : 'copy json'}
+          <button type="button" onClick={() => void copy('json')} className="btn btn-soft btn-sm">
+            {copied === 'json' ? 'Copied json' : 'Copy json'}
           </button>
-          <button
-            type="button"
-            onClick={() => setShowRaw((v) => !v)}
-            className="text-[11px] px-2.5 py-1 rounded border value-mono"
-            style={{ borderColor: 'rgba(232,228,221,0.12)', color: 'rgba(232,228,221,0.5)' }}
-          >
-            {showRaw ? 'sections' : 'raw md'}
+          <button type="button" onClick={() => setShowRaw((v) => !v)} className="btn btn-soft btn-sm">
+            {showRaw ? 'Sections' : 'Raw md'}
           </button>
         </div>
       </div>
 
       {record && (
-        <div
-          className="flex flex-wrap gap-x-4 gap-y-1 text-xs value-mono px-1"
-          style={{ color: 'rgba(232,228,221,0.38)' }}
-        >
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mono text-muted px-0.5">
           <span>{record.ts_human || '—'}</span>
           <span>{relativeAge(record.ts)}</span>
           <span>source={record.source || 'chat'}</span>
           <span>user={record.username || '—'}</span>
-          {record.skipped && (
-            <span style={{ color: 'rgba(251,113,133,0.8)' }}>skipped reply</span>
-          )}
+          {record.skipped && <span style={{ color: 'var(--danger)' }}>skipped reply</span>}
         </div>
       )}
 
-      {loading && !record && (
-        <p className="text-xs value-mono" style={{ color: 'rgba(232,228,221,0.3)' }}>
-          Loading…
-        </p>
-      )}
+      {loading && !record && <p className="text-xs mono text-muted m-0">Loading…</p>}
 
-      {error && !record && (
-        <div
-          className="rounded-lg border p-4 text-sm"
-          style={{
-            borderColor: 'rgba(232,228,221,0.1)',
-            color: 'rgba(232,228,221,0.45)',
-            background: 'rgba(8,8,10,0.4)',
-          }}
-        >
-          {error}
-        </div>
-      )}
+      {error && !record && <div className="alert alert-info">{error}</div>}
 
       {showRaw && markdown && (
         <pre
-          className="rounded-lg border p-4 text-xs leading-relaxed overflow-x-auto whitespace-pre-wrap value-mono"
-          style={{
-            borderColor: 'rgba(232,228,221,0.08)',
-            background: 'rgba(4,4,6,0.7)',
-            color: 'rgba(232,228,221,0.78)',
-            maxHeight: '70vh',
-          }}
+          className="surface p-4 text-xs leading-relaxed overflow-x-auto whitespace-pre-wrap mono text-secondary m-0"
+          style={{ maxHeight: '70vh' }}
         >
           {markdown}
         </pre>

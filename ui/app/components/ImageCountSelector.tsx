@@ -14,18 +14,19 @@ type Props = {
   disabled?: boolean
 }
 
-/** Compact total-pics control: auto · 0–5. */
 export function ImageCountSelector({ value, onChange, className, disabled }: Props) {
   const current = imageCountOption(value)
 
   return (
     <div
-      className={cn('flex shrink-0 items-center gap-1.5', disabled && 'pointer-events-none opacity-40', className)}
-      title={`Total pics this reply: ${current.label}`}
+      className={cn(
+        'flex shrink-0 items-center gap-1.5',
+        disabled && 'pointer-events-none opacity-40',
+        className,
+      )}
+      title={`Pictures this reply: ${current.label}`}
     >
-      <span className="hidden text-[10px] font-medium uppercase tracking-wider xl:inline" style={{ color: 'rgba(232,228,221,0.35)' }}>
-        Pics
-      </span>
+      <span className="label hidden xl:inline">Pics</span>
       <label className="relative block">
         <span className="sr-only">Total pictures this reply</span>
         <select
@@ -42,21 +43,16 @@ export function ImageCountSelector({ value, onChange, className, disabled }: Pro
             if (Number.isInteger(n) && n >= 0 && n <= 5) onChange(n as ImageCount)
           }}
           className={cn(
-            'h-9 w-[4.75rem] cursor-pointer appearance-none rounded-full border py-0 pl-2.5 pr-6',
-            'text-center text-[11px] font-medium tabular-nums',
+            'h-9 w-[4.75rem] cursor-pointer appearance-none rounded-full border border-[var(--border)]',
+            'bg-[var(--surface)] py-0 pl-2.5 pr-6 text-center text-[11px] font-medium mono text-[var(--text-secondary)]',
             'disabled:cursor-not-allowed',
           )}
-          style={{
-            borderColor: 'rgba(232,228,221,0.12)',
-            background: 'rgba(0,0,0,0.35)',
-            color: 'rgba(232,228,221,0.85)',
-          }}
         >
           {IMAGE_COUNT_OPTIONS.map((opt) => (
             <option
               key={String(opt.id)}
               value={opt.id === 'auto' ? 'auto' : String(opt.id)}
-              className="bg-zinc-900 text-zinc-100"
+              className="bg-[var(--bg-elevated)] text-[var(--text)]"
             >
               {opt.short}
             </option>
@@ -64,11 +60,16 @@ export function ImageCountSelector({ value, onChange, className, disabled }: Pro
         </select>
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-y-0 right-2 flex items-center"
-          style={{ color: 'rgba(232,228,221,0.35)' }}
+          className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-faint"
         >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="opacity-70">
-            <path d="M2.5 3.5L5 6.5L7.5 3.5" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <path
+              d="M2.5 3.5L5 6.5L7.5 3.5"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </span>
       </label>

@@ -1,99 +1,130 @@
 'use client'
 
-import { useStatePoller } from '../lib/hooks/useStatePoller'
-import { apiFetch } from '../lib/api'
-import { DerivedCard } from '../components/metrics/DerivedCard'
 import { useEffect, useState } from 'react'
-import type { EventEntry } from '../lib/api'
+import Link from 'next/link'
+import { useStatePoller } from '../lib/hooks/useStatePoller'
+import { apiFetch, type EventEntry } from '../lib/api'
+import { getLabel } from '../lib/labels'
+import {
+  FIELD_LABELS,
+  SECOND_ORDER,
+  THIRD_ORDER,
+  presenceLabel,
+} from '../lib/presence'
+import { cn } from '@/lib/utils'
 
-const SECOND_ORDER = ['energy', 'cognitive_clarity', 'hedonic_tone', 'social_warmth', 'arousal', 'mood_valence']
-const THIRD_ORDER = ['anxiety', 'depression', 'boredom', 'loneliness', 'flow', 'physical_distress', 'craving']
+function chipClass(color?: string): string {
+  if (color === 'success') return 'chip chip-success'
+  if (color === 'warning') return 'chip chip-warning'
+  if (color === 'error') return 'chip chip-error'
+  if (color === 'info') return 'chip chip-info'
+  return 'chip'
+}
 
-function eventText(ev: EventEntry): string {
-  if (ev.preview) return ev.preview
-  if (ev.result) return ev.result
-  if (ev.tool) return ev.tool
-  return '—'
+function MetricCard({ field, value }: { field: string; value: number }) {
+  const entry = getLabel(field, value)
+  return (
+    <div className="surface p-3.5 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="label">{FIELD_LABELS[field] ?? field.replace(/_/g, ' ')}</span>
+        {entry && <span className={chipClass(entry.color)}>{entry.name}</span>}
+      </div>
+      <div className="text-2xl font-light mono tracking-tight">{Math.round(value)}</div>
+      <div className="metric-track">
+        <div className="metric-fill" style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
+      </div>
+    </div>
+  )
 }
 
 function formatTs(ts: number): string {
-  const d = new Date(ts * 1000)
-  const diff = Date.now() - d.getTime()
-  if (diff < 60000) return 'just now'
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
-  return d.toLocaleDateString()
-}
-
-const EVENT_TYPE_COLORS: Record<string, string> = {
-  stimulus: 'text-blue-400 border-blue-500/30 bg-blue-500/10',
-  response: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10',
-  activity: 'text-amber-400 border-amber-500/30 bg-amber-500/10',
-  tool: 'text-purple-400 border-purple-500/30 bg-purple-500/10',
+  const diff = Date.now() - ts * 1000
+  if (diff < 60_000) return 'just now'
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
+  return new Date(ts * 1000).toLocaleDateString()
 }
 
 export default function OverviewPage() {
-  const { state } = useStatePoller()
+  const { state, error } = useStatePoller()
   const [events, setEvents] = useState<EventEntry[]>([])
 
   useEffect(() => {
-    apiFetch<EventEntry[]>('/api/events?limit=5').then(setEvents).catch(() => {})
+    apiFetch<EventEntry[]>('/api/events?limit=8')
+      .then(setEvents)
+      .catch(() => {})
   }, [])
 
   if (!state) {
     return (
-      
-        <div className="p-8 text-center" style={{ color: 'rgba(232,228,221,0.3)' }}>
-          <div className="value-mono text-sm">connecting...</div>
-        </div>
-      
+      <div className="page">
+        <p className="mono text-sm text-muted m-0">
+          {error ?? 'Connecting to sim…'}
+        </p>
+      </div>
     )
   }
 
   return (
-    
-      <div className="p-6 mx-auto space-y-5 max-w-3xl">
-        {/* Second-order metrics */}
-        <section>
-          <h2 className="text-[10px] uppercase tracking-widest mb-2.5" style={{ color: 'rgba(232,228,221,0.3)' }}>State</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {SECOND_ORDER.map(field => (
-              <DerivedCard key={field} field={field} value={state.second_order[field] ?? 50} size="large" />
-            ))}
-          </div>
-        </section>
+    <div className="page">
+      <h1 className="page-title">{presenceLabel(state)}</h1>
+      <p className="page-desc">
+        Live overview of felt state and recent activity. Adjust chemistry from Chat → Control,
+        or open the Chemistry lab page for full editors.
+      </p>
 
-        {/* Third-order metrics */}
-        <section>
-          <h2 className="text-[10px] uppercase tracking-widest mb-2.5" style={{ color: 'rgba(232,228,221,0.3)' }}>Derived Signals</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {THIRD_ORDER.map(field => (
-              <DerivedCard key={field} field={field} value={state.third_order[field] ?? 0} size="small" />
-            ))}
-          </div>
-        </section>
+      <section className="section">
+        <div className="label section-head">Felt state</div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+          {SECOND_ORDER.map((field) => (
+            <MetricCard
+              key={field}
+              field={field}
+              value={state.second_order[field] ?? 50}
+            />
+          ))}
+        </div>
+      </section>
 
-        {/* Recent events */}
-        <section>
-          <h2 className="text-[10px] uppercase tracking-widest mb-2.5" style={{ color: 'rgba(232,228,221,0.3)' }}>Recent Events</h2>
-          <div className="gallery-card rounded-lg divide-y" style={{ borderColor: 'rgba(232,228,221,0.06)' }}>
-            {events.length === 0 && (
-              <p className="px-3 py-2 text-xs value-mono" style={{ color: 'rgba(232,228,221,0.2)' }}>No recent events</p>
-            )}
-            {events.map((ev, i) => (
-              <div key={i} className="px-3 py-2 flex items-center gap-2.5">
-                <span className={`text-[9px] px-1 py-0.5 rounded border flex-shrink-0 ${EVENT_TYPE_COLORS[ev.type] ?? EVENT_TYPE_COLORS.activity}`}>
-                  {ev.type}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs truncate" style={{ color: 'rgba(232,228,221,0.6)' }}>{eventText(ev)}</p>
-                </div>
-                <span className="text-[11px] value-mono flex-shrink-0" style={{ color: 'rgba(232,228,221,0.25)' }}>{formatTs(ev.ts)}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
-    
+      <section className="section">
+        <div className="label section-head">Signals</div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+          {THIRD_ORDER.map((field) => (
+            <MetricCard
+              key={field}
+              field={field}
+              value={state.third_order[field] ?? 0}
+            />
+          ))}
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="flex items-center justify-between section-head">
+          <div className="label m-0">Recent events</div>
+          <Link href="/admin/events" className="text-[12px] text-muted no-underline hover:text-secondary">
+            View all
+          </Link>
+        </div>
+        <div className="surface divide-y divide-[var(--border-subtle)] overflow-hidden">
+          {events.length === 0 && (
+            <p className="px-3.5 py-3 text-xs mono text-faint m-0">No recent events</p>
+          )}
+          {events.map((ev, i) => (
+            <div key={i} className="px-3.5 py-2.5 flex items-center gap-2.5">
+              <span className={cn('chip shrink-0', ev.type === 'response' && 'chip-success')}>
+                {ev.type}
+              </span>
+              <p className="flex-1 min-w-0 text-xs text-secondary truncate m-0">
+                {ev.preview ?? ev.result ?? ev.tool ?? '—'}
+              </p>
+              <span className="mono text-[11px] text-faint shrink-0">
+                {formatTs(ev.ts)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
   )
 }

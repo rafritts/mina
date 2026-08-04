@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { apiFetch } from '../../lib/api'
-import type { TokenStats } from '../../lib/api'
+import { apiFetch, type TokenStats } from '../../lib/api'
+import { BUILD_INFO } from '../../lib/build-info'
 
 interface BillingData {
   cap: number
@@ -31,103 +31,132 @@ export default function SystemPage() {
   const billingPct = billing ? Math.min(100, (billing.used / billing.cap) * 100) : 0
 
   return (
-    
-      <div className="p-8 mx-auto space-y-8 max-w-3xl">
-        {/* Billing */}
-        <section>
-          <h2 className="text-xs uppercase tracking-widest mb-4" style={{ color: 'rgba(232,228,221,0.3)' }}>Billing</h2>
-          <div className="gallery-card rounded-lg p-5 space-y-3">
-            {billing ? (
-              <>
-                <div className="flex justify-between text-xs">
-                  <span style={{ color: 'rgba(232,228,221,0.45)' }}>Used</span>
-                  <span className="value-mono" style={{ color: '#e8e4dd' }}>${billing.used.toFixed(2)} / ${billing.cap.toFixed(2)}</span>
+    <div className="page">
+      <h1 className="page-title">System</h1>
+      <p className="page-desc">Runtime health, token usage, and build identity.</p>
+
+      <section className="section">
+        <div className="label section-head">Build</div>
+        <div className="surface p-4 space-y-2 text-xs">
+          <div className="flex justify-between gap-3">
+            <span className="text-muted">Build id</span>
+            <span className="mono text-secondary">{BUILD_INFO.id}</span>
+          </div>
+          <div className="flex justify-between gap-3">
+            <span className="text-muted">Git</span>
+            <span className="mono text-secondary">{BUILD_INFO.git}</span>
+          </div>
+          <div className="flex justify-between gap-3">
+            <span className="text-muted">Built at</span>
+            <span className="mono text-secondary">{BUILD_INFO.builtAt}</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="label section-head">Billing</div>
+        <div className="surface p-4 space-y-3">
+          {billing ? (
+            <>
+              <div className="flex justify-between text-xs">
+                <span className="text-muted">Used</span>
+                <span className="mono">
+                  ${billing.used.toFixed(2)} / ${billing.cap.toFixed(2)}
+                </span>
+              </div>
+              <div className="metric-track" style={{ height: 6 }}>
+                <div
+                  className="metric-fill"
+                  style={{
+                    width: `${billingPct}%`,
+                    background:
+                      billingPct > 80
+                        ? 'var(--danger)'
+                        : billingPct > 60
+                          ? 'var(--warning)'
+                          : 'var(--success)',
+                  }}
+                />
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-faint">{billingPct.toFixed(1)}% used</span>
+                <span className="mono text-muted">
+                  ${billing.remaining.toFixed(2)} remaining
+                </span>
+              </div>
+            </>
+          ) : (
+            <p className="text-xs mono text-faint m-0">No billing data</p>
+          )}
+        </div>
+      </section>
+
+      {heartbeatStatus && (
+        <section className="section">
+          <div className="label section-head">Heartbeat</div>
+          <div className="surface p-4 space-y-2 text-xs">
+            <div className="flex justify-between">
+              <span className="text-muted">Last run</span>
+              <span className="mono text-secondary">
+                {heartbeatStatus.last_run
+                  ? new Date(heartbeatStatus.last_run * 1000).toLocaleString()
+                  : 'never'}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted">Running</span>
+              <span className="mono text-secondary">
+                {heartbeatStatus.is_running || heartbeatStatus.running ? 'yes' : 'no'}
+              </span>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {tokens && (
+        <section className="section">
+          <div className="label section-head">Token usage</div>
+          <div className="surface overflow-hidden">
+            <div className="px-4 py-3 grid grid-cols-2 sm:grid-cols-4 gap-4 border-b border-[var(--border-subtle)]">
+              {[
+                ['Input', tokens.total_input.toLocaleString()],
+                ['Output', tokens.total_output.toLocaleString()],
+                ['Cached', tokens.total_cached.toLocaleString()],
+                ['Turns', tokens.turns.toLocaleString()],
+              ].map(([label, val]) => (
+                <div key={label} className="space-y-1">
+                  <div className="label">{label}</div>
+                  <div className="text-sm mono">{val}</div>
                 </div>
-                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(232,228,221,0.06)' }}>
-                  <div
-                    className="h-full rounded-full transition-all duration-700"
-                    style={{
-                      width: `${billingPct}%`,
-                      background: billingPct > 80 ? '#f87171' : billingPct > 60 ? '#f59e0b' : '#34d399',
-                    }}
-                  />
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span style={{ color: 'rgba(232,228,221,0.3)' }}>{billingPct.toFixed(1)}% used</span>
-                  <span className="value-mono" style={{ color: 'rgba(232,228,221,0.45)' }}>${billing.remaining.toFixed(2)} remaining</span>
-                </div>
-              </>
-            ) : (
-              <p className="text-xs value-mono" style={{ color: 'rgba(232,228,221,0.2)' }}>loading...</p>
+              ))}
+            </div>
+            {Object.keys(tokens.by_label).length > 0 && (
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-[var(--border-subtle)]">
+                    <th className="text-left px-4 py-2.5 text-muted font-medium">Call type</th>
+                    <th className="text-right px-4 py-2.5 text-muted font-medium mono">Input</th>
+                    <th className="text-right px-4 py-2.5 text-muted font-medium mono">Output</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(tokens.by_label).map(([label, call]) => (
+                    <tr key={label} className="border-t border-[var(--border-subtle)]">
+                      <td className="px-4 py-2 text-secondary">{label}</td>
+                      <td className="px-4 py-2 text-right mono text-muted">
+                        {call.input.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-2 text-right mono text-muted">
+                        {call.output.toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
         </section>
-
-        {/* Heartbeat status */}
-        {heartbeatStatus && (
-          <section>
-            <h2 className="text-xs uppercase tracking-widest mb-4" style={{ color: 'rgba(232,228,221,0.3)' }}>Health</h2>
-            <div className="gallery-card rounded-lg p-5 space-y-2">
-              <div className="flex justify-between text-xs">
-                <span style={{ color: 'rgba(232,228,221,0.45)' }}>Last heartbeat</span>
-                <span className="value-mono" style={{ color: 'rgba(232,228,221,0.6)' }}>
-                  {heartbeatStatus.last_run
-                    ? new Date(heartbeatStatus.last_run * 1000).toLocaleString()
-                    : 'never'}
-                </span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span style={{ color: 'rgba(232,228,221,0.45)' }}>Running</span>
-                <span className="value-mono" style={{ color: (heartbeatStatus.is_running || heartbeatStatus.running) ? '#34d399' : 'rgba(232,228,221,0.35)' }}>
-                  {(heartbeatStatus.is_running || heartbeatStatus.running) ? 'yes' : 'no'}
-                </span>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* Token usage */}
-        {tokens && (
-          <section>
-            <h2 className="text-xs uppercase tracking-widest mb-4" style={{ color: 'rgba(232,228,221,0.3)' }}>Token Usage</h2>
-            <div className="gallery-card rounded-lg overflow-hidden">
-              <div className="px-4 py-3 grid grid-cols-4 gap-4 border-b" style={{ borderColor: 'rgba(232,228,221,0.06)' }}>
-                {[
-                  ['Input', tokens.total_input.toLocaleString()],
-                  ['Output', tokens.total_output.toLocaleString()],
-                  ['Cached', tokens.total_cached.toLocaleString()],
-                  ['Turns', tokens.turns.toLocaleString()],
-                ].map(([label, val]) => (
-                  <div key={label} className="space-y-1">
-                    <div className="text-[10px] uppercase tracking-widest" style={{ color: 'rgba(232,228,221,0.3)' }}>{label}</div>
-                    <div className="text-sm value-mono" style={{ color: '#e8e4dd' }}>{val}</div>
-                  </div>
-                ))}
-              </div>
-              {Object.keys(tokens.by_label).length > 0 && (
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b" style={{ borderColor: 'rgba(232,228,221,0.06)' }}>
-                      <th className="text-left px-4 py-2.5" style={{ color: 'rgba(232,228,221,0.35)' }}>Call type</th>
-                      <th className="text-right px-4 py-2.5 value-mono" style={{ color: 'rgba(232,228,221,0.35)' }}>Input</th>
-                      <th className="text-right px-4 py-2.5 value-mono" style={{ color: 'rgba(232,228,221,0.35)' }}>Output</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(tokens.by_label).map(([label, call]) => (
-                      <tr key={label} className="border-t" style={{ borderColor: 'rgba(232,228,221,0.04)' }}>
-                        <td className="px-4 py-2" style={{ color: 'rgba(232,228,221,0.6)' }}>{label}</td>
-                        <td className="px-4 py-2 text-right value-mono" style={{ color: 'rgba(232,228,221,0.5)' }}>{call.input.toLocaleString()}</td>
-                        <td className="px-4 py-2 text-right value-mono" style={{ color: 'rgba(232,228,221,0.5)' }}>{call.output.toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </section>
-        )}
-      </div>
-    
+      )}
+    </div>
   )
 }

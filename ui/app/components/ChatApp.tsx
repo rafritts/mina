@@ -7,8 +7,6 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { Button } from '@/components/ui/button'
-import { BUILD_INFO } from '../lib/build-info'
 import {
   IMAGE_ASPECT_DEFAULT,
   type ImageAspect,
@@ -28,6 +26,8 @@ import { AspectRatioSlider } from './AspectRatioSlider'
 import { ImageCountSelector } from './ImageCountSelector'
 import { ThoughtStream } from './ThoughtStream'
 import { ControlPane } from './ControlPane'
+import { AppRoot } from './shell/AppRoot'
+import { AppHeader } from './shell/AppHeader'
 
 type Role = 'user' | 'assistant'
 
@@ -39,7 +39,7 @@ interface ChatMessage {
 }
 
 const STORAGE_KEY = 'mina-chat-messages'
-const PREFS_KEY = 'mina-chat-image-prefs'
+const PREFS_KEY = 'mina-chat-prefs'
 
 const HOST_IMAGE_MD =
   /!\[([^\]]*)\]\((\/images\/[^)\s]+|\/api\/generate\/[^)\s]+)\)/g
@@ -76,22 +76,19 @@ function ChatImage({ src, alt }: { src: string; alt: string }) {
   const [failed, setFailed] = useState(false)
   if (failed) {
     return (
-      <div
-        className="my-2 rounded-md border px-3 py-2 text-[11px] value-mono"
-        style={{ borderColor: 'rgba(248,113,113,0.3)', color: 'rgba(248,113,113,0.85)' }}
-      >
-        image failed: {src}
+      <div className="alert alert-error my-2 text-[11px] mono">
+        Image failed to load
       </div>
     )
   }
   return (
-    <figure className="my-2">
+    <figure className="my-2.5">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={src}
         alt={alt}
-        className="max-w-full rounded-xl border"
-        style={{ borderColor: 'rgba(232,228,221,0.1)', maxHeight: '26rem' }}
+        className="max-w-full rounded-xl border border-[var(--border)]"
+        style={{ maxHeight: '26rem' }}
         loading="lazy"
         onError={() => setFailed(true)}
       />
@@ -157,7 +154,6 @@ export function ChatApp() {
   const sendingRef = useRef(false)
 
   const onStreamEvent = useCallback((event: StreamEvent) => {
-    // Only accumulate turn mind while a send is in flight
     if (!sendingRef.current) return
     if (
       event.type === 'stimulus_land' ||
@@ -193,8 +189,7 @@ export function ChatApp() {
     } catch {
       /* ignore */
     }
-    // Desktop default: control open; mobile can toggle
-    if (typeof window !== 'undefined' && window.innerWidth < 900) {
+    if (typeof window !== 'undefined' && window.innerWidth < 960) {
       setControlOpen(false)
     }
     setHydrated(true)
@@ -219,7 +214,7 @@ export function ChatApp() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, sending, mind])
+  }, [messages, sending, mind, showLastMind])
 
   useEffect(() => {
     const onErase = () => {
@@ -227,6 +222,7 @@ export function ChatApp() {
       saveMessages([])
       setMind(EMPTY_TURN_MIND)
       setLastMind(null)
+      setShowLastMind(false)
     }
     window.addEventListener('mina:erase-chat', onErase)
     return () => window.removeEventListener('mina:erase-chat', onErase)
@@ -242,8 +238,7 @@ export function ChatApp() {
       content: text,
     }
 
-    const nextHistory = [...messages, userMsg]
-    setMessages(nextHistory)
+    setMessages((prev) => [...prev, userMsg])
     setInput('')
     setSending(true)
     sendingRef.current = true
@@ -251,6 +246,10 @@ export function ChatApp() {
     setMind(EMPTY_TURN_MIND)
     setShowLastMind(false)
     setLastMind(null)
+
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+    }
 
     try {
       const res = await fetch('/api/chat', {
@@ -268,16 +267,14 @@ export function ChatApp() {
         images?: string[]
         error?: string
       }
-      if (!res.ok) {
-        throw new Error(data.error ?? `HTTP ${res.status}`)
-      }
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
+
       let reply = (data.reply ?? '').trim() || '(empty reply)'
       const images = extractImageUrls(reply, data.images)
       for (const url of images) {
-        if (!reply.includes(url)) {
-          reply = `${reply}\n\n![photo](${url})`
-        }
+        if (!reply.includes(url)) reply = `${reply}\n\n![photo](${url})`
       }
+
       setMessages((prev) => [
         ...prev,
         {
@@ -288,13 +285,11 @@ export function ChatApp() {
         },
       ])
       setMind((prev) => {
-        const finished = { ...prev, active: true, completed: true }
-        setLastMind(finished)
+        if (prev.active) setLastMind({ ...prev, completed: true })
         return EMPTY_TURN_MIND
       })
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Send failed'
-      setError(msg)
+      setError(e instanceof Error ? e.message : 'Send failed')
       setMind((prev) => {
         if (prev.active) setLastMind(prev)
         return EMPTY_TURN_MIND
@@ -313,14 +308,6 @@ export function ChatApp() {
     }
   }
 
-  const clearView = () => {
-    if (sending) return
-    setMessages([])
-    setError(null)
-    setLastMind(null)
-    saveMessages([])
-  }
-
   const autoResize = () => {
     const el = textareaRef.current
     if (!el) return
@@ -328,325 +315,196 @@ export function ChatApp() {
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`
   }
 
-  return (
-    <div className="mina-shell flex h-screen overflow-hidden">
-      {/* Ambient backdrop */}
-      <div className="mina-ambience" aria-hidden />
+  const clearView = () => {
+    if (sending) return
+    setMessages([])
+    setError(null)
+    setLastMind(null)
+    setShowLastMind(false)
+    saveMessages([])
+  }
 
-      {/* ── Experience half ── */}
-      <div className="relative flex flex-1 flex-col min-w-0 z-10">
-        <header
-          className="h-14 flex items-center justify-between px-4 sm:px-5 border-b flex-shrink-0"
-          style={{
-            borderColor: 'rgba(232,228,221,0.07)',
-            background: 'rgba(6,6,8,0.72)',
-            backdropFilter: 'blur(16px)',
-          }}
+  const status = sending ? 'busy' : connected ? 'live' : 'off'
+
+  const headerActions = (
+    <>
+      {lastMind && !sending && (
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm hidden sm:inline-flex"
+          onClick={() => setShowLastMind((v) => !v)}
         >
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="flex items-center gap-2.5">
-              <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] tracking-widest font-medium"
-                style={{
-                  background:
-                    'radial-gradient(circle at 30% 30%, rgba(251,191,36,0.25), rgba(232,228,221,0.06))',
-                  border: '1px solid rgba(251,191,36,0.2)',
-                  color: 'rgba(251,191,36,0.9)',
-                }}
-              >
-                M
-              </div>
-              <div className="min-w-0">
-                <div
-                  className="text-sm font-medium tracking-wide"
-                  style={{ color: '#f0ebe2' }}
-                >
-                  Mina
-                </div>
-                <div
-                  className="text-[10px] value-mono flex items-center gap-1.5"
-                  style={{ color: 'rgba(232,228,221,0.35)' }}
-                >
-                  <span
-                    className="w-1 h-1 rounded-full"
-                    style={{
-                      background: connected
-                        ? 'rgba(52,211,153,0.9)'
-                        : 'rgba(232,228,221,0.25)',
-                    }}
-                  />
-                  {sending ? 'thinking' : connected ? 'here' : 'connecting'}
-                  <span className="hidden sm:inline opacity-50">·</span>
-                  <span
-                    className="hidden sm:inline truncate"
-                    title={BUILD_INFO.builtAt}
-                  >
-                    {BUILD_INFO.id}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
+          {showLastMind ? 'Hide mind' : 'Last mind'}
+        </button>
+      )}
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
+        onClick={clearView}
+        disabled={sending || messages.length === 0}
+      >
+        Clear
+      </button>
+      <button
+        type="button"
+        className="btn btn-soft btn-sm"
+        onClick={() => setControlOpen((o) => !o)}
+        data-active={controlOpen}
+        style={
+          controlOpen
+            ? {
+                background: 'var(--accent-dim)',
+                borderColor: 'var(--accent-border)',
+                color: 'var(--accent-bright)',
+              }
+            : undefined
+        }
+      >
+        Control
+      </button>
+    </>
+  )
 
-          <div className="flex items-center gap-1.5">
-            {lastMind && !sending && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowLastMind((v) => !v)}
-                className="text-[11px] hidden sm:inline-flex"
-                style={{ color: 'rgba(232,228,221,0.45)' }}
-              >
-                {showLastMind ? 'Hide mind' : 'Last mind'}
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clearView}
-              disabled={sending || messages.length === 0}
-              className="text-[11px]"
-              style={{ color: 'rgba(232,228,221,0.4)' }}
-              title="Clear this panel only"
-            >
-              Clear
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setControlOpen((o) => !o)}
-              className="text-[11px]"
-              style={{
-                color: controlOpen
-                  ? 'rgba(251,191,36,0.85)'
-                  : 'rgba(232,228,221,0.45)',
-              }}
-            >
-              {controlOpen ? 'Control ◂' : 'Control ▸'}
-            </Button>
-          </div>
-        </header>
+  return (
+    <AppRoot>
+      <AppHeader status={status} actions={headerActions} />
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-5">
-          <div className="mx-auto max-w-2xl space-y-4">
-            {!hydrated ? null : messages.length === 0 && !sending ? (
-              <div className="pt-16 sm:pt-24 text-center space-y-4">
-                <div
-                  className="inline-flex w-14 h-14 rounded-full items-center justify-center text-lg"
-                  style={{
-                    background:
-                      'radial-gradient(circle at 35% 30%, rgba(251,191,36,0.2), rgba(8,8,10,0.9))',
-                    border: '1px solid rgba(251,191,36,0.18)',
-                    color: 'rgba(251,191,36,0.75)',
-                    boxShadow: '0 0 40px rgba(251,191,36,0.08)',
-                  }}
-                >
-                  M
-                </div>
-                <div>
-                  <p className="text-base" style={{ color: 'rgba(232,228,221,0.65)' }}>
-                    Say something real.
-                  </p>
-                  <p
-                    className="text-[12px] mt-2 max-w-sm mx-auto leading-relaxed"
-                    style={{ color: 'rgba(232,228,221,0.32)' }}
-                  >
-                    Each message runs her full mind: chemistry, feeling, memory,
-                    strategy — then the reply. Watch the pillars fill in as she thinks.
+      <div className="app-body">
+        {/* Experience */}
+        <section className="flex flex-1 min-w-0 flex-col">
+          <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-5">
+            <div className="mx-auto max-w-2xl space-y-4">
+              {!hydrated ? null : messages.length === 0 && !sending ? (
+                <div className="empty">
+                  <div className="empty-mark">M</div>
+                  <h1 className="empty-title">Say something real.</h1>
+                  <p className="empty-desc">
+                    Each message runs chemistry, feeling, memory, and strategy
+                    before she answers. Watch her mind assemble on the way.
                   </p>
                 </div>
-              </div>
-            ) : (
-              messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
+              ) : (
+                messages.map((m) => (
                   <div
-                    className={`max-w-[min(36rem,92%)] rounded-2xl px-4 py-3 text-[14px] leading-[1.65] ${
-                      m.role === 'user' ? 'rounded-br-md' : 'rounded-bl-md'
-                    }`}
-                    style={
-                      m.role === 'user'
-                        ? {
-                            background:
-                              'linear-gradient(145deg, rgba(251,191,36,0.12), rgba(251,191,36,0.06))',
-                            border: '1px solid rgba(251,191,36,0.16)',
-                            color: '#f5f0e6',
-                          }
-                        : {
-                            background: 'rgba(232,228,221,0.035)',
-                            border: '1px solid rgba(232,228,221,0.08)',
-                            color: '#e8e4dd',
-                          }
-                    }
+                    key={m.id}
+                    className={`msg-row ${m.role === 'user' ? 'msg-row-user' : 'msg-row-assistant'}`}
                   >
-                    {m.role === 'assistant' && (
-                      <div
-                        className="text-[9px] tracking-[0.18em] uppercase mb-1.5"
-                        style={{ color: 'rgba(232,228,221,0.3)' }}
-                      >
-                        mina
-                      </div>
-                    )}
-                    {renderMessageBody(m.content, m.images)}
+                    <div
+                      className={`msg ${m.role === 'user' ? 'msg-user' : 'msg-assistant'}`}
+                    >
+                      {m.role === 'assistant' && (
+                        <div className="msg-label">Mina</div>
+                      )}
+                      {renderMessageBody(m.content, m.images)}
+                    </div>
+                  </div>
+                ))
+              )}
+
+              {sending && mind.active && (
+                <div className="pt-1">
+                  <ThoughtStream mind={mind} />
+                </div>
+              )}
+
+              {sending && !mind.active && (
+                <div className="msg-row msg-row-assistant">
+                  <div className="msg msg-assistant flex items-center gap-2 text-xs mono text-muted">
+                    <span className="status-pill" data-tone="busy">
+                      <span className="dot dot-pulse" />
+                      Starting
+                    </span>
+                    Running pipeline…
                   </div>
                 </div>
-              ))
-            )}
+              )}
 
-            {/* Live mind / last mind */}
-            {sending && mind.active && (
-              <div className="pt-1">
-                <ThoughtStream mind={mind} />
-              </div>
-            )}
-            {sending && !mind.active && (
-              <div className="flex justify-start">
-                <div
-                  className="rounded-2xl rounded-bl-md px-4 py-3 text-xs value-mono flex items-center gap-2"
-                  style={{
-                    background: 'rgba(232,228,221,0.03)',
-                    border: '1px solid rgba(232,228,221,0.08)',
-                    color: 'rgba(232,228,221,0.4)',
-                  }}
-                >
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-40" />
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400/80" />
-                  </span>
-                  starting pipeline…
+              {!sending && showLastMind && lastMind && (
+                <div className="pt-1 opacity-95">
+                  <ThoughtStream
+                    mind={{ ...lastMind, active: true, completed: true }}
+                  />
                 </div>
-              </div>
-            )}
-            {!sending && showLastMind && lastMind && (
-              <div className="pt-1 opacity-90">
-                <ThoughtStream mind={{ ...lastMind, active: true, completed: true }} />
-              </div>
-            )}
+              )}
 
-            {error && (
-              <div
-                className="rounded-xl px-3.5 py-2.5 text-xs"
-                style={{
-                  background: 'rgba(248,113,113,0.08)',
-                  border: '1px solid rgba(248,113,113,0.25)',
-                  color: '#f87171',
-                }}
-              >
-                {error}
-              </div>
-            )}
+              {error && <div className="alert alert-error">{error}</div>}
 
-            <div ref={bottomRef} />
-          </div>
-        </div>
-
-        {/* Composer */}
-        <div
-          className="border-t p-3 sm:p-4 flex-shrink-0"
-          style={{
-            borderColor: 'rgba(232,228,221,0.07)',
-            background: 'rgba(6,6,8,0.82)',
-            backdropFilter: 'blur(16px)',
-          }}
-        >
-          <div className="mx-auto max-w-2xl space-y-2.5">
-            <div className="flex flex-wrap items-center gap-2 px-0.5">
-              <ImageCountSelector
-                value={imageCount}
-                onChange={setImageCount}
-                disabled={sending}
-              />
-              <AspectRatioSlider
-                value={imageAspect}
-                onChange={setImageAspect}
-                disabled={sending || imageCount === 0}
-              />
+              <div ref={bottomRef} />
             </div>
-            <div
-              className="flex gap-2 items-end rounded-2xl border p-2"
-              style={{
-                background: 'rgba(232,228,221,0.03)',
-                borderColor: 'rgba(232,228,221,0.1)',
-                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.02)',
-              }}
-            >
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => {
-                  setInput(e.target.value)
-                  autoResize()
-                }}
-                onKeyDown={onKeyDown}
-                placeholder="Message Mina…"
-                rows={1}
-                disabled={sending}
-                className="flex-1 resize-none bg-transparent px-2.5 py-2.5 text-[14px] leading-relaxed outline-none disabled:opacity-50"
-                style={{
-                  color: '#e8e4dd',
-                  minHeight: '2.75rem',
-                  maxHeight: '12rem',
-                }}
-              />
-              <Button
-                onClick={() => void send()}
-                disabled={sending || !input.trim()}
-                className="h-10 px-4 rounded-xl self-end mb-0.5 font-medium"
-                style={{
-                  background: sending || !input.trim()
-                    ? 'rgba(232,228,221,0.06)'
-                    : 'linear-gradient(145deg, rgba(251,191,36,0.85), rgba(217,119,6,0.9))',
-                  color: sending || !input.trim() ? 'rgba(232,228,221,0.3)' : '#1a1205',
-                  border: 'none',
-                }}
-              >
-                {sending ? '…' : 'Send'}
-              </Button>
-            </div>
-            <p
-              className="text-[10px] text-center value-mono"
-              style={{ color: 'rgba(232,228,221,0.2)' }}
-            >
-              Enter send · Shift+Enter newline · pillars stream live while she thinks
-            </p>
           </div>
-        </div>
+
+          <div
+            className="shrink-0 border-t border-[var(--border)] px-3 sm:px-6 py-3 backdrop-blur-md"
+            style={{ background: 'color-mix(in srgb, var(--bg) 90%, transparent)' }}
+          >
+            <div className="mx-auto max-w-2xl space-y-2.5">
+              <div className="flex flex-wrap items-center gap-2 px-0.5">
+                <ImageCountSelector
+                  value={imageCount}
+                  onChange={setImageCount}
+                  disabled={sending}
+                />
+                <AspectRatioSlider
+                  value={imageAspect}
+                  onChange={setImageAspect}
+                  disabled={sending || imageCount === 0}
+                />
+              </div>
+              <div className="composer">
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => {
+                    setInput(e.target.value)
+                    autoResize()
+                  }}
+                  onKeyDown={onKeyDown}
+                  placeholder="Message Mina…"
+                  rows={1}
+                  disabled={sending}
+                  className="field-area"
+                  aria-label="Message Mina"
+                />
+                <button
+                  type="button"
+                  className="btn btn-primary btn-lg shrink-0 self-end mb-0.5"
+                  onClick={() => void send()}
+                  disabled={sending || !input.trim()}
+                >
+                  {sending ? '…' : 'Send'}
+                </button>
+              </div>
+              <p className="text-center text-[10px] mono text-faint m-0">
+                Enter to send · Shift+Enter for newline
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* Control — desktop */}
+        {controlOpen && (
+          <div className="hidden lg:flex h-full shrink-0">
+            <ControlPane streamConnected={connected} />
+          </div>
+        )}
       </div>
 
-      {/* ── Control half ── */}
+      {/* Control — mobile / tablet drawer */}
       {controlOpen && (
-        <div
-          className="hidden md:flex flex-col flex-shrink-0 h-full z-10"
-          style={{
-            width: 'min(420px, 38vw)',
-            background: 'rgba(5,5,7,0.92)',
-            backdropFilter: 'blur(20px)',
-          }}
-        >
-          <ControlPane streamConnected={connected} />
-        </div>
-      )}
-
-      {/* Mobile control drawer */}
-      {controlOpen && (
-        <div className="md:hidden fixed inset-0 z-40 flex">
+        <div className="lg:hidden control-drawer-backdrop">
           <button
             type="button"
-            className="flex-1 bg-black/50"
+            className="flex-1 border-0 bg-transparent cursor-default"
             aria-label="Close control"
             onClick={() => setControlOpen(false)}
           />
-          <div
-            className="w-[min(100%,22rem)] h-full shadow-2xl"
-            style={{ background: 'rgba(5,5,7,0.98)' }}
-          >
-            <ControlPane streamConnected={connected} />
-          </div>
+          <ControlPane
+            streamConnected={connected}
+            onClose={() => setControlOpen(false)}
+            className="w-[min(100%,22.5rem)] shadow-2xl"
+          />
         </div>
       )}
-    </div>
+    </AppRoot>
   )
 }
