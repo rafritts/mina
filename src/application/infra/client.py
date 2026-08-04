@@ -5,6 +5,11 @@ All modules import chat_create() from here. Spawns `grok` with --prompt-file
 (never puts large prompts on argv — Linux ARG_MAX). CLI auth only: never
 passes XAI_API_KEY / OpenAI keys into the child.
 
+Oneshots set GROK_HOME to ~/.mina/grok (override: MINA_GROK_HOME) so session
+transcripts do not pollute the interactive ~/.grok tree. Auth/config are
+symlinked from ~/.grok. Each completed oneshot session is deleted afterward
+(Grok Build has no ephemeral flag).
+
 chat_create() accepts OpenAI-style kwargs and returns an OpenAI-compatible
 response object so call sites stay unchanged.
 """
@@ -49,6 +54,61 @@ def oneshot_cwd() -> Path:
     return d
 
 
+def oneshot_grok_home() -> Path:
+    """
+    Mina-only Grok data dir for headless oneshots.
+
+    Interactive `grok` still uses ~/.grok. Only the child process env gets
+    GROK_HOME pointed here so session JSONL piles up under ~/.mina, not in
+    the user's main session browser.
+    """
+    if os.getenv("MINA_GROK_HOME"):
+        d = Path(os.environ["MINA_GROK_HOME"]).expanduser().resolve()
+    else:
+        d = Path.home() / ".mina" / "grok"
+    d.mkdir(parents=True, exist_ok=True)
+    _bootstrap_mina_grok_home(d)
+    return d
+
+
+def _user_grok_home() -> Path:
+    """Where interactive Grok keeps auth/config (not Mina's isolated home)."""
+    raw = os.getenv("GROK_HOME")
+    if raw:
+        return Path(raw).expanduser().resolve()
+    return Path.home() / ".grok"
+
+
+def _link_or_copy(src: Path, dst: Path) -> None:
+    """Ensure dst provides src's content without clobbering a real local file."""
+    if not src.is_file():
+        return
+    try:
+        if dst.is_symlink():
+            if dst.resolve() == src.resolve():
+                return
+            dst.unlink()
+        elif dst.exists():
+            return  # user-supplied file in MINA_GROK_HOME — leave it
+        dst.symlink_to(src)
+    except OSError:
+        try:
+            if dst.is_symlink() or not dst.exists():
+                shutil.copy2(src, dst)
+        except OSError:
+            pass
+
+
+def _bootstrap_mina_grok_home(mina_home: Path) -> None:
+    """Share CLI login + config from the real Grok home; keep sessions local."""
+    user = _user_grok_home()
+    if user.resolve() == mina_home.resolve():
+        return
+    for name in ("auth.json", "config.toml"):
+        _link_or_copy(user / name, mina_home / name)
+    (mina_home / "sessions").mkdir(parents=True, exist_ok=True)
+
+
 def _timeout_sec() -> float:
     raw = os.getenv("MINA_GROK_TIMEOUT_MS", "180000")
     try:
@@ -61,9 +121,39 @@ def _timeout_sec() -> float:
 def _child_env() -> dict[str, str]:
     env = dict(os.environ)
     env.setdefault("CI", "1")
+    # Isolate session storage to Mina only — never touch interactive ~/.grok sessions.
+    env["GROK_HOME"] = str(oneshot_grok_home())
     for key in ("XAI_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL"):
         env.pop(key, None)
     return env
+
+
+def _discard_oneshot_session(session_id: str | None, grok_home: Path) -> None:
+    """
+    Remove a headless oneshot session directory.
+
+    Grok Build always persists sessions; there is no ephemeral flag. Delete
+    after the JSON payload is in hand so Mina does not accumulate transcripts.
+    """
+    if not session_id or not isinstance(session_id, str):
+        return
+    sid = session_id.strip()
+    if not sid or ".." in sid or "/" in sid or "\\" in sid:
+        return
+    sessions = grok_home / "sessions"
+    if not sessions.is_dir():
+        return
+    try:
+        groups = list(sessions.iterdir())
+    except OSError:
+        return
+    for group in groups:
+        if not group.is_dir():
+            continue
+        target = group / sid
+        if target.is_dir():
+            shutil.rmtree(target, ignore_errors=True)
+            return
 
 
 # ---------------------------------------------------------------------------
@@ -492,10 +582,13 @@ def run_grok_oneshot(
     """
     Spawn headless grok for a single completion. Returns parsed JSON object.
     Uses --prompt-file always (never --single argv) to avoid E2BIG.
+    Child GROK_HOME is Mina-scoped; session dir is deleted after success.
     """
     cwd = oneshot_cwd()
+    grok_home = oneshot_grok_home()
     bin_path = grok_bin()
     timeout = timeout_sec if timeout_sec is not None else _timeout_sec()
+    child_env = _child_env()
 
     prompt_dir = tempfile.mkdtemp(prefix="mina-oneshot-")
     prompt_file = os.path.join(prompt_dir, "prompt.txt")
@@ -540,7 +633,7 @@ def run_grok_oneshot(
             proc = subprocess.run(
                 args,
                 cwd=str(cwd),
-                env=_child_env(),
+                env=child_env,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
@@ -569,6 +662,10 @@ def run_grok_oneshot(
             )
         if not has_body:
             raise GrokCLIError("grok returned empty output", "empty")
+
+        # Drop the persisted oneshot session (payload already parsed in memory).
+        sid = payload.get("sessionId") or payload.get("session_id")
+        _discard_oneshot_session(sid if isinstance(sid, str) else None, grok_home)
         return payload
     finally:
         try:
