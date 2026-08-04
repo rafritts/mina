@@ -7,7 +7,7 @@ const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin']
 
 export const metadata: Metadata = {
   title: 'Mina',
-  description: 'Chat with Mina and watch the neurosim',
+  description: 'Talk with Mina — watch her mind assemble in real time',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

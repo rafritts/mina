@@ -17,7 +17,7 @@ const NAV = [
   { href: '/admin/system', label: 'System', icon: '◈' },
 ]
 
-const CHAT_LINK = { href: '/', label: 'Chat', icon: '◈' }
+const CHAT_LINK = { href: '/', label: 'Experience', icon: '◈' }
 const VIEWER_LINK = { href: '/viewer', label: 'Viewer', icon: '⊙' }
 
 function computeDominantState(state: { second_order?: Record<string, number>; third_order?: Record<string, number>; sleeping?: boolean }): string {

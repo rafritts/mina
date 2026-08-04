@@ -385,9 +385,16 @@ async def get_tokens():
 
 @app.get("/api/stream")
 async def stream_state():
+    """
+    SSE: state snapshots + live pipeline events (stream.jsonl) + tick obs.
+
+    Pillar events (emotion_pillar, context_pillar, reasoning, …) arrive as the
+    turn runs so the UI can reveal thinking before the reply returns.
+    """
     from pathlib import Path
     from src.config.config import RUN_DIR
     obs_file = Path(RUN_DIR) / "obs.jsonl"
+    stream_file = Path(RUN_DIR) / "stream.jsonl"
 
     async def generator():
         # Send an initial state snapshot so the client has data immediately
@@ -404,20 +411,45 @@ async def stream_state():
             except Exception:
                 pass
 
-        offset = obs_file.stat().st_size if obs_file.exists() else 0
+        # Tail from end — only live events (not historical backlog)
+        obs_offset = obs_file.stat().st_size if obs_file.exists() else 0
+        stream_offset = stream_file.stat().st_size if stream_file.exists() else 0
         last_snap_ts = 0.0
 
         while True:
-            await asyncio.sleep(2)
+            await asyncio.sleep(0.35)
             try:
-                # Tail obs.jsonl — emit new tick observations as they arrive
+                # Live pipeline / pillar events (fast poll)
+                if stream_file.exists():
+                    size = stream_file.stat().st_size
+                    if size < stream_offset:
+                        stream_offset = 0  # rotated / truncated
+                    if size > stream_offset:
+                        with open(stream_file) as f:
+                            f.seek(stream_offset)
+                            new_data = f.read()
+                            stream_offset = f.tell()
+                        for line in new_data.splitlines():
+                            line = line.strip()
+                            if not line:
+                                continue
+                            try:
+                                evt = json.loads(line)
+                                # stream.jsonl lines already have type + payload
+                                yield f"data: {json.dumps(evt)}\n\n"
+                            except Exception:
+                                pass
+
+                # Tick observations
                 if obs_file.exists():
                     size = obs_file.stat().st_size
-                    if size > offset:
+                    if size < obs_offset:
+                        obs_offset = 0
+                    if size > obs_offset:
                         with open(obs_file) as f:
-                            f.seek(offset)
+                            f.seek(obs_offset)
                             new_data = f.read()
-                            offset = f.tell()
+                            obs_offset = f.tell()
                         for line in new_data.splitlines():
                             line = line.strip()
                             if line:
@@ -427,9 +459,9 @@ async def stream_state():
                                 except Exception:
                                     pass
 
-                # Also send a full state snapshot every 10 seconds
+                # Periodic full state snapshot
                 now = time.time()
-                if _sim is not None and now - last_snap_ts >= 10:
+                if _sim is not None and now - last_snap_ts >= 8:
                     snap = _build_history_snapshot(_sim)
                     payload = {
                         "chemicals":    snap["chemicals"],

@@ -26,6 +26,7 @@ from pathlib import Path
 
 from src.application.infra.client import chat_create
 from src.application.infra.log import log
+from src.application.infra.stream_bus import stream_bus
 from src.config.config import MODEL, get_conversation_file, RUN_DIR
 from src.sim.sim import Sim
 from src.sim.decoder import format_decoder_output
@@ -43,6 +44,20 @@ from .chat_tools import (
     parse_tool_args,
     photo_turn_context,
 )
+
+
+def _emit_stage(stage: str, label: str) -> None:
+    stream_bus.emit("stage", {"stage": stage, "label": label})
+
+
+def _memory_excerpts(text: str, bucket: str, limit: int = 3) -> None:
+    """Emit short rag_hit events from assembled memory blobs."""
+    if not text or not text.strip():
+        return
+    chunks = [c.strip() for c in text.split("\n\n") if c.strip()]
+    for i, chunk in enumerate(chunks[:limit]):
+        excerpt = chunk[:220] + ("…" if len(chunk) > 220 else "")
+        stream_bus.emit("rag_hit", {"index": i, "excerpt": excerpt, "bucket": bucket})
 
 _DECODER_WINDOW_MAX = 20  # rolling window of raw messages for context assembly
 _MINA_WINDOW        = 8   # messages Mina receives directly
@@ -110,6 +125,10 @@ async def run_turn(
     photo_cap = max_photos(image_count)
     aspect = image_aspect if image_aspect in ("landscape", "square", "portrait") else "square"
 
+    stream_bus.new_trace()
+    stream_bus.emit("stimulus_land", {"preview": message[:280]})
+    _emit_stage("sense", "Sensing")
+
     # Load rolling window
     decoder_window = _load_decoder_window()
 
@@ -119,6 +138,10 @@ async def run_turn(
 
     # ── 1. Encoder (state-blind) ────────────────────────────────────────────
     encoder_output = await asyncio.to_thread(encode, message, decoder_window[:-1])
+    stream_bus.emit("encoder", {
+        "preview": message[:120],
+        "axes": {k: v for k, v in encoder_output.items() if not isinstance(v, (dict, list))},
+    })
 
     # ── 2. Relationship modifier + chemistry function ────────────────────────
     from src.hippocampus.hippocampus import get_relationship_modifier
@@ -128,6 +151,7 @@ async def run_turn(
     await asyncio.to_thread(
         sim.apply_chemistry_from_encoder, encoder_output, relationship_modifier
     )
+    _emit_stage("chemistry", "Chemistry settling")
 
     # ── 3. Sliding RAG write (post-user-message) ─────────────────────────────
     asyncio.create_task(_sliding_rag_write_async(decoder_window))
@@ -137,12 +161,25 @@ async def run_turn(
     big5    = sim.get_big5()
 
     # ── 5. Insula pillar ────────────────────────────────────────────────────
+    _emit_stage("feel", "Feeling")
     prior_emotional = _load_prior_emotional_state()
     insula_output = await asyncio.to_thread(
         run_insula, decoded, big5, prior_emotional
     )
+    stream_bus.emit("emotion_pillar", {
+        "dominant_affect": insula_output.get("dominant_affect", ""),
+        "trend": insula_output.get("trend", ""),
+        "arousal": insula_output.get("arousal", 50),
+        "valence": insula_output.get("valence", 50),
+        "availability": insula_output.get("availability", ""),
+        "dominant_drive": insula_output.get("dominant_drive", ""),
+        "emotional_response_texturing": insula_output.get("emotional_response_texturing", ""),
+        "emotional_summary": insula_output.get("emotional_summary", ""),
+        "somatic": insula_output.get("somatic", ""),
+    })
 
     # ── 6. Memory retrieval (parallel) ──────────────────────────────────────
+    _emit_stage("remember", "Remembering")
     from src.hippocampus.hippocampus import (
         build_kag_context, sliding_rag_query, build_rag_context_dual
     )
@@ -153,6 +190,16 @@ async def run_turn(
         asyncio.to_thread(build_rag_context_dual, message),
     )
     experiences_result = "\n".join(filter(None, [semi_recent, historical]))
+    _memory_excerpts(sliding_result or "", "sliding")
+    _memory_excerpts(experiences_result or "", "episodic")
+    if kag_context:
+        for i, line in enumerate((kag_context or "").split("\n")[:3]):
+            line = line.strip()
+            if line:
+                stream_bus.emit("kag_selection", {
+                    "filename": line[:80],
+                    "excerpt": line[:200],
+                })
 
     # ── 7. Context assembly ──────────────────────────────────────────────────
     window_context, rag_context = await asyncio.gather(
@@ -161,17 +208,37 @@ async def run_turn(
     )
 
     # ── 8. Hippocampus pillar ────────────────────────────────────────────────
+    _emit_stage("situate", "Situating")
     context_output = await asyncio.to_thread(
         run_hippocampus, insula_output, window_context, rag_context
     )
+    stream_bus.emit("context_pillar", {
+        "social_context": context_output.get("social_context", ""),
+        "urgency": context_output.get("urgency", "none"),
+        "notable": context_output.get("notable"),
+        "situational_summary": context_output.get("situational_summary", ""),
+    })
 
     # ── 9. PFC pillar ────────────────────────────────────────────────────────
+    _emit_stage("decide", "Deciding")
     pfc_output = await asyncio.to_thread(
         run_pfc, insula_output, context_output, message, big5
     )
+    stream_bus.emit("reasoning", {
+        "approach": pfc_output.get("approach", ""),
+        "tone": pfc_output.get("tone", ""),
+        "internal_reaction": pfc_output.get("internal_reaction", ""),
+        "lead_with": pfc_output.get("lead_with", ""),
+        "strategy_rationale": pfc_output.get("strategy_rationale", ""),
+    })
 
     if pfc_output.get("skip_primary_response"):
         log("PIPELINE", "PFC chose silence.")
+        stream_bus.emit("response_complete", {
+            "text": "",
+            "token_count": 0,
+            "skipped": True,
+        })
         _save_prior_emotional_state(insula_output)
         _trim_and_save_window(decoder_window)
         _persist_context(
@@ -206,6 +273,7 @@ async def run_turn(
     system_prompt += "\n\n" + photo_turn_context(image_count, aspect)
 
     # ── 11. Mina LLM call (+ optional send_photo tool loop) ────────────────
+    _emit_stage("speak", "Speaking")
     mina_window = decoder_window[-_MINA_WINDOW:]
     messages: list[dict] = [{"role": "system", "content": system_prompt}] + [
         {"role": m["role"], "content": m["content"]}
@@ -287,6 +355,13 @@ async def run_turn(
     log("MINA", (reply[:120] if reply else "(empty)"))
     if image_urls:
         log("MINA", f"images={image_urls}")
+
+    stream_bus.emit("response_complete", {
+        "text": reply or "",
+        "token_count": 0,
+        "skipped": False,
+        "images": image_urls,
+    })
 
     # ── 12. Post-turn bookkeeping ───────────────────────────────────────────
     decoder_window.append({"role": "assistant", "content": reply, "ts": time.time()})
