@@ -182,17 +182,23 @@ _LOOK_SCENE_MARKERS = (
 
 
 def _appearance_section() -> str | None:
-    from src.config.config import IDENTITY_DIR
+    """Krea look blocks: prefer CUSTOMIZATION.md, then identity/MINA.md."""
+    from src.config.config import IDENTITY_DIR, REPO_ROOT
 
-    path = Path(IDENTITY_DIR) / "MINA.md"
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        return None
-    for h2 in ("## Appearance (Krea)", "## Appearance"):
-        if h2 in text:
-            after = text.split(h2, 1)[1]
-            return after.split("\n## ", 1)[0]
+    candidates = (
+        Path(REPO_ROOT) / "CUSTOMIZATION.md",
+        Path(IDENTITY_DIR) / "CUSTOMIZATION.md",
+        Path(IDENTITY_DIR) / "MINA.md",
+    )
+    for path in candidates:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for h2 in ("## Appearance (Krea)", "## Appearance"):
+            if h2 in text:
+                after = text.split(h2, 1)[1]
+                return after.split("\n## ", 1)[0]
     return None
 
 
@@ -216,8 +222,9 @@ def mina_look_block() -> str:
     """
     Fixed appearance prose for Krea2 prompts (clothed path).
 
-    Third-person visual anchors from identity/MINA.md. Body shape words live
-    so clothed shots stay consistent.
+    Third-person visual anchors from CUSTOMIZATION.md (preferred) or
+    identity/MINA.md. Appearance anchors so
+    clothed shots stay consistent.
     """
     section = _appearance_section()
     if False:
