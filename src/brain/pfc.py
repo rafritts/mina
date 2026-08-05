@@ -84,6 +84,8 @@ def run_pfc(
     context_block      = _format_context(context_output)
     big5_block         = _format_big5(big5)
 
+    from src.brain.time_context import format_host_time_line
+
     scene_section = ""
     if scene_block and scene_block.strip():
         scene_section = (
@@ -91,6 +93,7 @@ def run_pfc(
         )
 
     user_prompt = (
+        f"## Wall clock\n{format_host_time_line()}\n\n"
         f"## Current message\n{message}\n\n"
         f"## Emotional state\n{emotional_block}\n\n"
         f"## Situational context\n{context_block}\n\n"

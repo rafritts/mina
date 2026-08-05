@@ -54,6 +54,7 @@ from .chat_tools import (
     parse_tool_args,
     photo_turn_context,
 )
+from .time_context import format_host_time_block
 
 
 def _emit_stage(stage: str, label: str) -> None:
@@ -349,6 +350,15 @@ async def run_turn(
     if kag_context:
         system_prompt += f"\n\n[Memory]\n{kag_context}"
 
+    # Host wall clock (Kaiya-style) — circadian body time for mouth.
+    # Prefer last prior activity ts so idle after this message still reflects gap.
+    last_activity_ts = None
+    for m in reversed(decoder_window[:-1]):
+        t = m.get("ts")
+        if isinstance(t, (int, float)) and t > 0:
+            last_activity_ts = float(t)
+            break
+    system_prompt += "\n\n" + format_host_time_block(last_activity_ts=last_activity_ts)
     system_prompt += "\n\n" + photo_turn_context(image_count, aspect)
     system_prompt += "\n\n" + mouth_scene_instructions()
 

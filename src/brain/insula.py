@@ -133,12 +133,16 @@ def run_insula(
     prior_emotional_state: dict | None = None,
 ) -> dict:
     """Run the insula pillar. Returns emotional state dict."""
+    from src.brain.time_context import format_host_time_line
+
     decoder_block = format_decoder_output(decoder_output)
     overall_block = _format_overall_state(decoder_output)
     big5_block    = _format_big5(big5)
     prior_block   = _format_prior(prior_emotional_state, decoder_output)
+    time_line     = format_host_time_line()
 
     user_prompt = (
+        f"## Wall clock (ambient; circadian chemistry follows this)\n{time_line}\n\n"
         f"## Overall chemical posture\n{overall_block}\n\n"
         f"## Decoded chemical state\n{decoder_block}\n\n"
         f"{big5_block}{prior_block}"

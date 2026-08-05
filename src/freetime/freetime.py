@@ -172,9 +172,16 @@ async def run_freetime(sim: Sim) -> None:
     context_output = await asyncio.to_thread(run_hippocampus, insula_output, window_ctx, rag_ctx)
     pfc_output     = await asyncio.to_thread(run_pfc, insula_output, context_output, synthetic_message, big5)
 
+    from src.brain.time_context import format_host_time_block
+
     system_prompt = build_system_prompt(insula_output, context_output, pfc_output)
     if kag_ctx:
         system_prompt += f"\n\n[Memory]\n{kag_ctx}"
+    # Synthetic message already states day/time; system block keeps mouth aligned
+    # with the same wall clock the sim circadian uses.
+    system_prompt += "\n\n" + format_host_time_block(
+        last_activity_ts=_last_freetime_ts() or None,
+    )
     system_prompt += "\n\n[FREETIME] No user is present. Use tools to act, record, or explore. Record a diary entry when you have something genuine to write."
 
     # ── 4. Mina LLM call with tool dispatch loop ──────────────────────────────
