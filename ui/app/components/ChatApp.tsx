@@ -51,33 +51,80 @@ const HOST_IMAGE_MD =
 const HOST_IMAGE_BARE =
   /(?<![(/])(\/images\/[A-Za-z0-9._-]+\.(?:png|jpe?g|webp|gif))/g
 
-function extractImageUrls(content: string, extra?: string[]): string[] {
+interface MessageImage {
+  src: string
+  caption: string
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** Caption from alt when real; backend uses alt "photo" for uncaptioned shots. */
+function captionFromAlt(alt: string): string {
+  const t = alt.trim()
+  if (!t || t.toLowerCase() === 'photo') return ''
+  return t
+}
+
+/**
+ * Pull host images out of reply text and attach captions.
+ *
+ * send_photo returns `caption\\n\\n![caption](url)` — the caption must not stay
+ * as bubble prose; it belongs under the image.
+ */
+function splitMessageMedia(
+  content: string,
+  extra?: string[],
+): { prose: string; images: MessageImage[] } {
+  const images: MessageImage[] = []
   const seen = new Set<string>()
-  const out: string[] = []
-  const add = (u: string) => {
-    if (!u || seen.has(u)) return
-    if (!u.startsWith('/images/') && !u.startsWith('/api/generate/')) return
-    seen.add(u)
-    out.push(u)
+  const add = (src: string, caption: string) => {
+    if (!src || seen.has(src)) return
+    if (!src.startsWith('/images/') && !src.startsWith('/api/generate/')) return
+    seen.add(src)
+    images.push({ src, caption })
   }
-  for (const u of extra ?? []) add(u)
-  let m: RegExpExecArray | null
+
+  let prose = ''
+  let last = 0
   const md = new RegExp(HOST_IMAGE_MD.source, 'g')
-  while ((m = md.exec(content)) !== null) add(m[2])
+  let m: RegExpExecArray | null
+  while ((m = md.exec(content)) !== null) {
+    let before = content.slice(last, m.index)
+    const caption = captionFromAlt(m[1] || '')
+    if (caption) {
+      // Drop the tool-format duplicate line immediately before the image.
+      before = before.replace(
+        new RegExp(
+          `(?:^|\\n)[ \\t]*${escapeRegExp(caption)}[ \\t]*(?:\\n[ \\t]*)*$`,
+        ),
+        (match) => (match.startsWith('\n') ? '\n' : ''),
+      )
+    }
+    prose += before
+    add(m[2], caption)
+    last = m.index + m[0].length
+  }
+  prose += content.slice(last)
+
   const bare = new RegExp(HOST_IMAGE_BARE.source, 'g')
-  while ((m = bare.exec(content)) !== null) add(m[1])
-  return out
+  prose = prose.replace(bare, (url) => {
+    add(url, '')
+    return ''
+  })
+
+  for (const u of extra ?? []) add(u, '')
+
+  prose = prose.replace(/\n{3,}/g, '\n\n').trim()
+  return { prose, images }
 }
 
-function stripHostImageMarkdown(content: string): string {
-  return content
-    .replace(new RegExp(HOST_IMAGE_MD.source, 'g'), '')
-    .replace(new RegExp(HOST_IMAGE_BARE.source, 'g'), '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
+function extractImageUrls(content: string, extra?: string[]): string[] {
+  return splitMessageMedia(content, extra).images.map((img) => img.src)
 }
 
-function ChatImage({ src, alt }: { src: string; alt: string }) {
+function ChatImage({ src, caption }: { src: string; caption: string }) {
   const [failed, setFailed] = useState(false)
   if (failed) {
     return (
@@ -86,8 +133,9 @@ function ChatImage({ src, alt }: { src: string; alt: string }) {
       </div>
     )
   }
+  const alt = caption || 'photo'
   return (
-    <figure className="my-2.5">
+    <figure className="chat-image my-2.5">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={src}
@@ -97,13 +145,15 @@ function ChatImage({ src, alt }: { src: string; alt: string }) {
         loading="lazy"
         onError={() => setFailed(true)}
       />
+      {caption ? (
+        <figcaption className="chat-image-caption">{caption}</figcaption>
+      ) : null}
     </figure>
   )
 }
 
 function renderMessageBody(content: string, images?: string[]) {
-  const urls = extractImageUrls(content, images)
-  const prose = stripHostImageMarkdown(content)
+  const { prose, images: media } = splitMessageMedia(content, images)
   const nodes: ReactNode[] = []
   if (prose) {
     nodes.push(
@@ -112,8 +162,10 @@ function renderMessageBody(content: string, images?: string[]) {
       </span>,
     )
   }
-  urls.forEach((src, i) => {
-    nodes.push(<ChatImage key={`img-${i}-${src}`} src={src} alt="photo" />)
+  media.forEach((img, i) => {
+    nodes.push(
+      <ChatImage key={`img-${i}-${img.src}`} src={img.src} caption={img.caption} />,
+    )
   })
   if (!nodes.length) {
     return <span className="whitespace-pre-wrap">{content}</span>

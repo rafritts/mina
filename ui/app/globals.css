@@ -636,6 +636,21 @@ body {
   flex-shrink: 0;
 }
 
+.chat-image {
+  margin: 0.65rem 0 0.35rem;
+}
+.chat-image img {
+  display: block;
+}
+.chat-image-caption {
+  margin-top: 0.45rem;
+  padding: 0 0.15rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 /* ── Thought / mind stream ────────────────────────────────── */
 
 .mind {
