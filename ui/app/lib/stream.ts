@@ -133,6 +133,8 @@ export interface TurnMind {
   stage: PillarStageId | null
   stageLabel: string | null
   stimulus: string | null
+  /** Amygdala encoder axes/flags — drives chemistry, not raw nM levels */
+  encoder: EncoderEvent['payload'] | null
   emotion: EmotionPillarEvent['payload'] | null
   memory: { type: 'rag' | 'kag'; text: string; bucket?: string }[]
   context: ContextPillarEvent['payload'] | null
@@ -146,6 +148,7 @@ export const EMPTY_TURN_MIND: TurnMind = {
   stage: null,
   stageLabel: null,
   stimulus: null,
+  encoder: null,
   emotion: null,
   memory: [],
   context: null,
@@ -173,6 +176,18 @@ export function reduceTurnMind(prev: TurnMind, event: StreamEvent): TurnMind {
         stageLabel: event.payload.label,
       }
     }
+    case 'encoder':
+      return {
+        ...prev,
+        active: true,
+        encoder: event.payload,
+        // Encoder lands just before chemistry stage; keep stage if already set
+        stage: prev.stage === 'sense' || prev.stage === null ? 'chemistry' : prev.stage,
+        stageLabel:
+          prev.stage === 'sense' || prev.stage === null
+            ? 'Chemistry settling'
+            : prev.stageLabel,
+      }
     case 'emotion_pillar':
       return {
         ...prev,

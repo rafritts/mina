@@ -124,7 +124,9 @@ function renderMessageBody(content: string, images?: string[]) {
 function hasMindContent(mind: TurnMind | undefined): boolean {
   if (!mind) return false
   return Boolean(
-    mind.emotion ||
+    mind.stimulus ||
+      mind.encoder ||
+      mind.emotion ||
       mind.context ||
       mind.reasoning ||
       mind.memory.length > 0 ||

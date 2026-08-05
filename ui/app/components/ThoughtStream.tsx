@@ -83,13 +83,15 @@ function Chip({ children }: { children: React.ReactNode }) {
   return <span className="chip">{children}</span>
 }
 
+type SectionTone = 'sense' | 'chemistry' | 'feel' | 'memory' | 'situate' | 'decide'
+
 function Section({
   title,
   tone,
   children,
 }: {
   title: string
-  tone: 'feel' | 'memory' | 'situate' | 'decide'
+  tone: SectionTone
   children: React.ReactNode
 }) {
   return (
@@ -102,9 +104,70 @@ function Section({
   )
 }
 
+/** Axis labels for display; encoder treats ≤2 as noise downstream. */
+const AXIS_MIN = 3
+
+function formatAxisLabel(key: string): string {
+  return key.replace(/_/g, ' ')
+}
+
+/** Non-zero salience axes + notable flags from encoder payload. */
+function encoderHighlights(axes: Record<string, unknown> | undefined): {
+  chips: string[]
+  flags: string[]
+} {
+  if (!axes) return { chips: [], flags: [] }
+  const chips: string[] = []
+  const flags: string[] = []
+
+  const order = [
+    'salience',
+    'threat',
+    'social_threat',
+    'reward',
+    'bonding',
+    'arousal',
+    'aversion',
+    'novelty',
+    'loss',
+    'romance',
+    'shame',
+  ]
+  for (const key of order) {
+    const v = axes[key]
+    if (typeof v === 'number' && v >= AXIS_MIN) {
+      chips.push(`${formatAxisLabel(key)} ${v}`)
+    }
+  }
+  // Any other numeric axes not in the known list
+  for (const [key, v] of Object.entries(axes)) {
+    if (order.includes(key)) continue
+    if (typeof v === 'number' && v >= AXIS_MIN && key !== 'expected_magnitude') {
+      chips.push(`${formatAxisLabel(key)} ${v}`)
+    }
+  }
+
+  if (axes.directed_at_mina === true) flags.push('directed at Mina')
+  if (axes.register_shift === true) {
+    const mag = axes.expected_magnitude
+    flags.push(
+      typeof mag === 'number' && mag > 0
+        ? `register shift · mag ${mag}`
+        : 'register shift',
+    )
+  }
+  if (typeof axes.channel === 'string' && axes.channel && axes.channel !== 'dialogue') {
+    flags.push(axes.channel)
+  }
+
+  return { chips, flags }
+}
+
 function MindBody({ mind, live }: { mind: TurnMind; live: boolean }) {
   const currentIdx = stageIndex(mind.stage)
   const done = mind.completed
+  const { chips: axisChips, flags: axisFlags } = encoderHighlights(mind.encoder?.axes)
+  const hasEncoderContent = axisChips.length > 0 || axisFlags.length > 0 || Boolean(mind.encoder)
 
   return (
     <>
@@ -136,6 +199,44 @@ function MindBody({ mind, live }: { mind: TurnMind; live: boolean }) {
       </div>
 
       <div className="mind-body">
+        {mind.stimulus && (
+          <Section title="Sense · what landed" tone="sense">
+            <p className="m-0 whitespace-pre-wrap">
+              <Typewriter enabled={live} text={mind.stimulus} speed={80} />
+            </p>
+          </Section>
+        )}
+
+        {mind.encoder && (
+          <Section title="Chem · amygdala → deltas" tone="chemistry">
+            {hasEncoderContent && (axisChips.length > 0 || axisFlags.length > 0) ? (
+              <>
+                {axisChips.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-1.5">
+                    {axisChips.map((c) => (
+                      <Chip key={c}>{c}</Chip>
+                    ))}
+                  </div>
+                )}
+                {axisFlags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {axisFlags.map((f) => (
+                      <Chip key={f}>{f}</Chip>
+                    ))}
+                  </div>
+                )}
+                <p className="m-0 mt-1.5 text-[11.5px] text-muted">
+                  Appraisal axes (0–10). Values ≤2 omitted — noise floor for chemistry.
+                </p>
+              </>
+            ) : (
+              <p className="m-0 text-muted text-[12.5px]">
+                Quiet appraisal — no axes above noise floor. Chemistry stays near baseline.
+              </p>
+            )}
+          </Section>
+        )}
+
         {mind.emotion && (
           <Section title="Insula · felt state" tone="feel">
             <div className="flex flex-wrap gap-1.5 mb-2">
@@ -250,7 +351,9 @@ function MindBody({ mind, live }: { mind: TurnMind; live: boolean }) {
           </Section>
         )}
 
-        {!mind.emotion &&
+        {!mind.stimulus &&
+          !mind.encoder &&
+          !mind.emotion &&
           !mind.context &&
           !mind.reasoning &&
           mind.memory.length === 0 && (
@@ -281,7 +384,14 @@ export function ThoughtStream({
   defaultOpen = false,
   className,
 }: Props) {
-  if (!mind.active && !mind.completed && !mind.emotion && !mind.reasoning) {
+  if (
+    !mind.active &&
+    !mind.completed &&
+    !mind.stimulus &&
+    !mind.encoder &&
+    !mind.emotion &&
+    !mind.reasoning
+  ) {
     // still allow empty live shell if active flag set
     if (!mind.active) return null
   }
