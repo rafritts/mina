@@ -39,6 +39,9 @@ export interface EncoderEvent {
   payload: {
     preview: string
     axes?: Record<string, unknown>
+    /** Class-1 phasic deltas in nM, after chemistry function (may be empty). */
+    deltas?: Record<string, number>
+    relationship_modifier?: number
   }
 }
 

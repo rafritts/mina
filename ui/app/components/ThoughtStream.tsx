@@ -104,70 +104,94 @@ function Section({
   )
 }
 
-/** Axis labels for display; encoder treats ≤2 as noise downstream. */
-const AXIS_MIN = 3
-
 function formatAxisLabel(key: string): string {
   return key.replace(/_/g, ' ')
 }
 
-/** Non-zero salience axes + notable flags from encoder payload. */
-function encoderHighlights(axes: Record<string, unknown> | undefined): {
-  chips: string[]
-  flags: string[]
-} {
-  if (!axes) return { chips: [], flags: [] }
-  const chips: string[] = []
-  const flags: string[] = []
-
-  const order = [
-    'salience',
-    'threat',
-    'social_threat',
-    'reward',
-    'bonding',
-    'arousal',
-    'aversion',
-    'novelty',
-    'loss',
-    'romance',
-    'shame',
-  ]
-  for (const key of order) {
-    const v = axes[key]
-    if (typeof v === 'number' && v >= AXIS_MIN) {
-      chips.push(`${formatAxisLabel(key)} ${v}`)
-    }
+/** Coerce encoder axis values (JSON numbers sometimes arrive as strings). */
+function asNumber(v: unknown): number | null {
+  if (typeof v === 'number' && Number.isFinite(v)) return v
+  if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) {
+    return Number(v)
   }
-  // Any other numeric axes not in the known list
-  for (const [key, v] of Object.entries(axes)) {
-    if (order.includes(key)) continue
-    if (typeof v === 'number' && v >= AXIS_MIN && key !== 'expected_magnitude') {
-      chips.push(`${formatAxisLabel(key)} ${v}`)
+  return null
+}
+
+const AXIS_ORDER = [
+  'salience',
+  'threat',
+  'social_threat',
+  'reward',
+  'bonding',
+  'arousal',
+  'aversion',
+  'novelty',
+  'loss',
+  'romance',
+  'shame',
+] as const
+
+/** Chemistry floors axis values ≤2 to zero for positive weights. */
+const AXIS_NOISE_FLOOR = 2
+
+function encoderReadout(payload: {
+  axes?: Record<string, unknown>
+  deltas?: Record<string, number>
+} | null): {
+  axisChips: string[]
+  deltaChips: string[]
+  flags: string[]
+  quiet: boolean
+  maxAxis: number
+} {
+  if (!payload?.axes) {
+    return { axisChips: [], deltaChips: [], flags: [], quiet: true, maxAxis: 0 }
+  }
+  const axes = payload.axes
+  const axisChips: string[] = []
+  const flags: string[] = []
+  let maxAxis = 0
+
+  for (const key of AXIS_ORDER) {
+    const n = asNumber(axes[key])
+    if (n === null) continue
+    maxAxis = Math.max(maxAxis, n)
+    // Always show salience; other axes when > 0 so quiet turns still read
+    if (key === 'salience' || n > 0) {
+      axisChips.push(`${formatAxisLabel(key)} ${n}`)
     }
   }
 
   if (axes.directed_at_mina === true) flags.push('directed at Mina')
   if (axes.register_shift === true) {
-    const mag = axes.expected_magnitude
+    const mag = asNumber(axes.expected_magnitude)
     flags.push(
-      typeof mag === 'number' && mag > 0
-        ? `register shift · mag ${mag}`
-        : 'register shift',
+      mag !== null && mag > 0 ? `register shift · mag ${mag}` : 'register shift',
     )
   }
   if (typeof axes.channel === 'string' && axes.channel && axes.channel !== 'dialogue') {
-    flags.push(axes.channel)
+    flags.push(String(axes.channel))
   }
 
-  return { chips, flags }
+  const deltaChips: string[] = []
+  const deltas = payload.deltas ?? {}
+  const deltaEntries = Object.entries(deltas)
+    .map(([k, v]) => [k, asNumber(v)] as const)
+    .filter((e): e is readonly [string, number] => e[1] !== null && Math.abs(e[1]) >= 0.001)
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+  for (const [chem, n] of deltaEntries) {
+    const sign = n > 0 ? '+' : ''
+    deltaChips.push(`${chem} ${sign}${n}`)
+  }
+
+  const quiet = maxAxis <= AXIS_NOISE_FLOOR && deltaChips.length === 0
+  return { axisChips, deltaChips, flags, quiet, maxAxis }
 }
 
 function MindBody({ mind, live }: { mind: TurnMind; live: boolean }) {
   const currentIdx = stageIndex(mind.stage)
   const done = mind.completed
-  const { chips: axisChips, flags: axisFlags } = encoderHighlights(mind.encoder?.axes)
-  const hasEncoderContent = axisChips.length > 0 || axisFlags.length > 0 || Boolean(mind.encoder)
+  const chem = encoderReadout(mind.encoder)
 
   return (
     <>
@@ -199,39 +223,45 @@ function MindBody({ mind, live }: { mind: TurnMind; live: boolean }) {
       </div>
 
       <div className="mind-body">
-        {mind.stimulus && (
-          <Section title="Sense · what landed" tone="sense">
-            <p className="m-0 whitespace-pre-wrap">
-              <Typewriter enabled={live} text={mind.stimulus} speed={80} />
-            </p>
-          </Section>
-        )}
+        {/* Sense is only a stage-rail step: stimulus is already the chat bubble above. */}
 
         {mind.encoder && (
-          <Section title="Chem · amygdala → deltas" tone="chemistry">
-            {hasEncoderContent && (axisChips.length > 0 || axisFlags.length > 0) ? (
+          <Section title="Chem · appraisal → Class‑1" tone="chemistry">
+            {chem.flags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-1.5">
+                {chem.flags.map((f) => (
+                  <Chip key={f}>{f}</Chip>
+                ))}
+              </div>
+            )}
+            {chem.axisChips.length > 0 && (
               <>
-                {axisChips.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-1.5">
-                    {axisChips.map((c) => (
-                      <Chip key={c}>{c}</Chip>
-                    ))}
-                  </div>
-                )}
-                {axisFlags.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {axisFlags.map((f) => (
-                      <Chip key={f}>{f}</Chip>
-                    ))}
-                  </div>
-                )}
-                <p className="m-0 mt-1.5 text-[11.5px] text-muted">
-                  Appraisal axes (0–10). Values ≤2 omitted — noise floor for chemistry.
-                </p>
+                <div className="label mb-1" style={{ opacity: 0.65 }}>
+                  Encoder axes
+                </div>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {chem.axisChips.map((c) => (
+                    <Chip key={c}>{c}</Chip>
+                  ))}
+                </div>
+              </>
+            )}
+            {chem.deltaChips.length > 0 ? (
+              <>
+                <div className="label mb-1" style={{ opacity: 0.65 }}>
+                  Applied deltas (nM)
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {chem.deltaChips.map((c) => (
+                    <Chip key={c}>{c}</Chip>
+                  ))}
+                </div>
               </>
             ) : (
-              <p className="m-0 text-muted text-[12.5px]">
-                Quiet appraisal — no axes above noise floor. Chemistry stays near baseline.
+              <p className="m-0 text-[12.5px] text-muted">
+                {chem.quiet
+                  ? 'Quiet turn — axes at/under noise floor (≤2). No Class‑1 phasic push.'
+                  : 'Axes registered, but net Class‑1 delta ≈ 0 after gain/regulation.'}
               </p>
             )}
           </Section>
@@ -351,8 +381,7 @@ function MindBody({ mind, live }: { mind: TurnMind; live: boolean }) {
           </Section>
         )}
 
-        {!mind.stimulus &&
-          !mind.encoder &&
+        {!mind.encoder &&
           !mind.emotion &&
           !mind.context &&
           !mind.reasoning &&

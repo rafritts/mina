@@ -211,20 +211,26 @@ async def run_turn(
 
     # ── 1. Encoder (state-blind) ────────────────────────────────────────────
     encoder_output = await asyncio.to_thread(encode, message, decoder_window[:-1])
-    stream_bus.emit("encoder", {
-        "preview": message[:120],
-        "axes": {k: v for k, v in encoder_output.items() if not isinstance(v, (dict, list))},
-    })
+    axes = {
+        k: v for k, v in encoder_output.items() if not isinstance(v, (dict, list))
+    }
 
     # ── 2. Relationship modifier + chemistry function ────────────────────────
     from src.hippocampus.hippocampus import get_relationship_modifier
     relationship_modifier = await asyncio.to_thread(get_relationship_modifier, username)
     log("PIPELINE", f"relationship_modifier({username})={relationship_modifier}")
 
-    await asyncio.to_thread(
+    chem_deltas = await asyncio.to_thread(
         sim.apply_chemistry_from_encoder, encoder_output, relationship_modifier
     )
     _emit_stage("chemistry", "Chemistry settling")
+    # Appraisal + applied Class-1 deltas for mind stream (after chemistry runs)
+    stream_bus.emit("encoder", {
+        "preview": message[:120],
+        "axes": axes,
+        "deltas": chem_deltas or {},
+        "relationship_modifier": relationship_modifier,
+    })
 
     # ── 3. Sliding RAG write (post-user-message) ─────────────────────────────
     asyncio.create_task(_sliding_rag_write_async(decoder_window))

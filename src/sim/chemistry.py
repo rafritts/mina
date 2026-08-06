@@ -41,10 +41,14 @@ def apply_chemistry(
     state: ChemicalState,
     big5: dict[str, float],
     relationship_modifier: float = 1.0,
-) -> None:
+) -> dict[str, float]:
     """
     Apply encoder axis activations as Class 1 phasic deltas.
     Mutates state.levels[chemical].phasic in place.
+
+    Returns {chemical: delta_nM} for non-trivial Class 1 applications
+    (for mind-stream / diagnostics). Empty when the turn is under the
+    salience floor or all deltas round to ~0.
 
     encoder_output: {
       "salience": 0-10, "threat": 0-10, ...,
@@ -55,6 +59,8 @@ def apply_chemistry(
     big5: {"neuroticism": 65, "extraversion": 48, ...}
     relationship_modifier: multiplier from relationship state (bonding dimension)
     """
+    applied: dict[str, float] = {}
+
     # Build effective axis weights per chemical from Big 5 biases
     effective_weights = _build_effective_weights(big5)
 
@@ -111,12 +117,18 @@ def apply_chemistry(
         delta_nM = raw_delta * norm_max / 10.0
 
         if lvl:
+            before = lvl.phasic
             lvl.phasic = max(0.0, lvl.phasic + delta_nM)
             # Cap total so a burst of messages cannot exceed phys max
             max_total = norm_max * CHEMICAL_TOTAL_CAP_MULT
             excess = (lvl.tonic + lvl.phasic) - max_total
             if excess > 0:
                 lvl.phasic = max(0.0, lvl.phasic - excess)
+            actual = lvl.phasic - before
+            if abs(actual) >= 0.001:
+                applied[chem] = round(actual, 3)
+
+    return applied
 
 
 def _apply_pfc_regulation(raw_delta: float, params: dict, neuroticism: float) -> float:
