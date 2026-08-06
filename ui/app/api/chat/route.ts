@@ -16,6 +16,7 @@ const BACKEND_PORT = Number(process.env.MINA_BACKEND_PORT ?? '5100')
  *   image_count?: "auto" | 0 | 1..5
  *   image_aspect?: "landscape" | "square" | "portrait"
  *   redo?: boolean — drop trailing matching turn server-side before re-running
+ *   rewind_message?: string — original user text to match when editing (defaults to message)
  * }
  */
 export async function POST(request: NextRequest) {
@@ -25,6 +26,7 @@ export async function POST(request: NextRequest) {
     image_count?: string | number
     image_aspect?: string
     redo?: boolean
+    rewind_message?: string
   }
   try {
     body = await request.json()
@@ -43,6 +45,7 @@ export async function POST(request: NextRequest) {
     { role: 'user', content: message },
   ]
 
+  const rewindMessage = (body.rewind_message ?? '').trim()
   const payload = JSON.stringify({
     model: 'mina',
     messages,
@@ -50,6 +53,7 @@ export async function POST(request: NextRequest) {
     image_count: body.image_count ?? 'auto',
     image_aspect: body.image_aspect ?? 'square',
     redo: Boolean(body.redo),
+    ...(rewindMessage ? { rewind_message: rewindMessage } : {}),
   })
 
   try {

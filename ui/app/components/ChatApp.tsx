@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { RotateCcw } from 'lucide-react'
+import { Check, Pencil, RotateCcw, X } from 'lucide-react'
 import {
   IMAGE_ASPECT_DEFAULT,
   type ImageAspect,
@@ -213,6 +213,123 @@ function renderMessageBody(content: string, images?: string[]) {
   return nodes
 }
 
+/** Last user bubble only — inline edit, then re-run the tip turn. */
+function UserMessage({
+  content,
+  images,
+  canEdit,
+  onEdit,
+}: {
+  content: string
+  images?: string[]
+  canEdit: boolean
+  onEdit: (newContent: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(content)
+  const taRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (!editing) return
+    const el = taRef.current
+    if (!el) return
+    el.focus()
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 240)}px`
+    const len = el.value.length
+    el.setSelectionRange(len, len)
+  }, [editing])
+
+  const cancel = () => {
+    setEditing(false)
+    setDraft(content)
+  }
+
+  const save = () => {
+    const next = draft.trim()
+    if (!next || next === content.trim()) {
+      cancel()
+      return
+    }
+    setEditing(false)
+    onEdit(next)
+  }
+
+  if (editing) {
+    return (
+      <div className="msg-user-wrap msg-user-wrap-editing">
+        <textarea
+          ref={taRef}
+          className="msg-edit-ta"
+          value={draft}
+          rows={3}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            const el = e.target
+            el.style.height = 'auto'
+            el.style.height = `${Math.min(el.scrollHeight, 240)}px`
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault()
+              cancel()
+            }
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault()
+              save()
+            }
+          }}
+        />
+        <div className="msg-edit-actions">
+          <button
+            type="button"
+            className="btn btn-soft btn-sm msg-action-btn"
+            onClick={save}
+            disabled={!draft.trim()}
+          >
+            <Check className="msg-action-icon" aria-hidden />
+            Save
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm msg-action-btn"
+            onClick={cancel}
+          >
+            <X className="msg-action-icon" aria-hidden />
+            Cancel
+          </button>
+          <span className="msg-edit-hint">⌘/Ctrl+Enter</span>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="msg-user-wrap">
+      <div className="msg msg-user">
+        {renderMessageBody(content, images)}
+      </div>
+      {canEdit ? (
+        <div className="msg-actions msg-actions-user">
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm msg-action-btn"
+            onClick={() => {
+              setDraft(content)
+              setEditing(true)
+            }}
+            title="Edit message"
+            aria-label="Edit message"
+          >
+            <Pencil className="msg-action-icon" aria-hidden />
+            Edit
+          </button>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function hasMindContent(mind: TurnMind | undefined): boolean {
   if (!mind) return false
   return Boolean(
@@ -354,12 +471,13 @@ export function ChatApp() {
    * Run a chat completion for `text`, appending an assistant bubble on success.
    * `history` is prior messages only (not including the user turn being sent).
    * When `redo` is true, the server rewinds the trailing matching turn first.
+   * `rewindMessage` is the original user text to match when editing (≠ new text).
    */
   const runCompletion = useCallback(
     async (
       text: string,
       history: ChatMessage[],
-      opts?: { redo?: boolean },
+      opts?: { redo?: boolean; rewindMessage?: string },
     ) => {
       setSending(true)
       sendingRef.current = true
@@ -380,6 +498,9 @@ export function ChatApp() {
             image_count: imageCount,
             image_aspect: imageAspect,
             redo: Boolean(opts?.redo),
+            ...(opts?.rewindMessage
+              ? { rewind_message: opts.rewindMessage }
+              : {}),
           }),
         })
         const data = (await res.json()) as {
@@ -492,6 +613,45 @@ export function ChatApp() {
     [sending, messages, runCompletion],
   )
 
+  /**
+   * Edit last user message only: replace text, drop the following assistant
+   * (if any), rewind server tip, re-run. No deep history branching.
+   */
+  const handleEdit = useCallback(
+    async (messageId: string, newContent: string) => {
+      if (sending) return
+      const text = newContent.trim()
+      if (!text) return
+
+      const idx = messages.findIndex((m) => m.id === messageId)
+      if (idx < 0) return
+      const target = messages[idx]
+      if (target.role !== 'user') return
+
+      let lastUserIdx = -1
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === 'user') {
+          lastUserIdx = i
+          break
+        }
+      }
+      if (idx !== lastUserIdx) {
+        setError('Can only edit the last message')
+        return
+      }
+      if (text === target.content.trim()) return
+
+      const history = messages.slice(0, idx)
+      const editedUser: ChatMessage = { ...target, content: text }
+      setMessages([...history, editedUser])
+      await runCompletion(text, history, {
+        redo: true,
+        rewindMessage: target.content,
+      })
+    },
+    [sending, messages, runCompletion],
+  )
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -522,6 +682,10 @@ export function ChatApp() {
   const lastAssistantWithMindId = [...messages]
     .reverse()
     .find((m) => m.role === 'assistant' && hasMindContent(m.mind))?.id
+
+  const lastUserMessageId = [...messages]
+    .reverse()
+    .find((m) => m.role === 'user')?.id
 
   const headerActions = (
     <>
@@ -581,9 +745,12 @@ export function ChatApp() {
                   if (m.role === 'user') {
                     return (
                       <div key={m.id} className="msg-row msg-row-user">
-                        <div className="msg msg-user">
-                          {renderMessageBody(m.content, m.images)}
-                        </div>
+                        <UserMessage
+                          content={m.content}
+                          images={m.images}
+                          canEdit={!sending && m.id === lastUserMessageId}
+                          onEdit={(next) => void handleEdit(m.id, next)}
+                        />
                       </div>
                     )
                   }
