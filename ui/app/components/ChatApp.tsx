@@ -28,6 +28,7 @@ import { ImageCountSelector } from './ImageCountSelector'
 import { ThoughtStream } from './ThoughtStream'
 import { ControlPane } from './ControlPane'
 import { ChatContextModal } from './ChatContextModal'
+import { Lightbox } from './Lightbox'
 import { AppRoot } from './shell/AppRoot'
 import { AppHeader } from './shell/AppHeader'
 import { MinaMark } from './MinaMark'
@@ -124,8 +125,20 @@ function extractImageUrls(content: string, extra?: string[]): string[] {
   return splitMessageMedia(content, extra).images.map((img) => img.src)
 }
 
-function ChatImage({ src, caption }: { src: string; caption: string }) {
+function ChatImage({
+  src,
+  caption,
+  urls,
+  index,
+}: {
+  src: string
+  caption: string
+  urls: string[]
+  index: number
+}) {
   const [failed, setFailed] = useState(false)
+  const [lightbox, setLightbox] = useState<number | null>(null)
+
   if (failed) {
     return (
       <div className="alert alert-error my-2 text-[11px] mono">
@@ -135,25 +148,46 @@ function ChatImage({ src, caption }: { src: string; caption: string }) {
   }
   const alt = caption || 'photo'
   return (
-    <figure className="chat-image my-2.5">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt={alt}
-        className="max-w-full rounded-xl border border-[var(--border)]"
-        style={{ maxHeight: '26rem' }}
-        loading="lazy"
-        onError={() => setFailed(true)}
-      />
-      {caption ? (
-        <figcaption className="chat-image-caption">{caption}</figcaption>
+    <>
+      <figure className="chat-image my-2.5">
+        <button
+          type="button"
+          className="chat-image-btn"
+          onClick={() => setLightbox(index)}
+          aria-label={caption ? `View image: ${caption}` : 'View image larger'}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={src}
+            alt={alt}
+            className="max-w-full rounded-xl border border-[var(--border)]"
+            style={{ maxHeight: '26rem' }}
+            loading="lazy"
+            onError={() => setFailed(true)}
+          />
+          <span className="chat-image-open-hint" aria-hidden>
+            Open
+          </span>
+        </button>
+        {caption ? (
+          <figcaption className="chat-image-caption">{caption}</figcaption>
+        ) : null}
+      </figure>
+      {lightbox !== null ? (
+        <Lightbox
+          urls={urls}
+          index={lightbox}
+          onClose={() => setLightbox(null)}
+          onIndex={setLightbox}
+        />
       ) : null}
-    </figure>
+    </>
   )
 }
 
 function renderMessageBody(content: string, images?: string[]) {
   const { prose, images: media } = splitMessageMedia(content, images)
+  const urls = media.map((img) => img.src)
   const nodes: ReactNode[] = []
   if (prose) {
     nodes.push(
@@ -164,7 +198,13 @@ function renderMessageBody(content: string, images?: string[]) {
   }
   media.forEach((img, i) => {
     nodes.push(
-      <ChatImage key={`img-${i}-${img.src}`} src={img.src} caption={img.caption} />,
+      <ChatImage
+        key={`img-${i}-${img.src}`}
+        src={img.src}
+        caption={img.caption}
+        urls={urls}
+        index={i}
+      />,
     )
   })
   if (!nodes.length) {
