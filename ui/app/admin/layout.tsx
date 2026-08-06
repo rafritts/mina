@@ -21,7 +21,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname()
   const { state, lastUpdate, error } = useStatePoller()
 
-  const status = error ? 'off' : state ? 'live' : 'off'
+  const status = error
+    ? 'off'
+    : state?.sleeping
+      ? 'sleep'
+      : state
+        ? 'live'
+        : 'off'
   const age = lastUpdate
     ? `${Math.max(0, Math.round((Date.now() - lastUpdate) / 1000))}s`
     : '—'

@@ -499,6 +499,11 @@ body {
   color: var(--accent-bright);
   background: var(--accent-dim);
 }
+.status-pill[data-tone="sleep"] {
+  border-color: rgba(122, 175, 239, 0.35);
+  color: var(--info);
+  background: var(--info-dim);
+}
 .status-pill[data-tone="off"] {
   color: var(--text-faint);
 }

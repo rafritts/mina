@@ -291,6 +291,31 @@ export function ControlPane({
         ) : tab === 'presence' ? (
           <div className="p-4 space-y-5">
             <section>
+              <div className="label section-head">Consciousness</div>
+              <div
+                className="surface flex items-center justify-between gap-3 p-3"
+                aria-live="polite"
+              >
+                <div className="min-w-0">
+                  <div className="text-[13px] font-medium">
+                    {state.sleeping ? 'Asleep' : 'Awake'}
+                  </div>
+                  <div className="text-[11px] text-muted mt-0.5 leading-snug">
+                    {state.sleeping
+                      ? 'Auto-sleep from high adenosine — monoamines recover while she rests.'
+                      : 'Sim is running in wake mode.'}
+                  </div>
+                </div>
+                <span
+                  className="status-pill shrink-0"
+                  data-tone={state.sleeping ? 'sleep' : 'live'}
+                >
+                  <span className="dot" />
+                  {state.sleeping ? 'Sleeping' : 'Awake'}
+                </span>
+              </div>
+            </section>
+            <section>
               <div className="label section-head">Felt state</div>
               <div className="space-y-3">
                 {SECOND_ORDER.map((key) => (

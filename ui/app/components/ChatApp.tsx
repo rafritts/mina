@@ -29,6 +29,7 @@ import { ThoughtStream } from './ThoughtStream'
 import { ControlPane } from './ControlPane'
 import { ChatContextModal } from './ChatContextModal'
 import { Lightbox } from './Lightbox'
+import { useStatePoller } from '../lib/hooks/useStatePoller'
 import { AppRoot } from './shell/AppRoot'
 import { AppHeader } from './shell/AppHeader'
 import { MinaMark } from './MinaMark'
@@ -411,6 +412,7 @@ export function ChatApp() {
   }, [])
 
   const { connected } = useStream(onStreamEvent)
+  const { state: simState } = useStatePoller(3000)
 
   useEffect(() => {
     setMessages(loadMessages())
@@ -675,7 +677,14 @@ export function ChatApp() {
     saveMessages([])
   }
 
-  const status = sending ? 'busy' : connected ? 'live' : 'off'
+  const sleeping = Boolean(simState?.sleeping)
+  const status = sending
+    ? 'busy'
+    : !connected
+      ? 'off'
+      : sleeping
+        ? 'sleep'
+        : 'live'
 
   // Newest archived mind is open; all older ones stay collapsed.
   // While a turn is in flight, the live stream is the open mind — collapse archives.
@@ -725,7 +734,19 @@ export function ChatApp() {
 
   return (
     <AppRoot>
-      <AppHeader status={status} actions={headerActions} />
+      <AppHeader
+        status={status}
+        statusLabel={
+          sending
+            ? 'Thinking'
+            : !connected
+              ? 'Offline'
+              : sleeping
+                ? 'Sleeping'
+                : 'Live'
+        }
+        actions={headerActions}
+      />
 
       <div className="app-body">
         <section className="flex flex-1 min-w-0 flex-col">

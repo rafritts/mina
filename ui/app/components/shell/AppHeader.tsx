@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { MinaMark } from '@/app/components/MinaMark'
 
 type Props = {
-  status?: 'live' | 'busy' | 'off'
+  status?: 'live' | 'busy' | 'sleep' | 'off'
   statusLabel?: string
   actions?: React.ReactNode
   className?: string
@@ -17,11 +17,16 @@ const PRIMARY_NAV = [
   { href: '/admin', label: 'Lab', match: (p: string) => p.startsWith('/admin') },
 ]
 
+const DEFAULT_LABEL: Record<NonNullable<Props['status']>, string> = {
+  live: 'Live',
+  busy: 'Thinking',
+  sleep: 'Sleeping',
+  off: 'Offline',
+}
+
 export function AppHeader({ status = 'off', statusLabel, actions, className }: Props) {
   const pathname = usePathname()
-  const label =
-    statusLabel ??
-    (status === 'live' ? 'Live' : status === 'busy' ? 'Thinking' : 'Offline')
+  const label = statusLabel ?? DEFAULT_LABEL[status]
 
   return (
     <header className={cn('app-header', className)}>
