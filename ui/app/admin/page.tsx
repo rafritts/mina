@@ -13,6 +13,8 @@ import {
   sleepStatusLines,
   formatRelativeTs,
   formatClockTs,
+  freetimeBody,
+  freetimeChipLabels,
 } from '../lib/presence'
 import { cn } from '@/lib/utils'
 
@@ -115,32 +117,36 @@ export default function OverviewPage() {
           {freetime.length === 0 && (
             <p className="px-3.5 py-3 text-xs mono text-faint m-0">No free-time sessions yet</p>
           )}
-          {freetime.map((session, i) => (
-            <div key={`${session.ts}-${i}`} className="px-3.5 py-2.5 space-y-1">
-              <div className="flex items-start gap-2.5">
-                <div className="flex-1 min-w-0">
-                  {(session.tools?.length ?? 0) > 0 && (
-                    <div className="flex flex-wrap gap-1 mb-1">
-                      {session.tools!.map((t, ti) => (
-                        <span key={ti} className="chip chip-info">
-                          {t.preview || t.name}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <p className="text-xs text-secondary m-0 line-clamp-3 leading-snug">
-                    {(session.reply || session.preview || '—').replace(/\n/g, ' ')}
-                  </p>
+          {freetime.map((session, i) => {
+            const chips = freetimeChipLabels(session)
+            const body = freetimeBody(session)
+            return (
+              <div key={`${session.ts}-${i}`} className="px-3.5 py-2.5 space-y-1">
+                <div className="flex items-start gap-2.5">
+                  <div className="flex-1 min-w-0 space-y-1">
+                    {chips.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {chips.map((label) => (
+                          <span key={label} className="chip chip-info max-w-[10rem] truncate">
+                            {label}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs text-secondary m-0 line-clamp-3 leading-snug break-words">
+                      {body}
+                    </p>
+                  </div>
+                  <span
+                    className="mono text-[11px] text-faint shrink-0"
+                    title={formatClockTs(session.ts)}
+                  >
+                    {formatRelativeTs(session.ts)}
+                  </span>
                 </div>
-                <span
-                  className="mono text-[11px] text-faint shrink-0"
-                  title={formatClockTs(session.ts)}
-                >
-                  {formatRelativeTs(session.ts)}
-                </span>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </section>
 

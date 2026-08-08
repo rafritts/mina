@@ -84,6 +84,8 @@ export interface StateData {
 
 export interface FreetimeTool {
   name: string
+  /** Short chip text (e.g. Diary, Water). */
+  label?: string
   preview: string
   args?: Record<string, unknown>
 }
@@ -94,7 +96,13 @@ export interface FreetimeSession {
   duration_s?: number
   message?: string
   reply?: string
+  /** Clean one-line summary for list rows. */
+  summary?: string
+  /** Narrative body (reply or last diary paragraph). */
+  body?: string
   preview?: string
+  /** Deduped short tool labels for chips. */
+  labels?: string[]
   tools?: FreetimeTool[]
   source?: string
 }

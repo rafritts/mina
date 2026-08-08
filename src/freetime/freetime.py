@@ -68,24 +68,172 @@ def _save_freetime_record(record: dict) -> None:
         log("FREETIME", f"Log append failed: {e}")
 
 
-def _tool_preview(name: str, args: dict) -> str:
-    if name == "eat":
-        return f"ate {args.get('description', 'something')}"
-    if name == "drink":
-        return f"drank {args.get('description', 'something')}"
-    if name == "do_action":
-        act = args.get("activity") or "something"
-        desc = (args.get("description") or "").strip()
-        return f"{act}" + (f" — {desc}" if desc else "")
+def _tool_label(name: str, args: dict | None = None) -> str:
+    """Short chip label — never a multi-sentence dump."""
+    args = args or {}
     if name == "record_diary":
-        entry = (args.get("entry") or "").strip()
-        return f"diary: {entry[:80]}{'…' if len(entry) > 80 else ''}"
+        return "Diary"
+    if name == "eat":
+        return "Eat"
+    if name == "drink":
+        d = (args.get("description") or "").lower()
+        if "water" in d:
+            return "Water"
+        if any(w in d for w in ("coffee", "espresso", "latte")):
+            return "Coffee"
+        if "tea" in d:
+            return "Tea"
+        return "Drink"
+    if name == "do_action":
+        act = (args.get("activity") or "action").strip()
+        if len(act) > 22:
+            act = act[:21] + "…"
+        return act or "Action"
+    if name == "sleep":
+        return "Sleep"
+    if name == "web_search":
+        return "Web"
+    if name == "x_search":
+        return "X"
+    return name.replace("_", " ")
+
+
+def _tool_preview(name: str, args: dict) -> str:
+    """One-line detail for logs/events (not for chips)."""
+    if name == "eat":
+        desc = (args.get("description") or "something").strip()
+        return f"ate {desc[:60]}{'…' if len(desc) > 60 else ''}"
+    if name == "drink":
+        desc = (args.get("description") or "something").strip()
+        return f"drank {desc[:60]}{'…' if len(desc) > 60 else ''}"
+    if name == "do_action":
+        act = (args.get("activity") or "something").strip()
+        return act[:70] + ("…" if len(act) > 70 else "")
+    if name == "record_diary":
+        entry = (args.get("entry") or "").strip().replace("\n", " ")
+        return f"diary: {entry[:60]}{'…' if len(entry) > 60 else ''}"
     if name == "sleep":
         reason = (args.get("reason") or "").strip()
-        return f"went to sleep{(' — ' + reason) if reason else ''}"
+        return f"went to sleep{(' — ' + reason[:40]) if reason else ''}"
     if name in ("web_search", "x_search"):
-        return f"{name}: {args.get('query', '')}"
+        q = (args.get("query") or "").strip()
+        return f"{name}: {q[:50]}{'…' if len(q) > 50 else ''}"
     return name
+
+
+def _body_from_tools(tools: list[dict]) -> str:
+    """Best narrative when the session has no final reply."""
+    # Prefer the last diary entry (richest solitary note).
+    for t in reversed(tools):
+        if t.get("name") != "record_diary":
+            continue
+        entry = ((t.get("args") or {}).get("entry") or "").strip()
+        if not entry:
+            continue
+        para = entry.split("\n\n")[0].replace("\n", " ").strip()
+        return para[:360] + ("…" if len(para) > 360 else "")
+    # Then last physical action / drink / eat.
+    for t in reversed(tools):
+        name = t.get("name") or ""
+        args = t.get("args") or {}
+        if name == "do_action":
+            act = (args.get("activity") or "").strip()
+            desc = (args.get("description") or "").strip()
+            line = f"{act}. {desc}".strip(". ").strip()
+            if line:
+                return line[:240]
+        if name == "drink":
+            d = (args.get("description") or "something").strip()
+            return f"Drank {d}"[:240]
+        if name == "eat":
+            d = (args.get("description") or "something").strip()
+            return f"Ate {d}"[:240]
+        if name == "sleep":
+            reason = (args.get("reason") or "").strip()
+            return f"Went to sleep{(' — ' + reason) if reason else ''}."
+    return ""
+
+
+def _unique_labels(tools: list[dict]) -> list[str]:
+    """Dedupe chip labels in order, e.g. 5× diary → one 'Diary'."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for t in tools:
+        label = (t.get("label") or _tool_label(t.get("name") or "", t.get("args") or "")).strip()
+        if not label or label in seen:
+            continue
+        seen.add(label)
+        out.append(label)
+        if len(out) >= 6:
+            break
+    return out
+
+
+def _normalize_session(rec: dict) -> dict:
+    """
+    Shape a session for the UI: short labels, clean body, no chip walls.
+
+    Safe on legacy records (conversation backfill, old log rows).
+    """
+    raw_tools = rec.get("tools") or []
+    tools: list[dict] = []
+    for t in raw_tools:
+        if not isinstance(t, dict):
+            continue
+        name = t.get("name") or "tool"
+        args = t.get("args") if isinstance(t.get("args"), dict) else {}
+        # Compact args for transport — keep diary/action text for expand.
+        compact_args: dict = {}
+        if name == "record_diary" and args.get("entry"):
+            compact_args["entry"] = str(args["entry"])[:800]
+        elif name in ("eat", "drink") and args.get("description"):
+            compact_args["description"] = str(args["description"])[:200]
+        elif name == "do_action":
+            if args.get("activity"):
+                compact_args["activity"] = str(args["activity"])[:80]
+            if args.get("description"):
+                compact_args["description"] = str(args["description"])[:200]
+        elif name == "sleep" and args.get("reason"):
+            compact_args["reason"] = str(args["reason"])[:120]
+        elif name in ("web_search", "x_search") and args.get("query"):
+            compact_args["query"] = str(args["query"])[:120]
+        tools.append({
+            "name": name,
+            "label": _tool_label(name, args),
+            "preview": (t.get("preview") or _tool_preview(name, args))[:80],
+            "args": compact_args,
+        })
+
+    reply = (rec.get("reply") or "").strip()
+    body = reply or _body_from_tools(raw_tools if raw_tools else tools)
+    if not body:
+        # Avoid the old "tool · tool · tool" preview as the main line.
+        preview = (rec.get("preview") or "").strip()
+        if preview and " · " not in preview:
+            body = preview
+        elif reply:
+            body = reply
+        else:
+            body = "Quiet free time — no note."
+
+    labels = _unique_labels(tools)
+    summary = body.replace("\n", " ").strip()
+    if len(summary) > 200:
+        summary = summary[:199] + "…"
+
+    return {
+        "ts": rec.get("ts"),
+        "started_at": rec.get("started_at"),
+        "duration_s": rec.get("duration_s"),
+        "message": rec.get("message"),
+        "reply": reply,
+        "body": body,
+        "summary": summary,
+        "preview": summary,  # keep field for older clients
+        "labels": labels,
+        "tools": tools,
+        "source": rec.get("source") or "freetime",
+    }
 
 
 def read_freetime_history(limit: int = 30) -> dict:
@@ -94,6 +242,7 @@ def read_freetime_history(limit: int = 30) -> dict:
 
     Prefer structured log (tools + reply). Fall back to conversation-*.jsonl
     freetime assistant lines so existing history still shows up.
+    Always returns normalized sessions (short labels + clean body).
     """
     limit = max(1, min(int(limit or 30), 100))
     sessions: list[dict] = []
@@ -131,7 +280,7 @@ def read_freetime_history(limit: int = 30) -> dict:
                 break
 
     sessions.sort(key=lambda s: float(s.get("ts") or 0), reverse=True)
-    sessions = sessions[:limit]
+    sessions = [_normalize_session(s) for s in sessions[:limit]]
 
     last = None
     try:
@@ -142,7 +291,9 @@ def read_freetime_history(limit: int = 30) -> dict:
     # Prefer structured last; if file is timestamp-only, use newest session body.
     if last is not None and not (last.get("reply") or last.get("preview") or last.get("tools")):
         if sessions:
-            last = {**sessions[0], **{k: last[k] for k in last if k not in sessions[0]}}
+            last = None  # fall through to sessions[0]
+    if last is not None:
+        last = _normalize_session(last)
     if last is None:
         last = sessions[0] if sessions else None
 
@@ -431,30 +582,37 @@ async def run_freetime(sim: Sim) -> None:
         log("FREETIME/CONTEXT", str(e))
 
     # ── 7. Persist for UI (what she did alone) ────────────────────────────────
-    preview_parts = [t["preview"] for t in tools_used]
-    if final_reply:
-        preview_parts.append(final_reply[:120].replace("\n", " "))
-    preview = " · ".join(preview_parts) if preview_parts else "(quiet free time — no tools, no reply)"
-
+    tool_rows = [
+        {
+            "name": t["name"],
+            "label": _tool_label(t["name"], t.get("args") or {}),
+            "preview": t["preview"],
+            "args": t["args"],
+        }
+        for t in tools_used
+    ]
     record = {
         "ts": finished_at,
         "started_at": started_at,
         "duration_s": round(finished_at - started_at, 1),
         "message": synthetic_message,
         "reply": final_reply or "",
-        "preview": preview[:240],
-        "tools": [
-            {"name": t["name"], "preview": t["preview"], "args": t["args"]}
-            for t in tools_used
-        ],
+        "tools": tool_rows,
         "source": "freetime",
     }
+    # Normalize once so disk/API share the same body/summary/labels shape.
+    record = _normalize_session(record)
     _save_freetime_record(record)
     try:
         from src.application.infra.events import emit as emit_event
-        emit_event("activity", preview[:200], {
+        labels = record.get("labels") or []
+        event_preview = record.get("summary") or record.get("body") or "free time"
+        if labels:
+            event_preview = f"{', '.join(labels)} — {event_preview}"
+        emit_event("activity", event_preview[:200], {
             "source": "freetime",
-            "tools": [t["name"] for t in tools_used],
+            "tools": [t["name"] for t in tool_rows],
+            "labels": labels,
             "reply": (final_reply or "")[:400],
         })
     except Exception:

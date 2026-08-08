@@ -1,4 +1,4 @@
-import type { StateData } from './api'
+import type { FreetimeSession, StateData } from './api'
 
 /** Short human label for overall presence from derived state. */
 export function presenceLabel(state: StateData | null | undefined): string {
@@ -95,6 +95,69 @@ export function sleepStatusLines(state: StateData): {
     detail: 'Sim is running in wake mode.',
     sinceLabel: 'No sleep bout recorded yet this process lifetime.',
   }
+}
+
+/** Short unique tool chips for a free-time session. */
+export function freetimeChipLabels(session: FreetimeSession): string[] {
+  if (session.labels?.length) return session.labels.slice(0, 6)
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const t of session.tools ?? []) {
+    const label = (t.label || t.name || '').replace(/_/g, ' ').trim()
+    if (!label || seen.has(label)) continue
+    // Skip long previews mistaken for labels
+    if (label.length > 28) continue
+    seen.add(label)
+    out.push(label)
+    if (out.length >= 6) break
+  }
+  return out
+}
+
+/**
+ * Main free-time line: reply, diary body, or quiet — never the tool-dump preview.
+ */
+export function freetimeBody(session: FreetimeSession): string {
+  const reply = (session.reply || '').trim()
+  if (reply) return reply
+
+  const body = (session.body || '').trim()
+  if (body) return body
+
+  const summary = (session.summary || '').trim()
+  if (summary && !summary.includes(' · ')) return summary
+
+  // Last diary entry from tools (expand/backfill)
+  for (let i = (session.tools?.length ?? 0) - 1; i >= 0; i--) {
+    const t = session.tools![i]
+    if (t.name !== 'record_diary') continue
+    const entry = String(t.args?.entry ?? '').trim()
+    if (entry) {
+      const para = entry.split(/\n\n/)[0].replace(/\n/g, ' ').trim()
+      return para
+    }
+  }
+
+  for (let i = (session.tools?.length ?? 0) - 1; i >= 0; i--) {
+    const t = session.tools![i]
+    if (t.name === 'do_action') {
+      const act = String(t.args?.activity ?? '').trim()
+      const desc = String(t.args?.description ?? '').trim()
+      const line = [act, desc].filter(Boolean).join(' — ')
+      if (line) return line
+    }
+    if (t.name === 'drink' && t.args?.description) {
+      return `Drank ${String(t.args.description)}`
+    }
+    if (t.name === 'eat' && t.args?.description) {
+      return `Ate ${String(t.args.description)}`
+    }
+  }
+
+  const preview = (session.preview || '').trim()
+  if (preview && !preview.includes(' · ')) return preview
+
+  return 'Quiet free time — no note.'
 }
 
 export const FIELD_LABELS: Record<string, string> = {

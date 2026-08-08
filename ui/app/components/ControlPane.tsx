@@ -15,6 +15,8 @@ import {
   sleepStatusLines,
   formatRelativeTs,
   formatClockTs,
+  freetimeBody,
+  freetimeChipLabels,
 } from '../lib/presence'
 import { cn } from '@/lib/utils'
 
@@ -392,8 +394,8 @@ export function ControlPane({
                 ) : (
                   freetime.slice(0, 8).map((session, i) => {
                     const open = expandedFt === i
-                    const tools = session.tools ?? []
-                    const body = (session.reply || session.preview || '').trim()
+                    const chips = freetimeChipLabels(session)
+                    const body = freetimeBody(session)
                     return (
                       <button
                         key={`${session.ts}-${i}`}
@@ -402,28 +404,32 @@ export function ControlPane({
                         onClick={() => setExpandedFt(open ? null : i)}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            {tools.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mb-1">
-                                {tools.map((t, ti) => (
-                                  <span key={ti} className="chip chip-info text-[10px]">
-                                    {t.preview || t.name}
+                          <div className="min-w-0 flex-1 space-y-1">
+                            {chips.length > 0 && (
+                              <div className="flex flex-wrap gap-1">
+                                {chips.map((label) => (
+                                  <span
+                                    key={label}
+                                    className="chip chip-info max-w-[9rem] truncate"
+                                    title={label}
+                                  >
+                                    {label}
                                   </span>
                                 ))}
                               </div>
                             )}
                             <p
                               className={cn(
-                                'text-[11.5px] text-secondary m-0 leading-snug',
+                                'text-[11.5px] text-secondary m-0 leading-snug break-words',
                                 !open && 'line-clamp-2',
                                 open && 'whitespace-pre-wrap',
                               )}
                             >
-                              {body || '(no written free-time note)'}
+                              {body}
                             </p>
                           </div>
                           <span
-                            className="mono text-[10px] text-faint shrink-0"
+                            className="mono text-[10px] text-faint shrink-0 pt-0.5"
                             title={formatClockTs(session.ts)}
                           >
                             {formatRelativeTs(session.ts)}
