@@ -1,7 +1,8 @@
 # SPEC-62 — Chemistry Display Normalization & Label Semantics
 
-**Status:** Draft — needs sign-off before implementation  
+**Status:** Signed off — ready for PR1 implementation  
 **Date:** 2026-08-07  
+**Sign-off:** 2026-08-07 (open questions resolved with product owner)  
 **Depends on:** `src/sim/params.py` (`CHEMICAL_PARAMS`), decoder 0–10 scale (`src/sim/decoder.py`), state API (`src/gateway/server.py`), UI labels (`ui/app/lib/labels.ts`), Control pane / neuro admin  
 **Related:** SPEC-61 (sleep onset — adenosine chips must not fight sleep states); insula gap doctrine (`src/brain/insula.py`); archived v1 registry labels (do not re-adopt units)
 
@@ -364,21 +365,21 @@ Using live setpoints after init (Big5-biased OK):
 
 ## Implementation plan (suggested PR split)
 
-### PR1 — Display truth (minimum shippable)
+### PR1 — Display truth (ship this)
 
-1. Add gap + normalized_10 to state payload (and setpoint).  
-2. Rewrite `labels.ts` (or server labels + thin UI) per classification.  
-3. Fix `DISPLAY_RANGES`.  
-4. Fix OT / Type B resting chips.  
-5. Fix adenosine bands vs `SLEEP_*` constants (import or duplicate constants carefully — prefer shared or single documented numbers).  
-6. Tests for acceptance A–D.  
-7. Fix derived `social_warmth` / loneliness OT handling.
+**Locked:** label tables live in **Python first** (`src/sim/labels.py`). The API attaches `label` / color / implication; Control and admin **display** those strings. UI keeps only slider min/max (from params or a thin shared list) and layout — not a second competing threshold table.
 
-### PR2 — Single source of truth (hardening)
+1. Add `src/sim/labels.py` with Type A / Type B / sleep / circadian band logic (norm 0–10 + gap).  
+2. State payload: `value`, `unit`, `setpoint`, `normalized_10`, `gap`, `label`, `label_color`, `implication`.  
+3. Control UI: show **gap** next to each chem (signed delta on 0–10 scale, e.g. `gap +0.0` / `gap −1.2`).  
+4. Fix `DISPLAY_RANGES` (or derive slider max from API/params) to `normalization_max`.  
+5. OT resting chip = **RESTING**; Type B / adenosine / derived social metrics per this spec.  
+6. Tests for acceptance A–E (including gap visible in payload).
 
-1. Move band tables to Python `src/sim/labels.py`.  
-2. UI displays server labels only.  
-3. Optional: admin tooltip with short implication text from server.
+### PR2 — Polish (optional)
+
+1. Admin tooltips from `implication`.  
+2. Any remaining dual-path cleanup if a TS fallback was temporary.
 
 ### PR3 — Optional product
 
@@ -413,38 +414,69 @@ UI: optional Playwright/component test that Control chemistry at mocked baseline
 
 ---
 
-## Decision log (locked for this draft)
+## Decision log (locked)
 
-| Decision | Choice |
-|----------|--------|
-| Primary label scale | Normalized 0–10 + gap (Approach A) |
-| OT resting chip | RESTING / non-error — never NO BOND at gap≈0 |
-| Bond ladder on absolute OT | Removed; bond UI optional later |
-| Sim setpoint rewrite | Not required for this spec |
-| Spec split for OT | **No** — OT policy lives in this spec |
-| Server labels | Recommended; UI-only rewrite acceptable for PR1 if tables match this doc |
+| Decision | Choice | Plain English |
+|----------|--------|----------------|
+| Primary label scale | Normalized 0–10 + **gap** (Approach A) | Chips from “where is she vs her max and vs her personal rest,” not old blood-test units |
+| OT resting chip | **RESTING** | Never NO BOND / DISTANT at gap≈0 |
+| Bond ladder on absolute OT | Removed; bond UI optional later | Friend words ≠ hormone floor |
+| Sim setpoint rewrite | Not required | Don’t “fix” baseline by inventing fake high nM |
+| Spec split for OT | No — OT lives here | One display contract |
+| Label tables | **Python-first** (`src/sim/labels.py`); API sends chips | One brain for names; UI doesn’t invent ANHEDONIC on its own |
+| NE classification | **Type A** | Resting NE = calm-alert / relaxed, **not** sedated |
+| Control shows gap | **Yes** | Signed gap on 0–10 next to each chem |
+| OT chip family | RESTING → WARMING → CONNECTED → DEEP SURGE → SATURATED; low tone only on negative gap | Per original writeup |
 
 ---
 
-## Open questions (resolve at sign-off)
+## Open questions
 
-1. **PR1 location of tables:** TS-only first vs Python-first? Recommendation: **Python-first** if gateway already owns state DTO; else TS-first for speed with PR2 migration.  
-2. **Exact OT chip vocabulary:** RESTING vs QUIET vs NO SURGE — pick one string set for UI consistency.  
-3. **NE Type A vs B:** NE is somewhat both (tone + arousal). Default this draft: Type A with resting = CALM ALERT, not SEDATED. Confirm.  
-4. **Whether to show gap in Control UI** as a small mono delta next to nM (debug sugar) — optional, not required.
+**None remaining.** Resolved 2026-08-07:
+
+1. ~~PR1 tables~~ → Python-first; API owns labels.  
+2. ~~OT wording~~ → **RESTING** (original writeup family).  
+3. ~~NE A or B~~ → **Type A** (see plain-English note below).  
+4. ~~Gap in Control~~ → **Yes, required.**
+
+### Plain English: what “Type A vs Type B” meant
+
+You do not need neuroscience for this. It is only a **labeling rule**:
+
+| | Type A | Type B |
+|---|--------|--------|
+| Idea | “Is her usual brain tone okay?” | “Is there a surge right now?” |
+| At true rest | Chip says **normal / baseline / calm** | Chip says **resting / quiet** (also fine — not broken) |
+| Red danger chips | When she is **below** her personal rest | When she is **below** rest *or* we wrongly treat “no surge” as disaster |
+| Examples | Dopamine, serotonin, **norepinephrine** | Oxytocin, epinephrine, endorphins-as-glow |
+
+**Norepinephrine (NE)** in plain terms: the “how switched-on / alert am I?” monoamine.  
+At rest she should read **calm and present** (CALM ALERT / RELAXED), not **SEDATED**.  
+SEDATED only if NE is **actually depressed below her baseline** (or pathologically flat). That is Type A.
+
+**Oxytocin** is Type B: low absolute level at rest is normal; the interesting story is the **rise** when bonding happens.
+
+### Plain English: what “PR1 tables” meant
+
+“Tables” = the lists that turn a number into a chip name (`ANHEDONIC`, `RESTING`, …).
+
+- **Wrong today:** those lists live in the UI (`labels.ts`) with old units.  
+- **PR1 locked:** put the lists in **Python**, compute the chip when building `/api/state`, UI just shows what it is told. No second brain fighting the sim.
 
 ---
 
 ## Sign-off checklist
 
-- [ ] Approach A (norm + gap) approved  
-- [ ] OT policy approved (no NO BOND at rest)  
-- [ ] Adenosine bands tied to sleep enter/wake approved  
-- [ ] Derived social metrics OT fix approved  
-- [ ] PR1 scope (no sim dynamics rewrite) approved  
-- [ ] Open questions answered  
+- [x] Approach A (norm + gap) approved  
+- [x] OT policy approved (no NO BOND at rest); chip family = RESTING…  
+- [x] Adenosine bands tied to sleep enter/wake approved (per draft)  
+- [x] Derived social metrics OT fix approved (per draft)  
+- [x] PR1 scope (no sim dynamics rewrite) approved  
+- [x] Open questions answered (Python-first, NE Type A, gap in Control, OT = RESTING)
 
-After sign-off: implement PR1; do not land half-migrated dual tables (v1 thresholds still consulted for Control chems).
+**Status:** ready for implementation of PR1 when you say go.
+
+After implement: do not land half-migrated dual tables (v1 thresholds still consulted for Control chems).
 
 ---
 
