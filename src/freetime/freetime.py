@@ -31,6 +31,8 @@ from .tools import FREETIME_TOOLS, call_tool
 
 _MAX_TOOL_ROUNDS = 5
 _LAST_FREETIME_FILE = os.path.join(RUN_DIR, "last_freetime.json")
+_FREETIME_LOG_FILE = os.path.join(RUN_DIR, "freetime_log.jsonl")
+_MAX_FREETIME_LOG = 200
 
 # Cadence: while awake and not under crushing sleep pressure.
 # Auto-sleep in the sim owns recovery; FREETIME must not permanently refuse
@@ -48,10 +50,144 @@ def _last_freetime_ts() -> float:
         return 0.0
 
 
-def _save_freetime_ts() -> None:
+def _save_freetime_record(record: dict) -> None:
+    """Write last_freetime.json and append to rolling freetime_log.jsonl."""
     os.makedirs(RUN_DIR, exist_ok=True)
     with open(_LAST_FREETIME_FILE, "w") as f:
-        json.dump({"ts": time.time()}, f)
+        json.dump(record, f, indent=2)
+    try:
+        with open(_FREETIME_LOG_FILE, "a") as f:
+            f.write(json.dumps(record) + "\n")
+        # Rotate
+        with open(_FREETIME_LOG_FILE) as f:
+            lines = f.read().splitlines()
+        if len(lines) > _MAX_FREETIME_LOG:
+            with open(_FREETIME_LOG_FILE, "w") as f:
+                f.write("\n".join(lines[-_MAX_FREETIME_LOG:]) + "\n")
+    except OSError as e:
+        log("FREETIME", f"Log append failed: {e}")
+
+
+def _tool_preview(name: str, args: dict) -> str:
+    if name == "eat":
+        return f"ate {args.get('description', 'something')}"
+    if name == "drink":
+        return f"drank {args.get('description', 'something')}"
+    if name == "do_action":
+        act = args.get("activity") or "something"
+        desc = (args.get("description") or "").strip()
+        return f"{act}" + (f" — {desc}" if desc else "")
+    if name == "record_diary":
+        entry = (args.get("entry") or "").strip()
+        return f"diary: {entry[:80]}{'…' if len(entry) > 80 else ''}"
+    if name == "sleep":
+        reason = (args.get("reason") or "").strip()
+        return f"went to sleep{(' — ' + reason) if reason else ''}"
+    if name in ("web_search", "x_search"):
+        return f"{name}: {args.get('query', '')}"
+    return name
+
+
+def read_freetime_history(limit: int = 30) -> dict:
+    """
+    Recent free-time for UI.
+
+    Prefer structured log (tools + reply). Fall back to conversation-*.jsonl
+    freetime assistant lines so existing history still shows up.
+    """
+    limit = max(1, min(int(limit or 30), 100))
+    sessions: list[dict] = []
+
+    # Structured log (newest last on disk → reverse)
+    try:
+        with open(_FREETIME_LOG_FILE) as f:
+            lines = f.read().splitlines()
+        for line in reversed(lines):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            sessions.append(rec)
+            if len(sessions) >= limit:
+                break
+    except FileNotFoundError:
+        pass
+
+    # Backfill from conversation logs when structured log is thin
+    if len(sessions) < limit:
+        seen_ts = {float(s.get("ts") or 0) for s in sessions}
+        conv_hits = _scan_conversation_freetime(limit * 2)
+        for hit in conv_hits:
+            ts = float(hit.get("ts") or 0)
+            # Dedup within ~5s of a structured record
+            if any(abs(ts - t) < 5 for t in seen_ts):
+                continue
+            sessions.append(hit)
+            seen_ts.add(ts)
+            if len(sessions) >= limit:
+                break
+
+    sessions.sort(key=lambda s: float(s.get("ts") or 0), reverse=True)
+    sessions = sessions[:limit]
+
+    last = None
+    try:
+        with open(_LAST_FREETIME_FILE) as f:
+            last = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        last = None
+    # Prefer structured last; if file is timestamp-only, use newest session body.
+    if last is not None and not (last.get("reply") or last.get("preview") or last.get("tools")):
+        if sessions:
+            last = {**sessions[0], **{k: last[k] for k in last if k not in sessions[0]}}
+    if last is None:
+        last = sessions[0] if sessions else None
+
+    return {"last": last, "recent": sessions}
+
+
+def _scan_conversation_freetime(limit: int) -> list[dict]:
+    """Pull freetime assistant replies from conversation-*.jsonl (newest first)."""
+    import glob
+
+    pattern = os.path.join(RUN_DIR, "conversation-*.jsonl")
+    files = sorted(glob.glob(pattern), reverse=True)[:14]  # ~2 weeks
+    hits: list[dict] = []
+    for path in files:
+        try:
+            with open(path) as f:
+                lines = f.readlines()
+        except OSError:
+            continue
+        # Walk newest-first within file
+        for line in reversed(lines):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if obj.get("source") != "freetime":
+                continue
+            if obj.get("role") != "assistant":
+                continue
+            content = (obj.get("content") or "").strip()
+            if not content:
+                continue
+            hits.append({
+                "ts": float(obj.get("ts") or 0),
+                "reply": content,
+                "preview": content[:160].replace("\n", " "),
+                "tools": [],
+                "source": "conversation",
+            })
+            if len(hits) >= limit:
+                return hits
+    return hits
 
 
 def should_fire(sim: Sim) -> bool:
@@ -104,6 +240,8 @@ def _append_to_conversation(role: str, content: str, source: str = "freetime") -
 async def run_freetime(sim: Sim) -> None:
     """Run one FREETIME session. Called by the main loop when cadence allows."""
     log("FREETIME", "Starting.")
+    started_at = time.time()
+    tools_used: list[dict] = []
 
     # ── 1. Consolidation ──────────────────────────────────────────────────────
     from src.hippocampus.hippocampus import (
@@ -231,6 +369,22 @@ async def run_freetime(sim: Sim) -> None:
                 args = {}
             log("FREETIME", f"Tool call {round_num+1}: {name}({list(args.keys())})")
             result = await asyncio.to_thread(call_tool, name, args, sim)
+            tool_entry = {
+                "name": name,
+                "args": args,
+                "preview": _tool_preview(name, args),
+                "result": (result or "")[:200],
+            }
+            tools_used.append(tool_entry)
+            try:
+                from src.application.infra.events import emit as emit_event
+                emit_event(
+                    "tool",
+                    tool_entry["preview"],
+                    {"tool": name, "args": args, "result": result[:200], "source": "freetime"},
+                )
+            except Exception:
+                pass
             messages.append({
                 "role": "tool",
                 "tool_call_id": tc.id,
@@ -249,10 +403,11 @@ async def run_freetime(sim: Sim) -> None:
         await asyncio.to_thread(sliding_rag_write, window_with_freetime)
 
     # ── 6. Context assembly dump (same as chat turns) ─────────────────────────
+    finished_at = time.time()
     try:
         from src.brain.pipeline import _persist_context
         _persist_context(
-            ts=time.time(),
+            ts=finished_at,
             username="freetime",
             message=synthetic_message,
             encoder_output=encoder_output,
@@ -275,5 +430,34 @@ async def run_freetime(sim: Sim) -> None:
     except Exception as e:
         log("FREETIME/CONTEXT", str(e))
 
-    _save_freetime_ts()
+    # ── 7. Persist for UI (what she did alone) ────────────────────────────────
+    preview_parts = [t["preview"] for t in tools_used]
+    if final_reply:
+        preview_parts.append(final_reply[:120].replace("\n", " "))
+    preview = " · ".join(preview_parts) if preview_parts else "(quiet free time — no tools, no reply)"
+
+    record = {
+        "ts": finished_at,
+        "started_at": started_at,
+        "duration_s": round(finished_at - started_at, 1),
+        "message": synthetic_message,
+        "reply": final_reply or "",
+        "preview": preview[:240],
+        "tools": [
+            {"name": t["name"], "preview": t["preview"], "args": t["args"]}
+            for t in tools_used
+        ],
+        "source": "freetime",
+    }
+    _save_freetime_record(record)
+    try:
+        from src.application.infra.events import emit as emit_event
+        emit_event("activity", preview[:200], {
+            "source": "freetime",
+            "tools": [t["name"] for t in tools_used],
+            "reply": (final_reply or "")[:400],
+        })
+    except Exception:
+        pass
+
     log("FREETIME", "Complete.")

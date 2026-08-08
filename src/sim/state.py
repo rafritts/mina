@@ -30,6 +30,10 @@ class ChemicalState:
     # Sleep / consciousness (SPEC-62 DEFECT-2). Binary for now; SPEC-61 may extend.
     sleeping: bool = False
     sleep_elapsed_s: float = 0.0
+    # Onset bookkeeping for UI ("went to sleep at …").
+    sleep_started_at: float | None = None       # current bout start (None if awake)
+    last_sleep_started_at: float | None = None  # most recent onset (survives wake)
+    last_woke_at: float | None = None           # most recent wake
 
     # ── Serialization ──────────────────────────────────────────────────────
 
@@ -48,6 +52,9 @@ class ChemicalState:
             "prev_normalized": self.prev_normalized,
             "sleeping": self.sleeping,
             "sleep_elapsed_s": self.sleep_elapsed_s,
+            "sleep_started_at": self.sleep_started_at,
+            "last_sleep_started_at": self.last_sleep_started_at,
+            "last_woke_at": self.last_woke_at,
         }
 
     @classmethod
@@ -61,12 +68,33 @@ class ChemicalState:
             )
             for name, v in d.get("levels", {}).items()
         }
+
+        def _opt_float(key: str) -> float | None:
+            v = d.get(key)
+            if v is None or v == "":
+                return None
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return None
+
+        sleeping = bool(d.get("sleeping", False))
+        sleep_started = _opt_float("sleep_started_at")
+        # Legacy: asleep with no onset stamp — approximate from elapsed if present.
+        if sleeping and sleep_started is None:
+            elapsed = float(d.get("sleep_elapsed_s", 0.0) or 0.0)
+            if elapsed > 0:
+                sleep_started = time.time() - elapsed
+
         return cls(
             levels=          levels,
             last_updated=    float(d.get("last_updated", time.time())),
             prev_normalized= {k: float(v) for k, v in d.get("prev_normalized", {}).items()},
-            sleeping=        bool(d.get("sleeping", False)),
+            sleeping=        sleeping,
             sleep_elapsed_s= float(d.get("sleep_elapsed_s", 0.0)),
+            sleep_started_at= sleep_started,
+            last_sleep_started_at= _opt_float("last_sleep_started_at") or sleep_started,
+            last_woke_at=    _opt_float("last_woke_at"),
         )
 
     def save(self, path: str) -> None:

@@ -57,6 +57,16 @@ class Sim:
         self._sleeping = bool(self._state.sleeping)
         self._sleep_elapsed_s = float(self._state.sleep_elapsed_s)
         self._observer = Observer()
+        # If restored asleep without an onset stamp, stamp now so UI has something.
+        if self._sleeping and self._state.sleep_started_at is None:
+            now = time.time()
+            # Prefer reconstructing from elapsed so "asleep since" is honest.
+            if self._sleep_elapsed_s > 0:
+                self._state.sleep_started_at = now - self._sleep_elapsed_s
+            else:
+                self._state.sleep_started_at = now
+            if self._state.last_sleep_started_at is None:
+                self._state.last_sleep_started_at = self._state.sleep_started_at
 
     # ── Public API ─────────────────────────────────────────────────────────
 
@@ -107,15 +117,61 @@ class Sim:
     def set_sleeping(self, sleeping: bool) -> None:
         with self._lock:
             if sleeping and not self._sleeping:
-                self._sleeping = True
-                self._sleep_elapsed_s = 0.0
-                self._sync_sleep_to_state()
-                log("SIM", "Sleep ON (external).")
+                self._enter_sleep_locked(source="external")
             elif not sleeping and self._sleeping:
-                self._sleeping = False
-                self._sleep_elapsed_s = 0.0
-                self._sync_sleep_to_state()
-                log("SIM", "Sleep OFF (external).")
+                self._exit_sleep_locked(source="external")
+
+    def _enter_sleep_locked(self, source: str = "auto") -> None:
+        """Mark sleep onset. Caller holds the lock."""
+        now = time.time()
+        self._sleeping = True
+        self._sleep_elapsed_s = 0.0
+        self._state.sleep_started_at = now
+        self._state.last_sleep_started_at = now
+        self._sync_sleep_to_state()
+        log("SIM", f"Sleep ON ({source}).")
+        try:
+            from src.application.infra.events import emit as emit_event
+            emit_event(
+                "activity",
+                f"Went to sleep ({source})",
+                {"source": "sleep", "sleeping": True, "sleep_started_at": now},
+            )
+        except Exception:
+            pass
+
+    def _exit_sleep_locked(self, source: str = "auto") -> None:
+        """Mark wake. Caller holds the lock."""
+        now = time.time()
+        started = self._state.sleep_started_at or self._state.last_sleep_started_at
+        self._sleeping = False
+        self._sleep_elapsed_s = 0.0
+        self._state.sleep_started_at = None
+        self._state.last_woke_at = now
+        self._sync_sleep_to_state()
+        log("SIM", f"Sleep OFF ({source}).")
+        try:
+            from src.application.infra.events import emit as emit_event
+            duration = (now - started) if started else None
+            label = "Woke up"
+            if duration and duration > 0:
+                hours = duration / 3600.0
+                label = f"Woke up after {hours:.1f}h ({source})"
+            else:
+                label = f"Woke up ({source})"
+            emit_event(
+                "activity",
+                label,
+                {
+                    "source": "sleep",
+                    "sleeping": False,
+                    "last_sleep_started_at": started,
+                    "last_woke_at": now,
+                    "duration_s": duration,
+                },
+            )
+        except Exception:
+            pass
 
     def _sync_sleep_to_state(self) -> None:
         """Write sleep fields through to ChemicalState for persistence."""
@@ -200,6 +256,10 @@ class Sim:
             self._state = build_initial_state(self._big5)
             self._sleeping = False
             self._sleep_elapsed_s = 0.0
+            self._state.sleep_started_at = None
+            # Keep last_sleep_* cleared on full chemistry reset — baseline is a fresh day.
+            self._state.last_sleep_started_at = None
+            self._state.last_woke_at = None
             self._sync_sleep_to_state()
             self._observer = Observer()
             self._state.save(SIM_STATE_FILE)
@@ -233,6 +293,17 @@ class Sim:
             }
             return levels, self._sleeping
 
+    def sleep_info(self) -> dict:
+        """Sleep flags + onset timestamps for UI/API."""
+        with self._lock:
+            return {
+                "sleeping": self._sleeping,
+                "sleep_elapsed_s": self._sleep_elapsed_s,
+                "sleep_started_at": self._state.sleep_started_at,
+                "last_sleep_started_at": self._state.last_sleep_started_at,
+                "last_woke_at": self._state.last_woke_at,
+            }
+
     def save(self) -> None:
         with self._lock:
             self._state.save(SIM_STATE_FILE)
@@ -243,20 +314,14 @@ class Sim:
         """Enter/exit sleep based on adenosine. Caller holds the lock."""
         ade = chemical_norm(self._state, "adenosine")
         if not self._sleeping and ade >= SLEEP_ENTER_ADENOSINE:
-            self._sleeping = True
-            self._sleep_elapsed_s = 0.0
-            self._sync_sleep_to_state()
-            log("SIM", f"Auto-sleep enter (adenosine={ade:.1f}).")
+            self._enter_sleep_locked(source=f"auto adenosine={ade:.1f}")
         elif self._sleeping:
             self._sleep_elapsed_s += dt
             if (
                 self._sleep_elapsed_s >= SLEEP_MIN_DURATION_S
                 and ade <= SLEEP_WAKE_ADENOSINE
             ):
-                self._sleeping = False
-                self._sleep_elapsed_s = 0.0
-                self._sync_sleep_to_state()
-                log("SIM", f"Auto-sleep wake (adenosine={ade:.1f}).")
+                self._exit_sleep_locked(source=f"auto adenosine={ade:.1f}")
             else:
                 # Persist elapsed progress across restarts
                 self._sync_sleep_to_state()

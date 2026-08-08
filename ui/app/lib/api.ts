@@ -58,6 +58,14 @@ export interface SecretionQueueEntry {
 export interface StateData {
   chemicals: Record<string, ChemicalEntry>
   sleeping: boolean
+  /** Seconds into current sleep bout (0 when awake). */
+  sleep_elapsed_s?: number
+  /** Unix ts when current sleep bout started (null/undefined when awake). */
+  sleep_started_at?: number | null
+  /** Unix ts of most recent sleep onset (survives wake). */
+  last_sleep_started_at?: number | null
+  /** Unix ts of most recent wake. */
+  last_woke_at?: number | null
   second_order: Record<string, number>
   third_order: Record<string, number>
   vital_signs: Record<string, VitalEntry>
@@ -72,6 +80,32 @@ export interface StateData {
   secretion_queue: SecretionQueueEntry[]
   allostatic_load: number
   cycle_day: number
+}
+
+export interface FreetimeTool {
+  name: string
+  preview: string
+  args?: Record<string, unknown>
+}
+
+export interface FreetimeSession {
+  ts: number
+  started_at?: number
+  duration_s?: number
+  message?: string
+  reply?: string
+  preview?: string
+  tools?: FreetimeTool[]
+  source?: string
+}
+
+export interface FreetimeHistory {
+  last: FreetimeSession | null
+  recent: FreetimeSession[]
+}
+
+export async function fetchFreetime(limit = 30): Promise<FreetimeHistory> {
+  return apiFetch<FreetimeHistory>(`/api/freetime?limit=${limit}`)
 }
 
 export interface HistorySnapshot {

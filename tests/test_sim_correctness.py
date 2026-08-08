@@ -133,6 +133,8 @@ def test_sleep_roundtrip_save_load():
     state = build_initial_state(BIG5)
     state.sleeping = True
     state.sleep_elapsed_s = 3600.0
+    state.sleep_started_at = 1_700_000_000.0
+    state.last_sleep_started_at = 1_700_000_000.0
 
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, "sim_state.json")
@@ -140,6 +142,8 @@ def test_sleep_roundtrip_save_load():
         loaded = ChemicalState.load(path)
         assert loaded.sleeping is True
         assert loaded.sleep_elapsed_s == 3600.0
+        assert loaded.sleep_started_at == 1_700_000_000.0
+        assert loaded.last_sleep_started_at == 1_700_000_000.0
 
 
 def test_sleep_defaults_on_legacy_file():
@@ -148,15 +152,21 @@ def test_sleep_defaults_on_legacy_file():
     d = state.to_dict()
     del d["sleeping"]
     del d["sleep_elapsed_s"]
+    d.pop("sleep_started_at", None)
+    d.pop("last_sleep_started_at", None)
+    d.pop("last_woke_at", None)
     loaded = ChemicalState.from_dict(d)
     assert loaded.sleeping is False
     assert loaded.sleep_elapsed_s == 0.0
+    assert loaded.sleep_started_at is None
 
 
 def test_sim_init_restores_sleep():
     state = build_initial_state(BIG5)
     state.sleeping = True
     state.sleep_elapsed_s = 1800.0
+    state.sleep_started_at = 1_700_000_000.0
+    state.last_sleep_started_at = 1_700_000_000.0
 
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, "sim_state.json")
@@ -172,6 +182,9 @@ def test_sim_init_restores_sleep():
             assert s.is_sleeping() is True
             assert s._sleep_elapsed_s == 1800.0
             assert s._state.sleeping is True
+            assert s._state.sleep_started_at == 1_700_000_000.0
+            info = s.sleep_info()
+            assert info["sleep_started_at"] == 1_700_000_000.0
         finally:
             cfg.SIM_STATE_FILE = old
             sim_mod.SIM_STATE_FILE = old
@@ -191,8 +204,14 @@ def test_set_sleeping_writes_through_to_state():
     sim.set_sleeping(True)
     assert sim._state.sleeping is True
     assert sim._state.sleep_elapsed_s == 0.0
+    assert sim._state.sleep_started_at is not None
+    assert sim._state.last_sleep_started_at == sim._state.sleep_started_at
+    started = sim._state.sleep_started_at
     sim.set_sleeping(False)
     assert sim._state.sleeping is False
+    assert sim._state.sleep_started_at is None
+    assert sim._state.last_woke_at is not None
+    assert sim._state.last_sleep_started_at == started
 
 
 # ── DEFECT-3: decoder gap vs circadian target ────────────────────────────────

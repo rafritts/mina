@@ -1,17 +1,20 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { apiFetch } from '../lib/api'
+import { apiFetch, fetchFreetime } from '../lib/api'
 import { useStatePoller } from '../lib/hooks/useStatePoller'
 import { PRESETS } from '../lib/presets'
 import { getLabel, getChemLabel, DISPLAY_RANGES } from '../lib/labels'
-import type { ChemicalEntry } from '../lib/api'
+import type { ChemicalEntry, FreetimeSession } from '../lib/api'
 import {
   FIELD_LABELS,
   SECOND_ORDER,
   THIRD_ORDER,
   presenceLabel,
+  sleepStatusLines,
+  formatRelativeTs,
+  formatClockTs,
 } from '../lib/presence'
 import { cn } from '@/lib/utils'
 
@@ -165,11 +168,28 @@ export function ControlPane({
   const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [advanceHours, setAdvanceHours] = useState('1')
+  const [freetime, setFreetime] = useState<FreetimeSession[]>([])
+  const [expandedFt, setExpandedFt] = useState<number | null>(null)
 
   const showToast = useCallback((text: string, ok: boolean) => {
     setToast({ text, ok })
     setTimeout(() => setToast(null), 2800)
   }, [])
+
+  const loadFreetime = useCallback(async () => {
+    try {
+      const data = await fetchFreetime(12)
+      setFreetime(data.recent ?? [])
+    } catch {
+      /* offline / not ready */
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadFreetime()
+    const id = setInterval(() => void loadFreetime(), 15_000)
+    return () => clearInterval(id)
+  }, [loadFreetime])
 
   const saveChem = async (field: string) => {
     if (pending[field] === undefined) return
@@ -239,6 +259,7 @@ export function ControlPane({
         method: 'POST',
       })
       showToast(r.message ?? 'Heartbeat done', r.ok)
+      void loadFreetime()
     } catch (e) {
       showToast(e instanceof Error ? e.message : 'Failed', false)
     } finally {
@@ -324,25 +345,100 @@ export function ControlPane({
                 className="surface flex items-center justify-between gap-3 p-3"
                 aria-live="polite"
               >
-                <div className="min-w-0">
-                  <div className="text-[13px] font-medium">
-                    {state.sleeping ? 'Asleep' : 'Awake'}
-                  </div>
-                  <div className="text-[11px] text-muted mt-0.5 leading-snug">
-                    {state.sleeping
-                      ? 'Auto-sleep from high adenosine — monoamines recover while she rests.'
-                      : 'Sim is running in wake mode.'}
-                  </div>
-                </div>
-                <span
-                  className="status-pill shrink-0"
-                  data-tone={state.sleeping ? 'sleep' : 'live'}
-                >
-                  <span className="dot" />
-                  {state.sleeping ? 'Sleeping' : 'Awake'}
-                </span>
+                {(() => {
+                  const sleep = sleepStatusLines(state)
+                  return (
+                    <>
+                      <div className="min-w-0">
+                        <div className="text-[13px] font-medium">{sleep.title}</div>
+                        <div className="text-[11px] text-muted mt-0.5 leading-snug">
+                          {sleep.detail}
+                        </div>
+                        {sleep.sinceLabel && (
+                          <div className="text-[11px] mono text-secondary mt-1.5 leading-snug">
+                            {sleep.sinceLabel}
+                          </div>
+                        )}
+                      </div>
+                      <span
+                        className="status-pill shrink-0"
+                        data-tone={state.sleeping ? 'sleep' : 'live'}
+                      >
+                        <span className="dot" />
+                        {state.sleeping ? 'Sleeping' : 'Awake'}
+                      </span>
+                    </>
+                  )
+                })()}
               </div>
             </section>
+
+            <section>
+              <div className="flex items-center justify-between section-head">
+                <div className="label m-0">Free time</div>
+                <button
+                  type="button"
+                  className="text-[11px] text-muted hover:text-secondary bg-transparent border-0 cursor-pointer p-0"
+                  onClick={() => void loadFreetime()}
+                >
+                  Refresh
+                </button>
+              </div>
+              <div className="surface divide-y divide-[var(--border-subtle)] overflow-hidden">
+                {freetime.length === 0 ? (
+                  <p className="px-3 py-3 text-[11px] mono text-faint m-0">
+                    No free-time sessions yet. She acts alone roughly every 30 min while awake.
+                  </p>
+                ) : (
+                  freetime.slice(0, 8).map((session, i) => {
+                    const open = expandedFt === i
+                    const tools = session.tools ?? []
+                    const body = (session.reply || session.preview || '').trim()
+                    return (
+                      <button
+                        key={`${session.ts}-${i}`}
+                        type="button"
+                        className="w-full text-left px-3 py-2.5 border-0 bg-transparent cursor-pointer hover:bg-[var(--surface)] transition-colors"
+                        onClick={() => setExpandedFt(open ? null : i)}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            {tools.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mb-1">
+                                {tools.map((t, ti) => (
+                                  <span key={ti} className="chip chip-info text-[10px]">
+                                    {t.preview || t.name}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            <p
+                              className={cn(
+                                'text-[11.5px] text-secondary m-0 leading-snug',
+                                !open && 'line-clamp-2',
+                                open && 'whitespace-pre-wrap',
+                              )}
+                            >
+                              {body || '(no written free-time note)'}
+                            </p>
+                          </div>
+                          <span
+                            className="mono text-[10px] text-faint shrink-0"
+                            title={formatClockTs(session.ts)}
+                          >
+                            {formatRelativeTs(session.ts)}
+                          </span>
+                        </div>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+              <p className="text-[10.5px] text-faint mt-1.5 m-0 leading-snug">
+                What she does when nobody is chatting — tools, diary, solitary notes.
+              </p>
+            </section>
+
             <section>
               <div className="label section-head">Felt state</div>
               <div className="space-y-3">

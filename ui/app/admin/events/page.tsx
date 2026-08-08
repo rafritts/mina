@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { apiFetch, type EventEntry } from '../../lib/api'
 
-const TYPE_FILTERS = ['all', 'stimulus', 'response', 'activity', 'tool'] as const
+const TYPE_FILTERS = ['all', 'activity', 'tool', 'stimulus', 'response'] as const
 
 function eventText(ev: EventEntry): string {
   if (ev.preview) return ev.preview

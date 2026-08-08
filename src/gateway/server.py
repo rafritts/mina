@@ -11,6 +11,7 @@ State / admin (proxied by Next):
   POST /api/state/advance
   GET  /api/events
   GET  /api/history
+  GET  /api/freetime         — recent free-time sessions (what she did alone)
   GET  /api/tokens
   GET  /api/stream
   POST /api/heartbeat
@@ -129,6 +130,13 @@ def _compute_derived(levels: dict) -> tuple[dict, dict]:
 def _build_state(sim) -> dict:
     levels, sleeping = sim.raw_snapshot()
     second, third = _compute_derived(levels)
+    sleep = sim.sleep_info() if hasattr(sim, "sleep_info") else {
+        "sleeping": sleeping,
+        "sleep_elapsed_s": 0.0,
+        "sleep_started_at": None,
+        "last_sleep_started_at": None,
+        "last_woke_at": None,
+    }
 
     chemicals = {}
     receptor_sensitivity = {}
@@ -147,6 +155,10 @@ def _build_state(sim) -> dict:
     return {
         "chemicals":          chemicals,
         "sleeping":           sleeping,
+        "sleep_elapsed_s":    sleep.get("sleep_elapsed_s", 0.0),
+        "sleep_started_at":   sleep.get("sleep_started_at"),
+        "last_sleep_started_at": sleep.get("last_sleep_started_at"),
+        "last_woke_at":       sleep.get("last_woke_at"),
         "second_order":       second,
         "third_order":        third,
         "vital_signs":        {},
@@ -384,6 +396,15 @@ async def erase_conversation():
 async def get_events(limit: int = 150):
     from src.application.infra.events import read_events
     return read_events(limit=limit)
+
+
+# ── /api/freetime ─────────────────────────────────────────────────────────────
+
+@app.get("/api/freetime")
+async def get_freetime(limit: int = 30):
+    """Recent free-time sessions: reply text, tools used, timestamps."""
+    from src.freetime.freetime import read_freetime_history
+    return read_freetime_history(limit=limit)
 
 
 # ── /api/history ──────────────────────────────────────────────────────────────
