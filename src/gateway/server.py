@@ -97,12 +97,16 @@ def _compute_derived(levels: dict) -> tuple[dict, dict]:
     end = v("endorphins")
     ade = v("adenosine")
 
+    # OT absolute fraction of max is ~5% at rest (looks "cold"). Center the OT
+    # term on gap so resting OT → neutral ~50 (SPEC-62 DEFECT-4).
+    ot_component = clamp(50.0 + gap("oxytocin") * 8.0)
+
     # Weights sum to 1.0 — neutral (all=50) → 50
     second = {
         "energy":            clamp(ne*0.30 + da*0.25 + ach*0.20 + (100-ade)*0.10 + (100-crt)*0.15),
         "hedonic_tone":      clamp(ht*0.30 + da*0.25 + end*0.20 + oxy*0.10 + (100-crt)*0.15),
         "arousal":           clamp(ne*0.45 + epi*0.30 + da*0.25),
-        "social_warmth":     clamp(oxy*0.40 + ht*0.25 + end*0.15 + (100-crt)*0.20),
+        "social_warmth":     clamp(ot_component*0.40 + ht*0.25 + end*0.15 + (100-crt)*0.20),
         "cognitive_clarity": clamp(ach*0.40 + ne*0.25 + (100-ade)*0.20 + (100-crt)*0.15),
         "mood_valence":      clamp(ht*0.30 + da*0.20 + oxy*0.15 + end*0.15 + (100-crt)*0.20),
     }

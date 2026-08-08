@@ -17,11 +17,12 @@ import time
 from src.application.infra.log import log
 from src.config.config import SIM_STATE_FILE, load_big5
 from .state import ChemicalState
-from .tick import tick, build_initial_state, chemical_norm
+from .tick import tick, build_initial_state, chemical_norm, biased_natural_setpoint
 from .decoder import decode
 from .observer import Observer
 from .params import (
     CHEMICAL_PARAMS,
+    CIRCADIAN,
     SLEEP_ENTER_ADENOSINE,
     SLEEP_WAKE_ADENOSINE,
     SLEEP_MIN_DURATION_S,
@@ -31,6 +32,9 @@ from .params import (
 )
 
 _TICK_INTERVAL_S = 10.0
+# Circadian setpoints outside this band of Big5-biased natural are treated as
+# multi-day clock-ratchet scars (SPEC-62 DEFECT-1).
+_CIRCADIAN_SETPOINT_SCAR_FRAC = 0.25
 
 
 class Sim:
@@ -43,13 +47,15 @@ class Sim:
             self._state = build_initial_state(big5)
             log("SIM", "Initialized fresh state from params + Big 5.")
 
-        self._repair_collapsed_setpoints()
         self._big5: dict[str, float] = big5
+        self._repair_collapsed_setpoints()
+        self._repair_circadian_setpoint_scars()
         self._lock  = threading.Lock()
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
-        self._sleeping = False
-        self._sleep_elapsed_s = 0.0
+        # Restore sleep from persisted state (SPEC-62 DEFECT-2)
+        self._sleeping = bool(self._state.sleeping)
+        self._sleep_elapsed_s = float(self._state.sleep_elapsed_s)
         self._observer = Observer()
 
     # ── Public API ─────────────────────────────────────────────────────────
@@ -103,11 +109,18 @@ class Sim:
             if sleeping and not self._sleeping:
                 self._sleeping = True
                 self._sleep_elapsed_s = 0.0
+                self._sync_sleep_to_state()
                 log("SIM", "Sleep ON (external).")
             elif not sleeping and self._sleeping:
                 self._sleeping = False
                 self._sleep_elapsed_s = 0.0
+                self._sync_sleep_to_state()
                 log("SIM", "Sleep OFF (external).")
+
+    def _sync_sleep_to_state(self) -> None:
+        """Write sleep fields through to ChemicalState for persistence."""
+        self._state.sleeping = self._sleeping
+        self._state.sleep_elapsed_s = self._sleep_elapsed_s
 
     def _repair_collapsed_setpoints(self) -> None:
         """
@@ -141,6 +154,30 @@ class Sim:
         if repaired:
             log("SIM", f"Repaired collapsed / overshoot state: {', '.join(repaired)}")
 
+    def _repair_circadian_setpoint_scars(self) -> None:
+        """
+        Reset circadian-driven setpoints that drifted from multi-day clock
+        leakage into allostasis (SPEC-62 DEFECT-1). Monoamines outside
+        CIRCADIAN are left alone.
+        """
+        repaired = []
+        for name in CIRCADIAN:
+            lvl = self._state.levels.get(name)
+            p = CHEMICAL_PARAMS.get(name)
+            if not lvl or not p:
+                continue
+            natural = biased_natural_setpoint(name, self._big5)
+            if natural <= 0:
+                continue
+            rel = abs(lvl.setpoint - natural) / natural
+            if rel <= _CIRCADIAN_SETPOINT_SCAR_FRAC:
+                continue
+            # Outside ±25% of Big5-biased natural → reset allostatic setpoint.
+            lvl.setpoint = natural
+            repaired.append(f"{name}→{natural:.2f}")
+        if repaired:
+            log("SIM", f"Repaired circadian setpoint scars: {', '.join(repaired)}")
+
     def set_chemical(self, chemical: str, tonic_nM: float) -> bool:
         """Set a chemical's tonic level directly (admin override)."""
         with self._lock:
@@ -163,6 +200,7 @@ class Sim:
             self._state = build_initial_state(self._big5)
             self._sleeping = False
             self._sleep_elapsed_s = 0.0
+            self._sync_sleep_to_state()
             self._observer = Observer()
             self._state.save(SIM_STATE_FILE)
             norms = {
@@ -207,6 +245,7 @@ class Sim:
         if not self._sleeping and ade >= SLEEP_ENTER_ADENOSINE:
             self._sleeping = True
             self._sleep_elapsed_s = 0.0
+            self._sync_sleep_to_state()
             log("SIM", f"Auto-sleep enter (adenosine={ade:.1f}).")
         elif self._sleeping:
             self._sleep_elapsed_s += dt
@@ -216,7 +255,11 @@ class Sim:
             ):
                 self._sleeping = False
                 self._sleep_elapsed_s = 0.0
+                self._sync_sleep_to_state()
                 log("SIM", f"Auto-sleep wake (adenosine={ade:.1f}).")
+            else:
+                # Persist elapsed progress across restarts
+                self._sync_sleep_to_state()
 
     # ── Background tick thread ─────────────────────────────────────────────
 

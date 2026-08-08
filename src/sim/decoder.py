@@ -18,8 +18,11 @@ those as real mood moves.
 """
 from __future__ import annotations
 
+import time
+
 from .state import ChemicalState
 from .params import CHEMICAL_PARAMS
+from .tick import _circadian_offset, _hour_of_day
 
 _CORE = frozenset({"dopamine", "serotonin", "norepinephrine", "epinephrine", "cortisol", "oxytocin"})
 _GAP_THRESHOLD = 2  # default |gap| for most conditional chemicals
@@ -55,6 +58,9 @@ def decode(state: ChemicalState) -> dict[str, dict[str, int]]:
     Updates state.prev_normalized as a side effect (for rate tracking).
     """
     output: dict[str, dict[str, int]] = {}
+    # Wall clock — same source as tick Phase 2. Admin advance without a virtual
+    # sim clock still uses wall hour for circadian (SPEC-62 follow-up).
+    hour = _hour_of_day(time.time())
 
     for name, lvl in state.levels.items():
         p = CHEMICAL_PARAMS.get(name)
@@ -69,12 +75,17 @@ def decode(state: ChemicalState) -> dict[str, dict[str, int]]:
         combined = lvl.tonic + lvl.phasic
         norm_raw = max(0.0, combined / norm_max * 10.0)
         setpoint_raw = max(0.0, lvl.setpoint / norm_max * 10.0)
+        # Gap vs circadian target for clock chems so on-rhythm trough/peak
+        # is not reported as off-baseline (SPEC-62 DEFECT-3). Non-circadian
+        # chemicals get offset 0 → same as gap vs setpoint.
+        target_nM = lvl.setpoint + _circadian_offset(name, hour)
+        target_raw = max(0.0, target_nM / norm_max * 10.0)
 
         normalized = int(round(norm_raw))
         setpoint = int(round(setpoint_raw))
         # Gap from raw levels so 1.4 vs 2.2 does not become a fake −1 after
         # independent rounding of each side.
-        gap = _quantize_delta(norm_raw - setpoint_raw, _GAP_NOISE_FLOOR)
+        gap = _quantize_delta(norm_raw - target_raw, _GAP_NOISE_FLOOR)
 
         prev = state.prev_normalized.get(name, norm_raw)
         rate = _quantize_delta(norm_raw - prev, _RATE_NOISE_FLOOR)

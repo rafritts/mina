@@ -121,9 +121,21 @@ def tick(state: ChemicalState, dt: float, sleeping: bool = False) -> ChemicalSta
     # Upward: full rate (chronic high exposure raises baseline).
     # Downward: SETPOINT_DOWN_SCALE × rate — prevents opponent drag / acute
     # dips from permanently erasing setpoints (the death-spiral ratchet).
+    #
+    # SPEC-62 DEFECT-1: circadian offset is temporary, not allostasis.
+    # Naive "stripped = tonic - circ" still ratchets because:
+    #   (1) tonic floors at 0 while day-offset is largely negative (mel), so
+    #       stripped looks chronically high for half the day;
+    #   (2) Phase-2 lag on a moving target, times SETPOINT_DOWN_SCALE, is a
+    #       net upward walk.
+    # So CIRCADIAN chems skip tonic→setpoint adapt entirely. Phase 2 still
+    # applies the daily rhythm to tonic. True multi-day cortisol allostasis
+    # from stress is not encoded in tonic residual today (HPA hits phasic).
     for name, lvl in levels.items():
         p = params.get(name)
         if not p:
+            continue
+        if name in CIRCADIAN:
             continue
         adapt_rate = p["setpoint_adapt_rate"]
         gap = lvl.tonic - lvl.setpoint
@@ -238,17 +250,33 @@ def tick(state: ChemicalState, dt: float, sleeping: bool = False) -> ChemicalSta
     return state
 
 
+def biased_natural_setpoint(name: str, big5: dict[str, float]) -> float:
+    """Natural tonic_setpoint with Big 5 biases applied (same math as init)."""
+    from .params import BIG5_SETPOINT_BIAS
+
+    p = CHEMICAL_PARAMS.get(name)
+    if not p:
+        return 0.0
+    setpoint = float(p["tonic_setpoint"])
+    for trait, biases in BIG5_SETPOINT_BIAS.items():
+        scale = biases.get(name)
+        if scale is None:
+            continue
+        trait_val = big5.get(trait, 50.0)
+        trait_frac = (trait_val - 50.0) / 50.0
+        setpoint += setpoint * scale * trait_frac
+    return setpoint
+
+
 def build_initial_state(big5: dict[str, float]) -> ChemicalState:
     """
     Initialize ChemicalState from CHEMICAL_PARAMS, applying Big 5 setpoint biases.
     Called once at startup if no persisted state exists.
     """
-    from .params import BIG5_SETPOINT_BIAS
-
     levels: dict[str, ChemicalLevel] = {}
 
     for name, p in CHEMICAL_PARAMS.items():
-        base = p["tonic_setpoint"]
+        base = biased_natural_setpoint(name, big5)
         levels[name] = ChemicalLevel(
             tonic=base,
             setpoint=base,
@@ -256,21 +284,12 @@ def build_initial_state(big5: dict[str, float]) -> ChemicalState:
             sensitivity=1.0,
         )
 
-    # Apply Big 5 setpoint biases
-    for trait, biases in BIG5_SETPOINT_BIAS.items():
-        trait_val = big5.get(trait, 50.0)
-        trait_frac = (trait_val - 50.0) / 50.0  # centered at 0, range -1 to +1
-        for chem, scale in biases.items():
-            lvl = levels.get(chem)
-            if lvl:
-                delta = lvl.setpoint * scale * trait_frac
-                lvl.setpoint += delta
-                lvl.tonic    += delta
-
     return ChemicalState(
         levels=levels,
         last_updated=time.time(),
         prev_normalized={},
+        sleeping=False,
+        sleep_elapsed_s=0.0,
     )
 
 

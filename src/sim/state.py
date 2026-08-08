@@ -27,6 +27,9 @@ class ChemicalState:
     last_updated: float = field(default_factory=time.time)
     # Previous tick's normalized values — used by decoder to compute rate
     prev_normalized: dict[str, float] = field(default_factory=dict)
+    # Sleep / consciousness (SPEC-62 DEFECT-2). Binary for now; SPEC-61 may extend.
+    sleeping: bool = False
+    sleep_elapsed_s: float = 0.0
 
     # ── Serialization ──────────────────────────────────────────────────────
 
@@ -43,6 +46,8 @@ class ChemicalState:
             },
             "last_updated": self.last_updated,
             "prev_normalized": self.prev_normalized,
+            "sleeping": self.sleeping,
+            "sleep_elapsed_s": self.sleep_elapsed_s,
         }
 
     @classmethod
@@ -60,6 +65,8 @@ class ChemicalState:
             levels=          levels,
             last_updated=    float(d.get("last_updated", time.time())),
             prev_normalized= {k: float(v) for k, v in d.get("prev_normalized", {}).items()},
+            sleeping=        bool(d.get("sleeping", False)),
+            sleep_elapsed_s= float(d.get("sleep_elapsed_s", 0.0)),
         )
 
     def save(self, path: str) -> None:

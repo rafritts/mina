@@ -1,6 +1,6 @@
 # SPEC-62 — Sim Correctness Defects (Post-Cert Fixes)
 
-**Status:** Draft — ready to implement (product priority: before any UI / SPEC-63 Phase 3)  
+**Status:** Implemented (2026-08-07)  
 **Date:** 2026-08-07  
 **Source:** Certification audit in **SPEC-63** (formerly SPEC-62)  
 **Depends on:** current v2 sim (`src/sim/*`)  
@@ -68,28 +68,28 @@ Same class as v1: **unbounded baseline walk**. Different driver: clock, not oppo
 
 **Rule:** `setpoint` is allostasis only. Circadian is a **temporary offset** and must not enter setpoint adaptation.
 
-**Implementation (preferred):**
+**Implementation (shipped):**
 
-In `tick` Phase 3 (setpoint adaptation), for each chemical:
-
-```text
-circ = _circadian_offset(name, hour)   # 0 if not in CIRCADIAN
-stripped = lvl.tonic - circ            # “what tonic would be without today's clock”
-gap_for_adapt = stripped - lvl.setpoint
-# then adapt setpoint using gap_for_adapt (with existing SETPOINT_DOWN_SCALE on negative)
-```
+In `tick` Phase 3, **skip setpoint adaptation for every chemical in `CIRCADIAN`**.
 
 Phase 2 **unchanged**: tonic still tracks `setpoint + circ` (felt level still has a daily rhythm).
 
+Naive stripped-tonic adapt (`gap = (tonic − circ) − setpoint`) was tried first and **still ratchets**:
+
+1. Tonic floors at 0 while day-offset is largely negative (especially melatonin) → stripped looks chronically high for half the day.  
+2. Phase-2 lag on a moving target, times `SETPOINT_DOWN_SCALE`, is a net upward walk.
+
+Skipping Phase 3 for clock chems is the form that keeps setpoint allostatic. Cortisol multi-day stress allostasis is not encoded in tonic residual today (HPA hits phasic) — a future phasic-load path can reintroduce controlled allostasis without reopening the clock ratchet.
+
 **Why not alternatives:**
 
-| Alternative | Why secondary |
-|-------------|----------------|
-| `setpoint_adapt_rate = 0` on all circadian_driven | Also blocks real chronic stress / lifestyle allostasis on cortisol |
-| Clamp setpoint to band around natural | Band-aids; still adapts wrong signal inside the band |
-| Separate phase store | More state; stripped-tonic is enough |
+| Alternative | Why not |
+|-------------|---------|
+| Stripped-tonic adapt | Still ratchets under floor + lag (see above) |
+| Clamp setpoint to band around natural | Band-aid; does not stop wrong signal |
+| Separate phase store | More state; skip is enough |
 
-**Circadian list today** (`CIRCADIAN` / `circadian_driven`): cortisol, melatonin, orexin, serotonin (mild). Stripped adapt applies whenever `_circadian_offset` ≠ 0 path exists — i.e. any chem in `CIRCADIAN` dict. Safe for amplitude 0 edge.
+**Circadian list today** (`CIRCADIAN`): cortisol, melatonin, orexin, serotonin (mild).
 
 ### Repair of existing scars
 
@@ -271,14 +271,14 @@ Single PR preferred if small; split 1–2 vs 3–5 acceptable. **No UI files.**
 
 ## Acceptance checklist
 
-- [ ] 5-day forced circadian loop: mel/cort **setpoints** stable within band; monoamines not floored  
-- [ ] Night melatonin tonic still rises above daytime (rhythm preserved)  
-- [ ] Production-like scarred mel/cort setpoints repaired on load  
-- [ ] Sleep true + elapsed survives save/load and `Sim()` init  
-- [ ] On-trough evening cortisol \|gap\| small; true elevation still positive gap  
-- [ ] Baseline social_warmth not OT-crushed  
-- [ ] Existing `test_sim_stability.py` still all pass  
-- [ ] No UI-only changes required for this spec to close  
+- [x] 5-day forced circadian loop: mel/cort **setpoints** stable within band; monoamines not floored  
+- [x] Night melatonin tonic still rises above daytime (rhythm preserved)  
+- [x] Production-like scarred mel/cort setpoints repaired on load  
+- [x] Sleep true + elapsed survives save/load and `Sim()` init  
+- [x] On-trough evening cortisol \|gap\| small; true elevation still positive gap  
+- [x] Baseline social_warmth not OT-crushed  
+- [x] Existing `test_sim_stability.py` still all pass  
+- [x] No UI-only changes required for this spec to close  
 
 ---
 
@@ -286,7 +286,7 @@ Single PR preferred if small; split 1–2 vs 3–5 acceptable. **No UI files.**
 
 | Decision | Choice |
 |----------|--------|
-| DEFECT-1 fix | Adapt setpoint using **circadian-stripped** tonic |
+| DEFECT-1 fix | **Skip Phase-3 setpoint adapt for CIRCADIAN chems** (stripped-tonic tried; floor+lag still ratchet) |
 | DEFECT-2 | Persist `sleeping` + `sleep_elapsed_s` on ChemicalState |
 | DEFECT-3 | Gap vs `setpoint + circ_offset` for CIRCADIAN chems |
 | DEFECT-4 | OT term centered at gap 0 → neutral ~50 |
