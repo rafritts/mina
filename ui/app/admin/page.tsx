@@ -109,44 +109,35 @@ export default function OverviewPage() {
       <section className="section">
         <div className="flex items-center justify-between section-head">
           <div className="label m-0">Free time</div>
-          <Link href="/admin/events" className="text-[12px] text-muted no-underline hover:text-secondary">
-            Events log
+          <Link href="/admin/freetime" className="text-[12px] text-muted no-underline hover:text-secondary">
+            Open Free time →
           </Link>
         </div>
-        <div className="surface divide-y divide-[var(--border-subtle)] overflow-hidden">
-          {freetime.length === 0 && (
-            <p className="px-3.5 py-3 text-xs mono text-faint m-0">No free-time sessions yet</p>
-          )}
-          {freetime.map((session, i) => {
-            const chips = freetimeChipLabels(session)
-            const body = freetimeBody(session)
-            return (
-              <div key={`${session.ts}-${i}`} className="px-3.5 py-2.5 space-y-1">
-                <div className="flex items-start gap-2.5">
-                  <div className="flex-1 min-w-0 space-y-1">
-                    {chips.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {chips.map((label) => (
-                          <span key={label} className="chip chip-info max-w-[10rem] truncate">
-                            {label}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <p className="text-xs text-secondary m-0 line-clamp-3 leading-snug break-words">
-                      {body}
-                    </p>
-                  </div>
-                  <span
-                    className="mono text-[11px] text-faint shrink-0"
-                    title={formatClockTs(session.ts)}
-                  >
-                    {formatRelativeTs(session.ts)}
-                  </span>
+        <div className="surface p-3.5 space-y-2">
+          {freetime[0] ? (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-wrap gap-1">
+                  {freetimeChipLabels(freetime[0]).slice(0, 4).map((label) => (
+                    <span key={label} className="chip chip-info max-w-[9rem] truncate">
+                      {label}
+                    </span>
+                  ))}
                 </div>
+                <span
+                  className="mono text-[11px] text-faint shrink-0"
+                  title={formatClockTs(freetime[0].ts)}
+                >
+                  {formatRelativeTs(freetime[0].ts)}
+                </span>
               </div>
-            )
-          })}
+              <p className="text-xs text-secondary m-0 line-clamp-2 leading-snug break-words">
+                {freetimeBody(freetime[0])}
+              </p>
+            </>
+          ) : (
+            <p className="text-xs mono text-faint m-0">No free-time sessions yet</p>
+          )}
         </div>
       </section>
 

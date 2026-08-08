@@ -401,10 +401,37 @@ async def get_events(limit: int = 150):
 # ── /api/freetime ─────────────────────────────────────────────────────────────
 
 @app.get("/api/freetime")
-async def get_freetime(limit: int = 30):
-    """Recent free-time sessions: reply text, tools used, timestamps."""
+async def get_freetime(limit: int = 40, ts: float | None = None):
+    """
+    Recent free-time sessions.
+
+    Query:
+      limit — how many compact sessions in `recent`
+      ts    — if set, also return full `detail` (tools + pillar context)
+    """
     from src.freetime.freetime import read_freetime_history
-    return read_freetime_history(limit=limit)
+    return read_freetime_history(limit=limit, detail_ts=ts)
+
+
+@app.get("/api/freetime/text")
+async def get_freetime_text(ts: float | None = None):
+    """Markdown dump of a free-time session (default: latest with full detail)."""
+    from src.freetime.freetime import (
+        read_freetime_history,
+        format_freetime_markdown,
+        write_last_freetime_markdown,
+    )
+    data = read_freetime_history(limit=5, detail_ts=ts)
+    session = data.get("detail")
+    if session is None and data.get("last") and data["last"].get("ts") is not None:
+        data = read_freetime_history(limit=5, detail_ts=float(data["last"]["ts"]))
+        session = data.get("detail")
+    if not session:
+        return Response(content="(no free-time sessions yet)\n", media_type="text/markdown")
+    md = format_freetime_markdown(session)
+    if ts is None:
+        write_last_freetime_markdown(session)
+    return Response(content=md, media_type="text/markdown; charset=utf-8")
 
 
 # ── /api/history ──────────────────────────────────────────────────────────────

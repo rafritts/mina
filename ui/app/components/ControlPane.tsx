@@ -171,7 +171,6 @@ export function ControlPane({
   const [busy, setBusy] = useState<string | null>(null)
   const [advanceHours, setAdvanceHours] = useState('1')
   const [freetime, setFreetime] = useState<FreetimeSession[]>([])
-  const [expandedFt, setExpandedFt] = useState<number | null>(null)
 
   const showToast = useCallback((text: string, ok: boolean) => {
     setToast({ text, ok })
@@ -376,73 +375,41 @@ export function ControlPane({
             </section>
 
             <section>
-              <div className="flex items-center justify-between section-head">
-                <div className="label m-0">Free time</div>
-                <button
-                  type="button"
-                  className="text-[11px] text-muted hover:text-secondary bg-transparent border-0 cursor-pointer p-0"
-                  onClick={() => void loadFreetime()}
-                >
-                  Refresh
-                </button>
-              </div>
-              <div className="surface divide-y divide-[var(--border-subtle)] overflow-hidden">
-                {freetime.length === 0 ? (
-                  <p className="px-3 py-3 text-[11px] mono text-faint m-0">
-                    No free-time sessions yet. She acts alone roughly every 30 min while awake.
-                  </p>
-                ) : (
-                  freetime.slice(0, 8).map((session, i) => {
-                    const open = expandedFt === i
-                    const chips = freetimeChipLabels(session)
-                    const body = freetimeBody(session)
-                    return (
-                      <button
-                        key={`${session.ts}-${i}`}
-                        type="button"
-                        className="w-full text-left px-3 py-2.5 border-0 bg-transparent cursor-pointer hover:bg-[var(--surface)] transition-colors"
-                        onClick={() => setExpandedFt(open ? null : i)}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1 space-y-1">
-                            {chips.length > 0 && (
-                              <div className="flex flex-wrap gap-1">
-                                {chips.map((label) => (
-                                  <span
-                                    key={label}
-                                    className="chip chip-info max-w-[9rem] truncate"
-                                    title={label}
-                                  >
-                                    {label}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                            <p
-                              className={cn(
-                                'text-[11.5px] text-secondary m-0 leading-snug break-words',
-                                !open && 'line-clamp-2',
-                                open && 'whitespace-pre-wrap',
-                              )}
-                            >
-                              {body}
-                            </p>
-                          </div>
-                          <span
-                            className="mono text-[10px] text-faint shrink-0 pt-0.5"
-                            title={formatClockTs(session.ts)}
-                          >
-                            {formatRelativeTs(session.ts)}
+              <div className="label section-head">Free time</div>
+              <div className="surface p-3 space-y-2">
+                {freetime[0] ? (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex flex-wrap gap-1 min-w-0">
+                        {freetimeChipLabels(freetime[0]).slice(0, 3).map((label) => (
+                          <span key={label} className="chip chip-info max-w-[7rem] truncate">
+                            {label}
                           </span>
-                        </div>
-                      </button>
-                    )
-                  })
+                        ))}
+                      </div>
+                      <span
+                        className="mono text-[10px] text-faint shrink-0"
+                        title={formatClockTs(freetime[0].ts)}
+                      >
+                        {formatRelativeTs(freetime[0].ts)}
+                      </span>
+                    </div>
+                    <p className="text-[11.5px] text-secondary m-0 leading-snug line-clamp-2 break-words">
+                      {freetimeBody(freetime[0])}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-[11px] mono text-faint m-0">
+                    No free-time sessions yet.
+                  </p>
                 )}
+                <Link
+                  href="/admin/freetime"
+                  className="text-[12px] text-muted no-underline hover:text-secondary inline-block pt-0.5"
+                >
+                  Open Free time lab →
+                </Link>
               </div>
-              <p className="text-[10.5px] text-faint mt-1.5 m-0 leading-snug">
-                What she does when nobody is chatting — tools, diary, solitary notes.
-              </p>
             </section>
 
             <section>

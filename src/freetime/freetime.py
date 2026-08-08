@@ -169,11 +169,57 @@ def _unique_labels(tools: list[dict]) -> list[str]:
     return out
 
 
-def _normalize_session(rec: dict) -> dict:
-    """
-    Shape a session for the UI: short labels, clean body, no chip walls.
+def _tool_args_for_api(name: str, args: dict, *, full: bool) -> dict:
+    """Trim tool args for list view; keep diary/action text for detail."""
+    if not args:
+        return {}
+    if full:
+        # Cap runaway strings but keep readable full diary entries.
+        out: dict = {}
+        for k, v in args.items():
+            if isinstance(v, str) and len(v) > 4000:
+                out[k] = v[:4000] + "…"
+            else:
+                out[k] = v
+        return out
+    # Compact list view — labels only need short hints.
+    if name == "record_diary" and args.get("entry"):
+        e = str(args["entry"]).replace("\n", " ").strip()
+        return {"entry": e[:100] + ("…" if len(e) > 100 else "")}
+    if name in ("eat", "drink") and args.get("description"):
+        return {"description": str(args["description"])[:80]}
+    if name == "do_action":
+        return {
+            k: str(args[k])[:60]
+            for k in ("activity", "description")
+            if args.get(k)
+        }
+    if name == "sleep" and args.get("reason"):
+        return {"reason": str(args["reason"])[:80]}
+    if name in ("web_search", "x_search") and args.get("query"):
+        return {"query": str(args["query"])[:80]}
+    return {}
 
-    Safe on legacy records (conversation backfill, old log rows).
+
+def _session_body(rec: dict, tools: list[dict]) -> str:
+    reply = (rec.get("reply") or "").strip()
+    if reply:
+        return reply
+    body = _body_from_tools(tools if tools else (rec.get("tools") or []))
+    if body:
+        return body
+    preview = (rec.get("preview") or rec.get("summary") or rec.get("body") or "").strip()
+    if preview and " · " not in preview:
+        return preview
+    return "Quiet free time — no note."
+
+
+def _normalize_session(rec: dict, *, full: bool = False) -> dict:
+    """
+    Shape a session for the UI.
+
+    compact (full=False): short labels, summary body, no pillar context — for lists.
+    full=True: full tool args + pillar context — for Lab Free time detail.
     """
     raw_tools = rec.get("tools") or []
     tools: list[dict] = []
@@ -182,72 +228,89 @@ def _normalize_session(rec: dict) -> dict:
             continue
         name = t.get("name") or "tool"
         args = t.get("args") if isinstance(t.get("args"), dict) else {}
-        # Compact args for transport — keep diary/action text for expand.
-        compact_args: dict = {}
-        if name == "record_diary" and args.get("entry"):
-            compact_args["entry"] = str(args["entry"])[:800]
-        elif name in ("eat", "drink") and args.get("description"):
-            compact_args["description"] = str(args["description"])[:200]
-        elif name == "do_action":
-            if args.get("activity"):
-                compact_args["activity"] = str(args["activity"])[:80]
-            if args.get("description"):
-                compact_args["description"] = str(args["description"])[:200]
-        elif name == "sleep" and args.get("reason"):
-            compact_args["reason"] = str(args["reason"])[:120]
-        elif name in ("web_search", "x_search") and args.get("query"):
-            compact_args["query"] = str(args["query"])[:120]
         tools.append({
             "name": name,
-            "label": _tool_label(name, args),
+            "label": t.get("label") or _tool_label(name, args),
             "preview": (t.get("preview") or _tool_preview(name, args))[:80],
-            "args": compact_args,
+            "result": (t.get("result") or "")[:300] if full else "",
+            "args": _tool_args_for_api(name, args, full=full),
         })
 
-    reply = (rec.get("reply") or "").strip()
-    body = reply or _body_from_tools(raw_tools if raw_tools else tools)
-    if not body:
-        # Avoid the old "tool · tool · tool" preview as the main line.
-        preview = (rec.get("preview") or "").strip()
-        if preview and " · " not in preview:
-            body = preview
-        elif reply:
-            body = reply
-        else:
-            body = "Quiet free time — no note."
-
+    body = _session_body(rec, raw_tools if raw_tools else tools)
     labels = _unique_labels(tools)
     summary = body.replace("\n", " ").strip()
     if len(summary) > 200:
         summary = summary[:199] + "…"
 
-    return {
-        "ts": rec.get("ts"),
+    ts = rec.get("ts")
+    out: dict = {
+        "ts": ts,
+        "ts_human": (
+            time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(float(ts)))
+            if ts
+            else None
+        ),
         "started_at": rec.get("started_at"),
         "duration_s": rec.get("duration_s"),
         "message": rec.get("message"),
-        "reply": reply,
+        "reply": (rec.get("reply") or "").strip(),
         "body": body,
         "summary": summary,
-        "preview": summary,  # keep field for older clients
+        "preview": summary,
         "labels": labels,
         "tools": tools,
         "source": rec.get("source") or "freetime",
+        "has_context": bool(rec.get("context")),
+    }
+
+    if full:
+        ctx = rec.get("context")
+        if isinstance(ctx, dict) and ctx:
+            out["context"] = ctx
+        else:
+            # Backfill from last_context if this is the latest freetime turn.
+            out["context"] = _context_from_last_context(float(ts or 0))
+            out["has_context"] = bool(out["context"])
+        # Full diary entries for the Tools section
+        out["diaries"] = [
+            (t.get("args") or {}).get("entry")
+            for t in tools
+            if t.get("name") == "record_diary" and (t.get("args") or {}).get("entry")
+        ]
+    return out
+
+
+def _context_from_last_context(session_ts: float) -> dict | None:
+    """If last_context.json is a matching freetime turn, reuse its pillar dump."""
+    try:
+        from src.brain.context_log import read_last_context
+        last = read_last_context() or {}
+    except Exception:
+        return None
+    if last.get("source") != "freetime":
+        return None
+    last_ts = float(last.get("ts") or 0)
+    if session_ts and last_ts and abs(last_ts - session_ts) > 120:
+        return None
+    return {
+        "encoder": last.get("encoder") or {},
+        "relationship_modifier": last.get("relationship_modifier"),
+        "sim_snapshot": last.get("sim_snapshot") or {},
+        "big5": last.get("big5") or {},
+        "assembly": last.get("assembly") or {},
+        "insula": last.get("insula") or {},
+        "hippocampus": last.get("hippocampus") or {},
+        "pfc": last.get("pfc") or {},
+        "scene": last.get("scene") or {},
+        "system_prompt": last.get("system_prompt") or "",
     }
 
 
-def read_freetime_history(limit: int = 30) -> dict:
-    """
-    Recent free-time for UI.
-
-    Prefer structured log (tools + reply). Fall back to conversation-*.jsonl
-    freetime assistant lines so existing history still shows up.
-    Always returns normalized sessions (short labels + clean body).
-    """
+def _load_raw_sessions(limit: int) -> list[dict]:
+    """Load raw (unnormalized) sessions newest-first."""
     limit = max(1, min(int(limit or 30), 100))
     sessions: list[dict] = []
 
-    # Structured log (newest last on disk → reverse)
     try:
         with open(_FREETIME_LOG_FILE) as f:
             lines = f.read().splitlines()
@@ -265,13 +328,10 @@ def read_freetime_history(limit: int = 30) -> dict:
     except FileNotFoundError:
         pass
 
-    # Backfill from conversation logs when structured log is thin
     if len(sessions) < limit:
         seen_ts = {float(s.get("ts") or 0) for s in sessions}
-        conv_hits = _scan_conversation_freetime(limit * 2)
-        for hit in conv_hits:
+        for hit in _scan_conversation_freetime(limit * 2):
             ts = float(hit.get("ts") or 0)
-            # Dedup within ~5s of a structured record
             if any(abs(ts - t) < 5 for t in seen_ts):
                 continue
             sessions.append(hit)
@@ -280,24 +340,186 @@ def read_freetime_history(limit: int = 30) -> dict:
                 break
 
     sessions.sort(key=lambda s: float(s.get("ts") or 0), reverse=True)
-    sessions = [_normalize_session(s) for s in sessions[:limit]]
+    return sessions[:limit]
 
-    last = None
+
+def _raw_last_record() -> dict | None:
     try:
         with open(_LAST_FREETIME_FILE) as f:
             last = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        last = None
-    # Prefer structured last; if file is timestamp-only, use newest session body.
-    if last is not None and not (last.get("reply") or last.get("preview") or last.get("tools")):
-        if sessions:
-            last = None  # fall through to sessions[0]
-    if last is not None:
-        last = _normalize_session(last)
-    if last is None:
-        last = sessions[0] if sessions else None
+        return None
+    if not last:
+        return None
+    if not (last.get("reply") or last.get("preview") or last.get("tools") or last.get("body")):
+        return None
+    return last
 
-    return {"last": last, "recent": sessions}
+
+def read_freetime_history(limit: int = 30, detail_ts: float | None = None) -> dict:
+    """
+    Recent free-time for UI.
+
+    Returns compact list by default. When detail_ts is set, also returns
+    `detail` with full tools + pillar context for that session.
+    """
+    raw = _load_raw_sessions(limit)
+    recent = [_normalize_session(s, full=False) for s in raw]
+
+    last_raw = _raw_last_record()
+    if last_raw is None and raw:
+        last_raw = raw[0]
+    last = _normalize_session(last_raw, full=False) if last_raw else None
+
+    detail = None
+    if detail_ts is not None:
+        target = float(detail_ts)
+        match = None
+        # Prefer exact/near match in raw log
+        for s in raw:
+            if abs(float(s.get("ts") or 0) - target) < 1.5:
+                match = s
+                break
+        if match is None and last_raw and abs(float(last_raw.get("ts") or 0) - target) < 1.5:
+            match = last_raw
+        if match is None:
+            # Scan full log for older sessions beyond limit
+            match = _find_raw_session(target)
+        if match is not None:
+            detail = _normalize_session(match, full=True)
+        elif recent:
+            # Fall back to nearest recent
+            nearest = min(recent, key=lambda s: abs(float(s.get("ts") or 0) - target))
+            if abs(float(nearest.get("ts") or 0) - target) < 5:
+                # Re-load full from raw if possible
+                for s in raw:
+                    if abs(float(s.get("ts") or 0) - float(nearest["ts"])) < 1.5:
+                        detail = _normalize_session(s, full=True)
+                        break
+                if detail is None:
+                    detail = _normalize_session(nearest, full=True)
+
+    return {"last": last, "recent": recent, "detail": detail}
+
+
+def _find_raw_session(ts: float) -> dict | None:
+    try:
+        with open(_FREETIME_LOG_FILE) as f:
+            lines = f.read().splitlines()
+    except FileNotFoundError:
+        return None
+    best = None
+    best_d = 1e18
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        d = abs(float(rec.get("ts") or 0) - ts)
+        if d < best_d:
+            best_d = d
+            best = rec
+    return best if best is not None and best_d < 2.0 else None
+
+
+def format_freetime_markdown(session: dict) -> str:
+    """Human-readable dump of a full free-time session (Lab / agents)."""
+    lines: list[str] = []
+    lines.append("# Mina free time")
+    lines.append("")
+    lines.append(f"- **when:** {session.get('ts_human') or session.get('ts') or '—'}")
+    if session.get("duration_s") is not None:
+        lines.append(f"- **duration:** {session['duration_s']}s")
+    labels = session.get("labels") or []
+    if labels:
+        lines.append(f"- **actions:** {', '.join(labels)}")
+    lines.append("")
+
+    lines.append("## Synthetic input")
+    lines.append("")
+    lines.append((session.get("message") or "(none)").strip() or "(none)")
+    lines.append("")
+
+    lines.append("## Tools")
+    lines.append("")
+    tools = session.get("tools") or []
+    if not tools:
+        lines.append("_(none)_")
+    for i, t in enumerate(tools, 1):
+        label = t.get("label") or t.get("name") or "tool"
+        lines.append(f"### {i}. {label} (`{t.get('name')}`)")
+        lines.append("")
+        args = t.get("args") or {}
+        if t.get("name") == "record_diary" and args.get("entry"):
+            lines.append(args["entry"].strip())
+        elif args:
+            for k, v in args.items():
+                lines.append(f"- **{k}:** {v}")
+        if t.get("result"):
+            lines.append("")
+            lines.append(f"_result:_ {t['result']}")
+        lines.append("")
+
+    lines.append("## Reply")
+    lines.append("")
+    lines.append((session.get("reply") or session.get("body") or "(none)").strip() or "(none)")
+    lines.append("")
+
+    ctx = session.get("context") or {}
+    if ctx:
+        a = ctx.get("assembly") or {}
+        lines.append("## Encoder")
+        lines.append("")
+        lines.append(json.dumps(ctx.get("encoder") or {}, indent=2))
+        lines.append("")
+        lines.append("## Decoder (chemistry)")
+        lines.append("")
+        lines.append(json.dumps(ctx.get("sim_snapshot") or {}, indent=2)[:4000])
+        lines.append("")
+        lines.append("## Insula")
+        lines.append("")
+        lines.append(json.dumps(ctx.get("insula") or {}, indent=2))
+        lines.append("")
+        lines.append("## Hippocampus")
+        lines.append("")
+        lines.append(json.dumps(ctx.get("hippocampus") or {}, indent=2))
+        lines.append("")
+        lines.append("## PFC")
+        lines.append("")
+        lines.append(json.dumps(ctx.get("pfc") or {}, indent=2))
+        lines.append("")
+        lines.append("## Context assembly")
+        lines.append("")
+        lines.append("### Window")
+        lines.append("")
+        lines.append((a.get("window_context") or "(none)").strip() or "(none)")
+        lines.append("")
+        lines.append("### RAG")
+        lines.append("")
+        lines.append((a.get("rag_context") or "(none)").strip() or "(none)")
+        lines.append("")
+        lines.append("### KAG")
+        lines.append("")
+        lines.append((a.get("kag_context") or "(none)").strip() or "(none)")
+        lines.append("")
+        lines.append("## System prompt")
+        lines.append("")
+        lines.append((ctx.get("system_prompt") or "(none)").strip() or "(none)")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def write_last_freetime_markdown(session: dict) -> None:
+    path = os.path.join(RUN_DIR, "last_freetime.md")
+    try:
+        with open(path, "w") as f:
+            f.write(format_freetime_markdown(session))
+    except OSError as e:
+        log("FREETIME", f"last_freetime.md write failed: {e}")
 
 
 def _scan_conversation_freetime(limit: int) -> list[dict]:
@@ -581,32 +803,60 @@ async def run_freetime(sim: Sim) -> None:
     except Exception as e:
         log("FREETIME/CONTEXT", str(e))
 
-    # ── 7. Persist for UI (what she did alone) ────────────────────────────────
+    # ── 7. Persist for UI (what she did alone + pillars) ──────────────────────
     tool_rows = [
         {
             "name": t["name"],
             "label": _tool_label(t["name"], t.get("args") or {}),
             "preview": t["preview"],
             "args": t["args"],
+            "result": t.get("result") or "",
         }
         for t in tools_used
     ]
-    record = {
+    pillar_context = {
+        "encoder": encoder_output or {},
+        "relationship_modifier": 1.0,
+        "sim_snapshot": decoded or {},
+        "big5": big5 or {},
+        "assembly": {
+            "window_context": window_ctx or "",
+            "rag_context": rag_ctx or "",
+            "kag_context": kag_ctx or "",
+            "sliding_raw": sliding_res or "",
+            "experiences_raw": experiences or "",
+        },
+        "insula": insula_output or {},
+        "hippocampus": context_output or {},
+        "pfc": pfc_output or {},
+        "system_prompt": system_prompt or "",
+    }
+    # Disk record keeps full tools + pillars; API list view normalizes compact.
+    raw_record = {
         "ts": finished_at,
         "started_at": started_at,
         "duration_s": round(finished_at - started_at, 1),
         "message": synthetic_message,
         "reply": final_reply or "",
         "tools": tool_rows,
+        "context": pillar_context,
         "source": "freetime",
     }
-    # Normalize once so disk/API share the same body/summary/labels shape.
-    record = _normalize_session(record)
-    _save_freetime_record(record)
+    # Precompute body/summary/labels for last_freetime.json convenience.
+    display = _normalize_session(raw_record, full=True)
+    to_store = {
+        **raw_record,
+        "body": display.get("body"),
+        "summary": display.get("summary"),
+        "preview": display.get("summary"),
+        "labels": display.get("labels"),
+    }
+    _save_freetime_record(to_store)
+    write_last_freetime_markdown(display)
     try:
         from src.application.infra.events import emit as emit_event
-        labels = record.get("labels") or []
-        event_preview = record.get("summary") or record.get("body") or "free time"
+        labels = display.get("labels") or []
+        event_preview = display.get("summary") or display.get("body") or "free time"
         if labels:
             event_preview = f"{', '.join(labels)} — {event_preview}"
         emit_event("activity", event_preview[:200], {

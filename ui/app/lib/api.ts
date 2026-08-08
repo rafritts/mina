@@ -87,11 +87,26 @@ export interface FreetimeTool {
   /** Short chip text (e.g. Diary, Water). */
   label?: string
   preview: string
+  result?: string
   args?: Record<string, unknown>
+}
+
+export interface FreetimeContext {
+  encoder?: Record<string, unknown>
+  relationship_modifier?: number
+  sim_snapshot?: Record<string, { normalized?: number; setpoint?: number; gap?: number; rate?: number }>
+  big5?: Record<string, number>
+  assembly?: ContextAssembly
+  insula?: Record<string, unknown>
+  hippocampus?: Record<string, unknown>
+  pfc?: Record<string, unknown>
+  scene?: Record<string, unknown>
+  system_prompt?: string
 }
 
 export interface FreetimeSession {
   ts: number
+  ts_human?: string
   started_at?: number
   duration_s?: number
   message?: string
@@ -105,15 +120,31 @@ export interface FreetimeSession {
   labels?: string[]
   tools?: FreetimeTool[]
   source?: string
+  has_context?: boolean
+  /** Present on full detail responses. */
+  context?: FreetimeContext
+  diaries?: string[]
 }
 
 export interface FreetimeHistory {
   last: FreetimeSession | null
   recent: FreetimeSession[]
+  detail?: FreetimeSession | null
 }
 
-export async function fetchFreetime(limit = 30): Promise<FreetimeHistory> {
-  return apiFetch<FreetimeHistory>(`/api/freetime?limit=${limit}`)
+export async function fetchFreetime(limit = 40, ts?: number | null): Promise<FreetimeHistory> {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (ts != null && Number.isFinite(ts)) params.set('ts', String(ts))
+  return apiFetch<FreetimeHistory>(`/api/freetime?${params}`)
+}
+
+export async function fetchFreetimeMarkdown(ts?: number | null): Promise<string> {
+  const params = new URLSearchParams()
+  if (ts != null && Number.isFinite(ts)) params.set('ts', String(ts))
+  const q = params.toString()
+  const res = await fetch(`/api/freetime/text${q ? `?${q}` : ''}`)
+  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`)
+  return res.text()
 }
 
 export interface HistorySnapshot {
