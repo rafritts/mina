@@ -21,7 +21,17 @@ export interface ChemicalEntry {
   value: number
   unit: string
   label: string
+  /** 0–1 fraction of normalization_max (legacy / theme) */
   normalized: number
+  /** Decoder-scale 0–10 */
+  normalized_10?: number
+  setpoint?: number
+  setpoint_10?: number
+  /** Gap vs circadian-adjusted target (SPEC-62/63) */
+  gap?: number
+  label_color?: string
+  implication?: string
+  norm_max?: number
 }
 
 export interface VitalEntry {

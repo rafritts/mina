@@ -36,6 +36,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from src.application.infra.log import log
 from src.sim.params import CHEMICAL_PARAMS
+from src.sim.labels import annotate_chemical
 
 app = FastAPI(title="Mina Gateway", version="2.0")
 
@@ -135,14 +136,12 @@ def _build_state(sim) -> dict:
         p = CHEMICAL_PARAMS.get(name)
         if not p or p["class"] == 4:
             continue
-        combined = lvl["tonic"] + lvl["phasic"]
-        norm_max = p["normalization_max"]
-        chemicals[name] = {
-            "value":      round(combined, 3),
-            "unit":       "nM",
-            "label":      name.replace("_", " ").title(),
-            "normalized": round(combined / norm_max, 4),
-        }
+        chemicals[name] = annotate_chemical(
+            name,
+            tonic=lvl["tonic"],
+            phasic=lvl["phasic"],
+            setpoint=lvl["setpoint"],
+        )
         receptor_sensitivity[name] = round(lvl["sensitivity"], 3)
 
     return {

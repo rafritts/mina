@@ -451,8 +451,11 @@ CHEMICAL_PARAMS: dict[str, dict] = {
     "adenosine": {
         "class": 2,
         "grade": "B",
-        "tonic_setpoint": 100.0,     # nmol/L CSF; resting alert state
-        "normalization_max": 500.0,  # before inevitable sleep onset
+        # Sleep-pressure model scale (SPEC-63 Phase 2): not literal CSF
+        # microdialysis. Tonic ~100 is the resting floor; phasic is the wake
+        # reservoir that climbs toward normalization_max (~500) over ~16h awake.
+        "tonic_setpoint": 100.0,
+        "normalization_max": 500.0,  # forced-sleep ceiling on the model scale
         "phasic_half_life_s": 7200,  # clears slowly during wakefulness; fast during sleep
         "tonic_decay_rate": 0.003,   # slow approach during wakefulness
         "setpoint_adapt_rate": 0.00005,
@@ -555,8 +558,10 @@ CHEMICAL_PARAMS: dict[str, dict] = {
     "melatonin": {
         "class": 3,
         "grade": "C",
-        "tonic_setpoint": 5.0,       # pg/mL; daytime low
-        "normalization_max": 250.0,  # pg/mL; nocturnal peak
+        # Working concentration units (displayed as nM). Historical comments
+        # said pg/mL; dynamics share one unit space with the rest of the sim.
+        "tonic_setpoint": 5.0,       # daytime low on the working scale
+        "normalization_max": 250.0,  # nocturnal peak on the working scale
         "phasic_half_life_s": 1800,
         "tonic_decay_rate": 0.005,
         "setpoint_adapt_rate": 0.00005,

@@ -10,11 +10,9 @@ import type { SecretionQueueEntry } from '../../lib/api'
 const GROUPS: { label: string; chemicals: string[] }[] = [
   { label: 'Monoamines', chemicals: ['dopamine', 'serotonin', 'norepinephrine'] },
   { label: 'Bonding & social', chemicals: ['oxytocin', 'endorphins'] },
-  { label: 'Modulators', chemicals: ['acetylcholine', 'anandamide', 'two_ag'] },
-  { label: 'Excitatory / inhibitory', chemicals: ['glutamate', 'gaba'] },
-  { label: 'Stress', chemicals: ['cortisol', 'epinephrine'] },
-  { label: 'Circadian', chemicals: ['melatonin', 'sleep_pressure'] },
-  { label: 'Physiological', chemicals: ['glucose', 'hydration'] },
+  { label: 'Stress', chemicals: ['cortisol', 'epinephrine', 'crh'] },
+  { label: 'Sleep & clock', chemicals: ['adenosine', 'melatonin', 'orexin'] },
+  { label: 'Other peptides', chemicals: ['anandamide', 'ghrelin', 'substance_p', 'vasopressin'] },
 ]
 
 export default function NeuroPage() {
@@ -65,7 +63,8 @@ export default function NeuroPage() {
               const isDirty = field in pending
               const range = DISPLAY_RANGES[field]
               const min = range?.min ?? 0
-              const max = range?.max ?? Math.max(entry.value * 3, 1)
+              const max = entry.norm_max ?? range?.max ?? Math.max(entry.value * 3, 1)
+              const step = max <= 1 ? 0.001 : max <= 20 ? 0.01 : 1
               return (
                 <div key={field} className="px-4 py-3.5 space-y-2">
                   <StatBar
@@ -77,7 +76,7 @@ export default function NeuroPage() {
                       type="range"
                       min={min}
                       max={max}
-                      step={entry.value < 10 ? 0.01 : 1}
+                      step={step}
                       value={pending[field] ?? entry.value}
                       onChange={(e) =>
                         setPending((p) => ({ ...p, [field]: parseFloat(e.target.value) }))

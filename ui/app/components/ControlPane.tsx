@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { apiFetch } from '../lib/api'
 import { useStatePoller } from '../lib/hooks/useStatePoller'
 import { PRESETS } from '../lib/presets'
-import { getLabel, COLOR_CLASSES, DISPLAY_RANGES } from '../lib/labels'
+import { getLabel, getChemLabel, DISPLAY_RANGES } from '../lib/labels'
+import type { ChemicalEntry } from '../lib/api'
 import {
   FIELD_LABELS,
   SECOND_ORDER,
@@ -20,9 +21,16 @@ const CHEM_GROUPS: { label: string; chemicals: string[] }[] = [
   { label: 'Monoamines', chemicals: ['dopamine', 'serotonin', 'norepinephrine'] },
   { label: 'Bonding', chemicals: ['oxytocin', 'endorphins'] },
   { label: 'Stress', chemicals: ['cortisol', 'epinephrine'] },
-  { label: 'Cognition', chemicals: ['acetylcholine', 'glutamate', 'gaba'] },
-  { label: 'Body', chemicals: ['adenosine', 'melatonin', 'glucose', 'hydration', 'sleep_pressure'] },
+  { label: 'Sleep & clock', chemicals: ['adenosine', 'melatonin', 'orexin'] },
+  { label: 'Other', chemicals: ['anandamide', 'crh', 'ghrelin'] },
 ]
+
+function formatChemValue(value: number): string {
+  if (value < 0.1) return value.toFixed(3)
+  if (value < 10) return value.toFixed(2)
+  if (value < 100) return value.toFixed(1)
+  return String(Math.round(value))
+}
 
 function chipClass(color?: string): string {
   if (color === 'success') return 'chip chip-success'
@@ -72,7 +80,7 @@ function ChemRow({
   saving,
 }: {
   field: string
-  entry: { value: number; unit: string; normalized: number; label: string }
+  entry: ChemicalEntry
   pending: number | undefined
   onPending: (v: number) => void
   onSave: () => void
@@ -81,9 +89,19 @@ function ChemRow({
   const value = pending ?? entry.value
   const range = DISPLAY_RANGES[field]
   const min = range?.min ?? 0
-  const max = range?.max ?? Math.max(entry.value * 3, 1)
-  const labelEntry = getLabel(field, value)
+  const max = entry.norm_max ?? range?.max ?? Math.max(entry.value * 3, 1)
+  // Prefer live server label; when slider is dirty, chip still shows last server label
+  // (re-label on set/poll). Gap is a sim debug instrument (SPEC-63).
+  const labelEntry = getChemLabel(entry)
   const dirty = pending !== undefined
+  const step = max <= 1 ? 0.001 : max <= 20 ? 0.01 : 1
+  const gap = entry.gap
+  const gapStr =
+    gap === undefined
+      ? null
+      : Math.abs(gap) < 0.05
+        ? '0'
+        : `${gap > 0 ? '+' : ''}${gap.toFixed(1)}`
 
   return (
     <div className="py-2.5 space-y-1.5 border-b border-[var(--border-subtle)] last:border-0">
@@ -93,10 +111,12 @@ function ChemRow({
         </span>
         <div className="flex items-center gap-1.5">
           {labelEntry && (
-            <span className={chipClass(labelEntry.color)}>{labelEntry.name}</span>
+            <span className={chipClass(labelEntry.color)} title={labelEntry.implication}>
+              {labelEntry.name}
+            </span>
           )}
           <span className="mono text-[11px]">
-            {value < 10 ? value.toFixed(2) : Math.round(value)}
+            {formatChemValue(value)}
             <span className="text-faint"> {entry.unit}</span>
           </span>
         </div>
@@ -106,8 +126,8 @@ function ChemRow({
           type="range"
           min={min}
           max={max}
-          step={value < 10 ? 0.01 : 1}
-          value={value}
+          step={step}
+          value={Math.min(max, Math.max(min, value))}
           onChange={(e) => onPending(parseFloat(e.target.value))}
           className="flex-1"
         />
@@ -117,6 +137,14 @@ function ChemRow({
           </button>
         )}
       </div>
+      {gapStr !== null && (
+        <div className="flex justify-end">
+          <span className="mono text-[10px] text-faint" title="Gap vs circadian-adjusted target">
+            gap {gapStr}
+            {entry.normalized_10 !== undefined && <> · {entry.normalized_10.toFixed(1)}/10</>}
+          </span>
+        </div>
+      )}
     </div>
   )
 }

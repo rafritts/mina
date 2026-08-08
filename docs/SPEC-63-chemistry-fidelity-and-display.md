@@ -1,9 +1,9 @@
 # SPEC-63 — Chemistry Fidelity Certification & Display (Deferred)
 
-**Status:** Certification complete — **blocked on SPEC-62** for engine fixes; UI still dead last  
+**Status:** Implemented (2026-08-07) — Phase 0 cert + Phase 2 soft notes + Phase 3 display  
 **Date:** 2026-08-07  
 **Formerly:** SPEC-62 (renumbered 2026-08-07)  
-**Depends on:** **SPEC-62** (sim defect corrections must land first)  
+**Depends on:** **SPEC-62** (landed; engine defects fixed first)  
 **Related:** SPEC-61 (voluntary sleep onset); SPEC-60 (v1 tombstone); insula gap doctrine
 
 ---
@@ -17,12 +17,10 @@ The pain that killed v1 was a **broken simulation**, not an ugly dashboard.
 
 | Phase | Work | Spec | Priority |
 |-------|------|------|----------|
-| **0** | Certify sim | this doc | Done |
-| **1** | Fix real sim defects | **SPEC-62** | **Next — implement first** |
-| **2** | Soft sim fidelity | this doc § Phase 2 | Later |
-| **3** | Display / labels / Control UI | this doc § Phase 3 | **Dead last** |
-
-**Do not implement Phase 3 before SPEC-62 acceptance.**
+| **0** | Certify sim | this doc | **Done** |
+| **1** | Fix real sim defects | **SPEC-62** | **Done** |
+| **2** | Soft sim fidelity | this doc § Phase 2 | **Done** (params comments) |
+| **3** | Display / labels / Control UI | this doc § Phase 3 | **Done** |
 
 ---
 
@@ -126,31 +124,30 @@ Not monoamine collapse. Still not a fully clean long-run sim until SPEC-62.
 
 ## Phase 2 — Soft sim fidelity (optional; after SPEC-62)
 
-- Document adenosine as sleep-pressure model scale in params header  
-- Revisit endorphin units if needed  
-- Unify melatonin unit string in API  
-- DEFECT-4 derived warmth if not already done in SPEC-62  
+- [x] Document adenosine as sleep-pressure model scale in `params.py`  
+- [x] Unify melatonin unit string in API (`nM` working units)  
+- [x] DEFECT-4 derived warmth (landed in SPEC-62)  
+- Endorphin units left as working nM (acceptable; no plasma conversion)
 
 ---
 
-## Phase 3 — Display / labels (DEAD LAST)
+## Phase 3 — Display / labels (implemented)
 
-Only after **SPEC-62** acceptance.
+### Problem (was)
 
-### Problem
+`ui/app/lib/labels.ts` used v1 unit thresholds. Resting nM → false crash chips.
 
-`ui/app/lib/labels.ts` uses v1 unit thresholds. Resting nM → false crash chips.
+### Shipped
 
-### When you finally do this
+| Piece | Location |
+|-------|----------|
+| Canonical labels | `src/sim/labels.py` — gap + normalized 0–10; tone / surge / sleep / clock |
+| API fields | `value`, `unit`, `normalized`, `normalized_10`, `setpoint`, `setpoint_10`, `gap`, `label`, `label_color`, `implication`, `norm_max` |
+| UI | Prefer server `label`; `DISPLAY_RANGES` max = `normalization_max`; gap debug readout |
+| Presets | Working nM values |
+| Tests | `tests/test_chemistry_labels.py` |
 
-- Labels from **normalized 0–10 + gap** (circadian-aware if DEFECT-3 fixed)  
-- OT at gap≈0 → **RESTING**, never NO BOND  
-- Tone / surge / sleep / clock shorthand is **UI only** — not neuroscience, not tonic/phasic  
-- Python-first label tables + API `label` preferred  
-- Control may show gap as a **sim debug instrument**  
-- Sliders max = `normalization_max`  
-
-Success: **instruments tell the truth about the sim** — not “panel looks calm.”
+Success: **instruments tell the truth about the sim** — baseline shows BASELINE / RESTING / CALM ALERT, not ANHEDONIC / NO BOND.
 
 | Shorthand | Resting chip idea | Examples |
 |-----------|-------------------|----------|
@@ -169,6 +166,9 @@ Success: **instruments tell the truth about the sim** — not “panel looks cal
 | Priority | SPEC-62 first; this doc Phase 3 last |
 | Baseline monoamine “crash” | Not a sim collapse — false labels |
 | Restore v1 pg/mL into sim? | **No** |
+| Label SoT | Python `src/sim/labels.py`; UI consumes server fields |
+| OT at gap≈0 | **RESTING** (never NO BOND / friend ladder) |
+| Sliders | max = `normalization_max` |
 
 ---
 
