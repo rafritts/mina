@@ -10,12 +10,22 @@ import {
 import { Check, Pencil, RotateCcw, X } from 'lucide-react'
 import {
   IMAGE_ASPECT_DEFAULT,
+  isImageAspect,
   type ImageAspect,
 } from '../lib/image-aspect'
 import {
   IMAGE_COUNT_DEFAULT,
+  isImageCount,
+  normalizeImageCount,
   type ImageCount,
 } from '../lib/image-count'
+import {
+  defaultImageAspect,
+  defaultImageCount,
+  fetchRemoteChatStore,
+  pushRemoteChatStore,
+} from '../lib/chat-store-api'
+import type { StoredChatMessage } from '../lib/chat-store-file'
 import {
   EMPTY_TURN_MIND,
   reduceTurnMind,
@@ -45,8 +55,13 @@ interface ChatMessage {
   mind?: TurnMind
 }
 
-const STORAGE_KEY = 'mina-chat-messages'
-const PREFS_KEY = 'mina-chat-prefs'
+/** Legacy browser-only keys — migrated once into the shared server store. */
+const LEGACY_STORAGE_KEY = 'mina-chat-messages'
+const LEGACY_PREFS_KEY = 'mina-chat-prefs'
+const CONTROL_PREF_KEY = 'mina-control-open'
+
+const SAVE_DEBOUNCE_MS = 400
+const POLL_MS = 4000
 
 const HOST_IMAGE_MD =
   /!\[([^\]]*)\]\((\/images\/[^)\s]+|\/api\/generate\/[^)\s]+)\)/g
@@ -353,10 +368,10 @@ function snapshotMind(mind: TurnMind): TurnMind {
   }
 }
 
-function loadMessages(): ChatMessage[] {
+function loadLegacyLocalMessages(): ChatMessage[] {
   if (typeof window === 'undefined') return []
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(LEGACY_STORAGE_KEY)
     if (!raw) return []
     const parsed = JSON.parse(raw) as ChatMessage[]
     return Array.isArray(parsed) ? parsed : []
@@ -365,15 +380,62 @@ function loadMessages(): ChatMessage[] {
   }
 }
 
-function saveMessages(msgs: ChatMessage[]) {
+function loadLegacyLocalPrefs(): {
+  imageCount?: ImageCount
+  imageAspect?: ImageAspect
+} {
+  if (typeof window === 'undefined') return {}
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs))
+    const raw = localStorage.getItem(LEGACY_PREFS_KEY)
+    if (!raw) return {}
+    const p = JSON.parse(raw) as {
+      imageCount?: ImageCount
+      imageAspect?: ImageAspect
+    }
+    return {
+      ...(p.imageCount !== undefined && isImageCount(p.imageCount)
+        ? { imageCount: normalizeImageCount(p.imageCount) }
+        : {}),
+      ...(p.imageAspect !== undefined && isImageAspect(p.imageAspect)
+        ? { imageAspect: p.imageAspect }
+        : {}),
+    }
   } catch {
-    /* ignore quota */
+    return {}
   }
 }
 
+function clearLegacyLocal() {
+  try {
+    localStorage.removeItem(LEGACY_STORAGE_KEY)
+    localStorage.removeItem(LEGACY_PREFS_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+function toStored(msgs: ChatMessage[]): StoredChatMessage[] {
+  return msgs.map((m) => ({
+    id: m.id,
+    role: m.role,
+    content: m.content,
+    ...(m.images?.length ? { images: m.images } : {}),
+    ...(m.mind ? { mind: m.mind as StoredChatMessage['mind'] } : {}),
+  }))
+}
+
+function fromStored(msgs: StoredChatMessage[]): ChatMessage[] {
+  return msgs.map((m) => ({
+    id: m.id,
+    role: m.role,
+    content: m.content,
+    ...(m.images?.length ? { images: m.images } : {}),
+    ...(m.mind ? { mind: m.mind as TurnMind } : {}),
+  }))
+}
+
 export function ChatApp() {
+  // Shell renders immediately; hydrate from shared server store only.
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
@@ -381,6 +443,7 @@ export function ChatApp() {
   const [hydrated, setHydrated] = useState(false)
   const [imageCount, setImageCount] = useState<ImageCount>(IMAGE_COUNT_DEFAULT)
   const [imageAspect, setImageAspect] = useState<ImageAspect>(IMAGE_ASPECT_DEFAULT)
+  /** Layout-only — device-local (phone drawer vs desktop pane). */
   const [controlOpen, setControlOpen] = useState(true)
   const [contextOpen, setContextOpen] = useState(false)
   const [mind, setMind] = useState<TurnMind>(EMPTY_TURN_MIND)
@@ -389,6 +452,108 @@ export function ChatApp() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const sendingRef = useRef(false)
   const mindRef = useRef<TurnMind>(EMPTY_TURN_MIND)
+  const messagesRef = useRef<ChatMessage[]>([])
+  const imageAspectRef = useRef<ImageAspect>(IMAGE_ASPECT_DEFAULT)
+  const imageCountRef = useRef<ImageCount>(IMAGE_COUNT_DEFAULT)
+  /** Last putRevision from this machine’s disk store. */
+  const serverPutRevisionRef = useRef(0)
+  const serverUpdatedAtRef = useRef(0)
+  /** True after local edits until a successful push. */
+  const dirtyRef = useRef(false)
+  /** Skip dirty mark when applying remote / hydrate. */
+  const skipDirtyRef = useRef(false)
+  /** Bumps on each local change so in-flight saves don't clear newer dirty. */
+  const changeSeqRef = useRef(0)
+
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
+  useEffect(() => {
+    imageAspectRef.current = imageAspect
+  }, [imageAspect])
+  useEffect(() => {
+    imageCountRef.current = imageCount
+  }, [imageCount])
+
+  const applyRemote = useCallback(
+    (
+      store: {
+        messages: StoredChatMessage[]
+        updatedAt: number
+        putRevision: number
+        imageAspect?: ImageAspect
+        imageCount?: ImageCount
+      },
+    ) => {
+      skipDirtyRef.current = true
+      setMessages(fromStored(store.messages))
+      serverUpdatedAtRef.current = store.updatedAt
+      serverPutRevisionRef.current = store.putRevision
+      if (store.imageAspect && isImageAspect(store.imageAspect)) {
+        setImageAspect(store.imageAspect)
+      }
+      if (store.imageCount !== undefined && isImageCount(store.imageCount)) {
+        setImageCount(normalizeImageCount(store.imageCount))
+      }
+      dirtyRef.current = false
+    },
+    [],
+  )
+
+  const flushRemoteStore = useCallback(
+    async (list?: ChatMessage[]): Promise<boolean> => {
+      const nextList = list ?? messagesRef.current
+      if (list) messagesRef.current = list
+      const result = await pushRemoteChatStore(
+        toStored(nextList),
+        imageAspectRef.current,
+        imageCountRef.current,
+        { baseRevision: serverPutRevisionRef.current },
+      )
+      if (result.ok) {
+        serverUpdatedAtRef.current = result.store.updatedAt
+        serverPutRevisionRef.current = result.store.putRevision
+        // Server may have sanitized; keep revision in sync only.
+        return true
+      }
+      if (result.conflict && result.store) {
+        // Disk won. If this tab still has a longer unflushed extension, rebase once.
+        const remote = result.store
+        serverUpdatedAtRef.current = remote.updatedAt
+        serverPutRevisionRef.current = remote.putRevision
+        const local = messagesRef.current
+        const remoteMsgs = remote.messages
+        const localExtends =
+          local.length > remoteMsgs.length &&
+          remoteMsgs.every(
+            (rm, i) =>
+              local[i]?.id === rm.id && local[i]?.content === rm.content,
+          )
+        if (localExtends && !sendingRef.current) {
+          const retry = await pushRemoteChatStore(
+            toStored(local),
+            imageAspectRef.current,
+            imageCountRef.current,
+            { baseRevision: remote.putRevision },
+          )
+          if (retry.ok) {
+            serverUpdatedAtRef.current = retry.store.updatedAt
+            serverPutRevisionRef.current = retry.store.putRevision
+            dirtyRef.current = false
+            return true
+          }
+          if (retry.conflict && retry.store) {
+            applyRemote(retry.store)
+            return true
+          }
+        }
+        applyRemote(remote)
+        return true
+      }
+      return false
+    },
+    [applyRemote],
+  )
 
   const onStreamEvent = useCallback((event: StreamEvent) => {
     if (!sendingRef.current) return
@@ -414,45 +579,187 @@ export function ChatApp() {
   const { connected } = useStream(onStreamEvent)
   const { state: simState } = useStatePoller(3000)
 
+  // Hydrate from shared server store (phone / tablet / desktop same file).
   useEffect(() => {
-    setMessages(loadMessages())
-    try {
-      const raw = localStorage.getItem(PREFS_KEY)
-      if (raw) {
-        const p = JSON.parse(raw) as {
-          imageCount?: ImageCount
-          imageAspect?: ImageAspect
-          controlOpen?: boolean
+    let cancelled = false
+    ;(async () => {
+      try {
+        const remote = await fetchRemoteChatStore()
+        if (cancelled) return
+
+        // Device-local control drawer preference
+        try {
+          const raw = localStorage.getItem(CONTROL_PREF_KEY)
+          if (raw === '0') setControlOpen(false)
+          else if (raw === '1') setControlOpen(true)
+        } catch {
+          /* ignore */
         }
-        if (p.imageCount !== undefined) setImageCount(p.imageCount)
-        if (p.imageAspect !== undefined) setImageAspect(p.imageAspect)
-        if (p.controlOpen !== undefined) setControlOpen(p.controlOpen)
-      }
-    } catch {
-      /* ignore */
-    }
-    if (typeof window !== 'undefined' && window.innerWidth < 960) {
-      setControlOpen(false)
-    }
-    setHydrated(true)
-  }, [])
+        if (typeof window !== 'undefined' && window.innerWidth < 960) {
+          setControlOpen(false)
+        }
 
+        if (remote && (remote.messages.length > 0 || remote.putRevision > 0)) {
+          applyRemote({
+            messages: remote.messages,
+            updatedAt: remote.updatedAt,
+            putRevision: remote.putRevision,
+            imageAspect: remote.imageAspect ?? defaultImageAspect(),
+            imageCount: remote.imageCount ?? defaultImageCount(),
+          })
+          // Drop any leftover browser-only transcript once server owns it.
+          clearLegacyLocal()
+          return
+        }
+
+        // First boot: migrate this browser's localStorage into the shared store.
+        const legacyMsgs = loadLegacyLocalMessages()
+        const legacyPrefs = loadLegacyLocalPrefs()
+        const aspect = legacyPrefs.imageAspect ?? defaultImageAspect()
+        const count = legacyPrefs.imageCount ?? defaultImageCount()
+        setImageAspect(aspect)
+        setImageCount(count)
+        imageAspectRef.current = aspect
+        imageCountRef.current = count
+
+        if (legacyMsgs.length > 0) {
+          setMessages(legacyMsgs)
+          messagesRef.current = legacyMsgs
+          dirtyRef.current = true
+          changeSeqRef.current += 1
+          const pushed = await pushRemoteChatStore(
+            toStored(legacyMsgs),
+            aspect,
+            count,
+            { baseRevision: remote?.putRevision ?? 0 },
+          )
+          if (pushed.ok) {
+            serverUpdatedAtRef.current = pushed.store.updatedAt
+            serverPutRevisionRef.current = pushed.store.putRevision
+            dirtyRef.current = false
+            clearLegacyLocal()
+          } else if (pushed.conflict && pushed.store) {
+            applyRemote(pushed.store)
+            clearLegacyLocal()
+          }
+        } else if (remote) {
+          applyRemote({
+            messages: remote.messages,
+            updatedAt: remote.updatedAt,
+            putRevision: remote.putRevision,
+            imageAspect: aspect,
+            imageCount: count,
+          })
+        }
+      } catch {
+        if (cancelled) return
+        // Offline hydrate: best-effort legacy so the UI isn't empty.
+        const legacyMsgs = loadLegacyLocalMessages()
+        if (legacyMsgs.length) setMessages(legacyMsgs)
+        const legacyPrefs = loadLegacyLocalPrefs()
+        if (legacyPrefs.imageAspect) setImageAspect(legacyPrefs.imageAspect)
+        if (legacyPrefs.imageCount) setImageCount(legacyPrefs.imageCount)
+      } finally {
+        if (!cancelled) setHydrated(true)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [applyRemote])
+
+  // Dirty tracking for push (remote apply sets skipDirtyRef)
   useEffect(() => {
     if (!hydrated) return
-    saveMessages(messages)
-  }, [messages, hydrated])
+    if (skipDirtyRef.current) {
+      skipDirtyRef.current = false
+      return
+    }
+    dirtyRef.current = true
+    changeSeqRef.current += 1
+  }, [messages, imageAspect, imageCount, hydrated])
 
+  // Debounced push to shared file.
+  useEffect(() => {
+    if (!hydrated) return
+    if (!dirtyRef.current) return
+
+    const seq = changeSeqRef.current
+    const delay = sending ? 150 : SAVE_DEBOUNCE_MS
+    const t = setTimeout(async () => {
+      const ok = await flushRemoteStore()
+      if (!ok) return
+      if (changeSeqRef.current === seq) {
+        dirtyRef.current = false
+      }
+    }, delay)
+
+    return () => clearTimeout(t)
+  }, [messages, imageAspect, imageCount, hydrated, sending, flushRemoteStore])
+
+  // Push on tab hide so a refresh doesn't drop the last bubble.
+  useEffect(() => {
+    if (!hydrated) return
+    const onHide = () => {
+      if (!dirtyRef.current) return
+      void flushRemoteStore()
+    }
+    window.addEventListener('pagehide', onHide)
+    window.addEventListener('beforeunload', onHide)
+    return () => {
+      window.removeEventListener('pagehide', onHide)
+      window.removeEventListener('beforeunload', onHide)
+    }
+  }, [hydrated, flushRemoteStore])
+
+  // Poll for updates from other devices (server wins when we're clean).
+  useEffect(() => {
+    if (!hydrated) return
+
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let cancelled = false
+
+    const tick = async () => {
+      if (cancelled || document.visibilityState !== 'visible') return
+      try {
+        if (sendingRef.current || dirtyRef.current) return
+        const remote = await fetchRemoteChatStore()
+        if (cancelled || !remote) return
+        if (
+          remote.putRevision !== serverPutRevisionRef.current ||
+          remote.updatedAt > serverUpdatedAtRef.current
+        ) {
+          applyRemote(remote)
+        }
+      } finally {
+        if (!cancelled) {
+          timer = setTimeout(() => void tick(), POLL_MS)
+        }
+      }
+    }
+
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void tick()
+    }
+    document.addEventListener('visibilitychange', onVis)
+    timer = setTimeout(() => void tick(), POLL_MS)
+
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [hydrated, applyRemote])
+
+  // Device-local control pane preference only.
   useEffect(() => {
     if (!hydrated) return
     try {
-      localStorage.setItem(
-        PREFS_KEY,
-        JSON.stringify({ imageCount, imageAspect, controlOpen }),
-      )
+      localStorage.setItem(CONTROL_PREF_KEY, controlOpen ? '1' : '0')
     } catch {
       /* ignore */
     }
-  }, [imageCount, imageAspect, controlOpen, hydrated])
+  }, [controlOpen, hydrated])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -461,13 +768,16 @@ export function ChatApp() {
   useEffect(() => {
     const onErase = () => {
       setMessages([])
-      saveMessages([])
+      messagesRef.current = []
       setMind(EMPTY_TURN_MIND)
       mindRef.current = EMPTY_TURN_MIND
+      dirtyRef.current = true
+      changeSeqRef.current += 1
+      void flushRemoteStore([])
     }
     window.addEventListener('mina:erase-chat', onErase)
     return () => window.removeEventListener('mina:erase-chat', onErase)
-  }, [])
+  }, [flushRemoteStore])
 
   /**
    * Run a chat completion for `text`, appending an assistant bubble on success.
@@ -671,10 +981,13 @@ export function ChatApp() {
   const clearView = () => {
     if (sending) return
     setMessages([])
+    messagesRef.current = []
     setError(null)
     setMind(EMPTY_TURN_MIND)
     mindRef.current = EMPTY_TURN_MIND
-    saveMessages([])
+    dirtyRef.current = true
+    changeSeqRef.current += 1
+    void flushRemoteStore([])
   }
 
   const sleeping = Boolean(simState?.sleeping)
