@@ -101,6 +101,16 @@ export interface ResponseCompleteEvent {
   }
 }
 
+export interface TurnStatusEvent {
+  type: 'turn_status'
+  payload: {
+    status: 'idle' | 'running' | 'error' | string
+    turn_id?: string
+    user_message?: string
+    error?: string
+  }
+}
+
 export interface TickObsEvent {
   type: 'tick_obs'
   payload: Record<string, unknown>
@@ -118,6 +128,7 @@ export type StreamEvent =
   | EmotionPillarEvent
   | ReasoningEvent
   | ResponseCompleteEvent
+  | TurnStatusEvent
   | TickObsEvent
 
 // --- Turn mind state (accumulated while a turn is in flight) ---

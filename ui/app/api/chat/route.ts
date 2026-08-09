@@ -3,21 +3,30 @@ import http from 'node:http'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
-export const maxDuration = 600
+/** Submit only — pipeline runs server-side; no long wait for the reply. */
+export const maxDuration = 30
 
 const BACKEND_HOST = process.env.MINA_BACKEND_HOST ?? '127.0.0.1'
 const BACKEND_PORT = Number(process.env.MINA_BACKEND_PORT ?? '5100')
 
 /**
  * POST /api/chat
+ *
+ * Submits a turn to the sim backend. The backend owns the full pipeline and
+ * durable transcript. This route returns as soon as the turn is accepted
+ * (202) — client disconnect cannot cancel work already accepted.
+ *
  * Body: {
  *   message: string
- *   history?: { role: string; content: string }[]
+ *   history?: ignored (server owns transcript)
  *   image_count?: "auto" | 0 | 1..5
  *   image_aspect?: "landscape" | "square" | "portrait"
- *   redo?: boolean — drop trailing matching turn server-side before re-running
- *   rewind_message?: string — original user text to match when editing (defaults to message)
+ *   redo?: boolean
+ *   rewind_message?: string
  * }
+ *
+ * Response 202: { ok, turn_id, status: "running", accepted: true }
+ * Response 409: turn already in progress
  */
 export async function POST(request: NextRequest) {
   let body: {
@@ -39,17 +48,9 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: 'Empty message' }, { status: 400 })
   }
 
-  const history = Array.isArray(body.history) ? body.history : []
-  const messages = [
-    ...history.map((m) => ({ role: m.role, content: m.content })),
-    { role: 'user', content: message },
-  ]
-
   const rewindMessage = (body.rewind_message ?? '').trim()
   const payload = JSON.stringify({
-    model: 'mina',
-    messages,
-    stream: false,
+    message,
     image_count: body.image_count ?? 'auto',
     image_aspect: body.image_aspect ?? 'square',
     redo: Boolean(body.redo),
@@ -57,27 +58,14 @@ export async function POST(request: NextRequest) {
   })
 
   try {
-    const upstream = await postJson('/v1/chat/completions', payload)
-    if (upstream.status >= 400) {
-      let errText = upstream.body
-      try {
-        const parsed = JSON.parse(upstream.body) as { error?: string }
-        if (parsed.error) errText = parsed.error
-      } catch {
-        /* keep raw */
-      }
-      return Response.json({ error: errText }, { status: upstream.status })
+    const upstream = await postJson('/api/turn', payload)
+    let parsed: unknown = null
+    try {
+      parsed = JSON.parse(upstream.body) as unknown
+    } catch {
+      parsed = { error: upstream.body || 'Bad upstream response' }
     }
-
-    const data = JSON.parse(upstream.body) as {
-      choices?: { message?: { content?: string } }[]
-      images?: string[]
-    }
-    const reply = data.choices?.[0]?.message?.content ?? ''
-    const images = Array.isArray(data.images)
-      ? data.images.filter((u): u is string => typeof u === 'string' && u.startsWith('/images/'))
-      : []
-    return Response.json({ reply, images })
+    return Response.json(parsed, { status: upstream.status })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Backend unreachable'
     return Response.json(
@@ -99,7 +87,7 @@ function postJson(path: string, body: string): Promise<{ status: number; body: s
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(body),
         },
-        timeout: 0,
+        timeout: 15_000,
       },
       (res) => {
         const chunks: Buffer[] = []
@@ -114,6 +102,10 @@ function postJson(path: string, body: string): Promise<{ status: number; body: s
       },
     )
     req.on('error', reject)
+    req.on('timeout', () => {
+      req.destroy()
+      reject(new Error('upstream timeout'))
+    })
     req.write(body)
     req.end()
   })

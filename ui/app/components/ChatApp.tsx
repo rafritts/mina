@@ -359,15 +359,6 @@ function hasMindContent(mind: TurnMind | undefined): boolean {
   )
 }
 
-function snapshotMind(mind: TurnMind): TurnMind {
-  return {
-    ...mind,
-    active: true,
-    completed: true,
-    memory: [...mind.memory],
-  }
-}
-
 function loadLegacyLocalMessages(): ChatMessage[] {
   if (typeof window === 'undefined') return []
   try {
@@ -500,54 +491,41 @@ export function ChatApp() {
     [],
   )
 
+  /**
+   * Push image prefs (and optional explicit message list for Clear).
+   * Messages are server-owned during turns — never invent transcript here.
+   */
   const flushRemoteStore = useCallback(
     async (list?: ChatMessage[]): Promise<boolean> => {
-      const nextList = list ?? messagesRef.current
-      if (list) messagesRef.current = list
+      // Prefer disk transcript + our prefs so we don't clobber server writes.
+      const remote = await fetchRemoteChatStore()
+      const baseRevision =
+        remote?.putRevision ?? serverPutRevisionRef.current
+      const messages =
+        list !== undefined
+          ? toStored(list)
+          : remote?.messages ?? toStored(messagesRef.current)
+
       const result = await pushRemoteChatStore(
-        toStored(nextList),
+        messages,
         imageAspectRef.current,
         imageCountRef.current,
-        { baseRevision: serverPutRevisionRef.current },
+        { baseRevision },
       )
       if (result.ok) {
         serverUpdatedAtRef.current = result.store.updatedAt
         serverPutRevisionRef.current = result.store.putRevision
-        // Server may have sanitized; keep revision in sync only.
+        if (list !== undefined) {
+          applyRemote(result.store)
+        } else if (remote) {
+          // Prefs-only: keep messages in sync with what we just wrote.
+          applyRemote(result.store)
+        }
+        dirtyRef.current = false
         return true
       }
       if (result.conflict && result.store) {
-        // Disk won. If this tab still has a longer unflushed extension, rebase once.
-        const remote = result.store
-        serverUpdatedAtRef.current = remote.updatedAt
-        serverPutRevisionRef.current = remote.putRevision
-        const local = messagesRef.current
-        const remoteMsgs = remote.messages
-        const localExtends =
-          local.length > remoteMsgs.length &&
-          remoteMsgs.every(
-            (rm, i) =>
-              local[i]?.id === rm.id && local[i]?.content === rm.content,
-          )
-        if (localExtends && !sendingRef.current) {
-          const retry = await pushRemoteChatStore(
-            toStored(local),
-            imageAspectRef.current,
-            imageCountRef.current,
-            { baseRevision: remote.putRevision },
-          )
-          if (retry.ok) {
-            serverUpdatedAtRef.current = retry.store.updatedAt
-            serverPutRevisionRef.current = retry.store.putRevision
-            dirtyRef.current = false
-            return true
-          }
-          if (retry.conflict && retry.store) {
-            applyRemote(retry.store)
-            return true
-          }
-        }
-        applyRemote(remote)
+        applyRemote(result.store)
         return true
       }
       return false
@@ -555,29 +533,132 @@ export function ChatApp() {
     [applyRemote],
   )
 
-  const onStreamEvent = useCallback((event: StreamEvent) => {
-    if (!sendingRef.current) return
+  const pullChatStore = useCallback(async () => {
+    const remote = await fetchRemoteChatStore()
+    if (!remote) return
     if (
-      event.type === 'stimulus_land' ||
-      event.type === 'stage' ||
-      event.type === 'emotion_pillar' ||
-      event.type === 'context_pillar' ||
-      event.type === 'reasoning' ||
-      event.type === 'rag_hit' ||
-      event.type === 'kag_selection' ||
-      event.type === 'response_complete' ||
-      event.type === 'encoder'
+      remote.putRevision === serverPutRevisionRef.current &&
+      remote.updatedAt <= serverUpdatedAtRef.current
     ) {
-      setMind((prev) => {
-        const next = reduceTurnMind(prev, event)
-        mindRef.current = next
-        return next
-      })
+      return
     }
-  }, [])
+    // Always take the server transcript. If local image prefs are dirty, keep
+    // them — never let a prefs edit block seeing the reply.
+    if (dirtyRef.current) {
+      skipDirtyRef.current = true
+      setMessages(fromStored(remote.messages))
+      messagesRef.current = fromStored(remote.messages)
+      serverUpdatedAtRef.current = remote.updatedAt
+      serverPutRevisionRef.current = remote.putRevision
+      return
+    }
+    applyRemote(remote)
+  }, [applyRemote])
+
+  const onStreamEvent = useCallback(
+    (event: StreamEvent) => {
+      if (event.type === 'turn_status') {
+        const st = event.payload.status
+        if (st === 'running') {
+          setSending(true)
+          sendingRef.current = true
+          setError(null)
+        } else if (st === 'idle' || st === 'error') {
+          setSending(false)
+          sendingRef.current = false
+          if (st === 'error' && event.payload.error) {
+            setError(event.payload.error)
+          }
+          setMind(EMPTY_TURN_MIND)
+          mindRef.current = EMPTY_TURN_MIND
+          void pullChatStore()
+        }
+        return
+      }
+
+      // Live mind is purely observational — only while a turn is running.
+      if (!sendingRef.current) return
+      if (
+        event.type === 'stimulus_land' ||
+        event.type === 'stage' ||
+        event.type === 'emotion_pillar' ||
+        event.type === 'context_pillar' ||
+        event.type === 'reasoning' ||
+        event.type === 'rag_hit' ||
+        event.type === 'kag_selection' ||
+        event.type === 'response_complete' ||
+        event.type === 'encoder'
+      ) {
+        setMind((prev) => {
+          const next = reduceTurnMind(prev, event)
+          mindRef.current = next
+          return next
+        })
+        if (event.type === 'response_complete') {
+          // Transcript is written server-side; pull it.
+          void pullChatStore()
+        }
+      }
+    },
+    [pullChatStore],
+  )
 
   const { connected } = useStream(onStreamEvent)
   const { state: simState } = useStatePoller(3000)
+
+  // Observe server turn status (survives mobile background / reconnect).
+  useEffect(() => {
+    if (!hydrated) return
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const tick = async () => {
+      if (cancelled) return
+      try {
+        const res = await fetch('/api/turn', { cache: 'no-store' })
+        if (res.ok) {
+          const data = (await res.json()) as {
+            status?: string
+            error?: string | null
+          }
+          if (cancelled) return
+          const running = data.status === 'running'
+          if (running !== sendingRef.current) {
+            setSending(running)
+            sendingRef.current = running
+            if (running) {
+              setError(null)
+            } else {
+              setMind(EMPTY_TURN_MIND)
+              mindRef.current = EMPTY_TURN_MIND
+              void pullChatStore()
+            }
+          }
+          if (data.status === 'error' && data.error) {
+            setError(data.error)
+          }
+        }
+      } catch {
+        /* ignore transient */
+      } finally {
+        if (!cancelled) {
+          const delay = sendingRef.current ? 800 : 2500
+          timer = setTimeout(() => void tick(), delay)
+        }
+      }
+    }
+
+    void tick()
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void tick()
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [hydrated, pullChatStore])
 
   // Hydrate from shared server store (phone / tablet / desktop same file).
   useEffect(() => {
@@ -668,51 +749,38 @@ export function ChatApp() {
     }
   }, [applyRemote])
 
-  // Dirty tracking for push (remote apply sets skipDirtyRef)
+  // Prefs only — messages are server-owned (turn job writes the transcript).
   useEffect(() => {
     if (!hydrated) return
     if (skipDirtyRef.current) {
       skipDirtyRef.current = false
       return
     }
+    // Message list changes from applyRemote are not dirty; only prefs.
     dirtyRef.current = true
     changeSeqRef.current += 1
-  }, [messages, imageAspect, imageCount, hydrated])
+  }, [imageAspect, imageCount, hydrated])
 
-  // Debounced push to shared file.
+  // Debounced prefs push (merges onto server transcript).
   useEffect(() => {
     if (!hydrated) return
     if (!dirtyRef.current) return
+    if (sending) return // never race the turn writer
 
     const seq = changeSeqRef.current
-    const delay = sending ? 150 : SAVE_DEBOUNCE_MS
     const t = setTimeout(async () => {
       const ok = await flushRemoteStore()
       if (!ok) return
       if (changeSeqRef.current === seq) {
         dirtyRef.current = false
       }
-    }, delay)
+    }, SAVE_DEBOUNCE_MS)
 
     return () => clearTimeout(t)
-  }, [messages, imageAspect, imageCount, hydrated, sending, flushRemoteStore])
+  }, [imageAspect, imageCount, hydrated, sending, flushRemoteStore])
 
-  // Push on tab hide so a refresh doesn't drop the last bubble.
-  useEffect(() => {
-    if (!hydrated) return
-    const onHide = () => {
-      if (!dirtyRef.current) return
-      void flushRemoteStore()
-    }
-    window.addEventListener('pagehide', onHide)
-    window.addEventListener('beforeunload', onHide)
-    return () => {
-      window.removeEventListener('pagehide', onHide)
-      window.removeEventListener('beforeunload', onHide)
-    }
-  }, [hydrated, flushRemoteStore])
-
-  // Poll for updates from other devices (server wins when we're clean).
+  // Poll transcript from disk. Fast while a turn is running so mobile resume
+  // and multi-device stay in sync without owning the process.
   useEffect(() => {
     if (!hydrated) return
 
@@ -720,20 +788,15 @@ export function ChatApp() {
     let cancelled = false
 
     const tick = async () => {
-      if (cancelled || document.visibilityState !== 'visible') return
+      if (cancelled) return
       try {
-        if (sendingRef.current || dirtyRef.current) return
-        const remote = await fetchRemoteChatStore()
-        if (cancelled || !remote) return
-        if (
-          remote.putRevision !== serverPutRevisionRef.current ||
-          remote.updatedAt > serverUpdatedAtRef.current
-        ) {
-          applyRemote(remote)
+        if (document.visibilityState === 'visible' || sendingRef.current) {
+          await pullChatStore()
         }
       } finally {
         if (!cancelled) {
-          timer = setTimeout(() => void tick(), POLL_MS)
+          const delay = sendingRef.current ? 700 : POLL_MS
+          timer = setTimeout(() => void tick(), delay)
         }
       }
     }
@@ -742,14 +805,14 @@ export function ChatApp() {
       if (document.visibilityState === 'visible') void tick()
     }
     document.addEventListener('visibilitychange', onVis)
-    timer = setTimeout(() => void tick(), POLL_MS)
+    timer = setTimeout(() => void tick(), 400)
 
     return () => {
       cancelled = true
       if (timer) clearTimeout(timer)
       document.removeEventListener('visibilitychange', onVis)
     }
-  }, [hydrated, applyRemote])
+  }, [hydrated, pullChatStore])
 
   // Device-local control pane preference only.
   useEffect(() => {
@@ -780,19 +843,14 @@ export function ChatApp() {
   }, [flushRemoteStore])
 
   /**
-   * Run a chat completion for `text`, appending an assistant bubble on success.
-   * `history` is prior messages only (not including the user turn being sent).
-   * When `redo` is true, the server rewinds the trailing matching turn first.
-   * `rewindMessage` is the original user text to match when editing (≠ new text).
+   * Submit a turn. Server owns the entire pipeline + durable transcript.
+   * This only asks the backend to accept the job (202) — never waits for a reply.
    */
-  const runCompletion = useCallback(
+  const submitTurn = useCallback(
     async (
       text: string,
-      history: ChatMessage[],
       opts?: { redo?: boolean; rewindMessage?: string },
     ) => {
-      setSending(true)
-      sendingRef.current = true
       setError(null)
       setMind(EMPTY_TURN_MIND)
       mindRef.current = EMPTY_TURN_MIND
@@ -803,10 +861,6 @@ export function ChatApp() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: text,
-            history: history.slice(-12).map((m) => ({
-              role: m.role,
-              content: m.content,
-            })),
             image_count: imageCount,
             image_aspect: imageAspect,
             redo: Boolean(opts?.redo),
@@ -816,85 +870,44 @@ export function ChatApp() {
           }),
         })
         const data = (await res.json()) as {
-          reply?: string
-          images?: string[]
+          ok?: boolean
+          turn_id?: string
+          status?: string
           error?: string
         }
-        if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
-
-        let reply = (data.reply ?? '').trim() || '(empty reply)'
-        const images = extractImageUrls(reply, data.images)
-        for (const url of images) {
-          if (!reply.includes(url)) reply = `${reply}\n\n![photo](${url})`
+        if (!res.ok) {
+          throw new Error(data.error ?? `HTTP ${res.status}`)
         }
-
-        const captured = hasMindContent(mindRef.current)
-          ? snapshotMind(mindRef.current)
-          : undefined
-
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `a-${Date.now()}`,
-            role: 'assistant',
-            content: reply,
-            images: images.length ? images : undefined,
-            mind: captured,
-          },
-        ])
-        setMind(EMPTY_TURN_MIND)
-        mindRef.current = EMPTY_TURN_MIND
+        // Accepted — observe from here on (status poll + chat-store + SSE).
+        setSending(true)
+        sendingRef.current = true
+        void pullChatStore()
       } catch (e) {
-        const captured = hasMindContent(mindRef.current)
-          ? snapshotMind(mindRef.current)
-          : undefined
-        if (captured) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `a-err-${Date.now()}`,
-              role: 'assistant',
-              content: '(no reply — see mind above)',
-              mind: captured,
-            },
-          ])
-        }
-        setError(e instanceof Error ? e.message : 'Send failed')
-        setMind(EMPTY_TURN_MIND)
-        mindRef.current = EMPTY_TURN_MIND
-      } finally {
         setSending(false)
         sendingRef.current = false
+        setError(e instanceof Error ? e.message : 'Send failed')
+      } finally {
         textareaRef.current?.focus()
       }
     },
-    [imageCount, imageAspect],
+    [imageCount, imageAspect, pullChatStore],
   )
 
   const send = useCallback(async () => {
     const text = input.trim()
     if (!text || sending) return
 
-    const userMsg: ChatMessage = {
-      id: `u-${Date.now()}`,
-      role: 'user',
-      content: text,
-    }
-    // history is prior turns only (before this user message)
-    const history = messages
-
-    setMessages((prev) => [...prev, userMsg])
     setInput('')
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
 
-    await runCompletion(text, history)
-  }, [input, sending, messages, runCompletion])
+    // No local bubble — server writes the user message before the job starts.
+    await submitTurn(text)
+  }, [input, sending, submitTurn])
 
   /**
-   * Redo: drop this assistant bubble (and everything after), re-run from the
-   * preceding user message. Server rewinds decoder window / conversation log.
+   * Redo: server rewinds pipeline + UI transcript, re-runs from the user text.
    */
   const handleRedo = useCallback(
     async (messageId: string) => {
@@ -917,17 +930,13 @@ export function ChatApp() {
       }
 
       const userText = messages[userIdx].content
-      const history = messages.slice(0, userIdx)
-      // Keep user bubble; drop failed/stale assistant and any later messages
-      setMessages(messages.slice(0, idx))
-      await runCompletion(userText, history, { redo: true })
+      await submitTurn(userText, { redo: true })
     },
-    [sending, messages, runCompletion],
+    [sending, messages, submitTurn],
   )
 
   /**
-   * Edit last user message only: replace text, drop the following assistant
-   * (if any), rewind server tip, re-run. No deep history branching.
+   * Edit last user message: server rewinds tip, replaces user text, re-runs.
    */
   const handleEdit = useCallback(
     async (messageId: string, newContent: string) => {
@@ -953,15 +962,12 @@ export function ChatApp() {
       }
       if (text === target.content.trim()) return
 
-      const history = messages.slice(0, idx)
-      const editedUser: ChatMessage = { ...target, content: text }
-      setMessages([...history, editedUser])
-      await runCompletion(text, history, {
+      await submitTurn(text, {
         redo: true,
         rewindMessage: target.content,
       })
     },
-    [sending, messages, runCompletion],
+    [sending, messages, submitTurn],
   )
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

@@ -2,7 +2,9 @@
 Mina HTTP backend — chat turn + admin/state API for the Next.js UI (port 5100).
 
 Chat:
-  POST /v1/chat/completions  — run one pipeline turn (used by ui /api/chat)
+  POST /api/turn             — accept a message; pipeline runs server-side (202)
+  GET  /api/turn             — turn job status (idle | running | error)
+  POST /v1/chat/completions  — OpenAI-compatible; also async-accepted (202 + poll)
   GET  /v1/models
 
 State / admin (proxied by Next):
@@ -24,6 +26,9 @@ State / admin (proxied by Next):
   GET  /api/billing          — stub
 
 Not an Open WebUI / multi-client gateway. Single-user local process.
+
+The turn is fully server-owned: the UI only submits and observes the durable
+chat store + SSE. Client disconnect does not cancel the pipeline.
 """
 from __future__ import annotations
 
@@ -207,10 +212,118 @@ async def list_models():
     }
 
 
+# ── helpers: photo prefs + username ───────────────────────────────────────────
+
+def _parse_image_count(raw) -> str | int:
+    if raw is None or raw == "":
+        return "auto"
+    if isinstance(raw, bool):
+        return "auto"
+    if isinstance(raw, int) and 0 <= raw <= 5:
+        return raw
+    if isinstance(raw, str):
+        s = raw.strip().lower()
+        if s == "auto":
+            return "auto"
+        if s.isdigit() and 0 <= int(s) <= 5:
+            return int(s)
+    return "auto"
+
+
+def _parse_image_aspect(raw) -> str:
+    return raw if raw in ("landscape", "square", "portrait") else "square"
+
+
+def _username(body: dict | None = None) -> str:
+    from src.config.config import load_config
+    body = body or {}
+    return (
+        load_config().get("username") or body.get("user") or "user"
+    ).strip().lower() or "user"
+
+
+# ── /api/turn — server-owned async chat ───────────────────────────────────────
+
+@app.post("/api/turn")
+async def post_turn(request: Request):
+    """
+    Accept one user message and run the pipeline in the background.
+
+    Returns 202 immediately. The durable transcript (run/ui_chat.json) is
+    updated by the server; clients observe via GET /api/chat-store + SSE.
+    """
+    if _sim is None:
+        return JSONResponse(status_code=503, content={"error": "Sim not initialized."})
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"error": "Invalid JSON."})
+
+    # UI shape: { message, history?, image_count, image_aspect, redo, rewind_message }
+    # Also accept OpenAI-ish { messages: [...] } for a single trailing user turn.
+    user_msg = (body.get("message") or "").strip()
+    if not user_msg:
+        for m in reversed(body.get("messages") or []):
+            if not isinstance(m, dict) or m.get("role") != "user":
+                continue
+            content = m.get("content", "")
+            if isinstance(content, list):
+                content = " ".join(
+                    part.get("text", "")
+                    for part in content
+                    if isinstance(part, dict) and part.get("type") == "text"
+                )
+            user_msg = (content or "").strip()
+            if user_msg:
+                break
+
+    if not user_msg:
+        return JSONResponse(status_code=400, content={"error": "Empty message."})
+
+    image_count = _parse_image_count(body.get("image_count", "auto"))
+    image_aspect = _parse_image_aspect(body.get("image_aspect", "square"))
+    redo = bool(body.get("redo"))
+    rewind_msg = (body.get("rewind_message") or user_msg or "").strip() or user_msg
+    username = _username(body)
+
+    log(
+        "GATEWAY",
+        f"Turn accepted: {user_msg[:80]} (photos={image_count} aspect={image_aspect}"
+        f"{', redo' if redo else ''}{', edit' if redo and rewind_msg != user_msg else ''})",
+    )
+
+    from src.application.infra.turn_job import submit
+
+    status, payload = await submit(
+        sim=_sim,
+        user_message=user_msg,
+        username=username,
+        image_count=image_count,
+        image_aspect=image_aspect,
+        redo=redo,
+        rewind_message=rewind_msg,
+    )
+    return JSONResponse(status_code=status, content=payload)
+
+
+@app.get("/api/turn")
+async def get_turn():
+    """Current turn job status for observers (UI)."""
+    from src.application.infra.turn_job import get_status
+    return get_status()
+
+
 # ── /v1/chat/completions ──────────────────────────────────────────────────────
 
 @app.post("/v1/chat/completions")
 async def chat_completions(request: Request):
+    """
+    OpenAI-compatible entry. Same server-owned async job as POST /api/turn.
+
+    Returns 202 with { status, turn_id }. Poll GET /api/turn + chat store for
+    the reply — the HTTP request no longer blocks for the full pipeline.
+    """
     if _sim is None:
         return JSONResponse(status_code=503, content={"error": "Sim not initialized."})
 
@@ -220,104 +333,58 @@ async def chat_completions(request: Request):
         return JSONResponse(status_code=400, content={"error": "Invalid JSON."})
 
     messages = body.get("messages", [])
-    if not messages:
-        return JSONResponse(status_code=400, content={"error": "No messages provided."})
-
-    from src.config.config import load_config
-    username = (
-        load_config().get("username") or body.get("user") or "user"
-    ).strip().lower() or "user"
-
-    user_msg = ""
-    for m in reversed(messages):
-        if m.get("role") == "user":
+    user_msg = (body.get("message") or "").strip()
+    if not user_msg:
+        for m in reversed(messages or []):
+            if not isinstance(m, dict) or m.get("role") != "user":
+                continue
             content = m.get("content", "")
             if isinstance(content, list):
                 content = " ".join(
-                    part.get("text", "") for part in content
+                    part.get("text", "")
+                    for part in content
                     if isinstance(part, dict) and part.get("type") == "text"
                 )
-            user_msg = content.strip()
-            break
+            user_msg = (content or "").strip()
+            if user_msg:
+                break
 
     if not user_msg:
         return JSONResponse(status_code=400, content={"error": "No user message found."})
 
-    # UI photo prefs (Kairu-compatible names)
-    raw_count = body.get("image_count", "auto")
-    if raw_count is None or raw_count == "":
-        image_count: str | int = "auto"
-    elif isinstance(raw_count, bool):
-        image_count = "auto"
-    elif isinstance(raw_count, int) and 0 <= raw_count <= 5:
-        image_count = raw_count
-    elif isinstance(raw_count, str):
-        s = raw_count.strip().lower()
-        if s == "auto":
-            image_count = "auto"
-        elif s.isdigit() and 0 <= int(s) <= 5:
-            image_count = int(s)
-        else:
-            image_count = "auto"
-    else:
-        image_count = "auto"
-
-    raw_aspect = body.get("image_aspect", "square")
-    image_aspect = raw_aspect if raw_aspect in ("landscape", "square", "portrait") else "square"
-
+    image_count = _parse_image_count(body.get("image_count", "auto"))
+    image_aspect = _parse_image_aspect(body.get("image_aspect", "square"))
     redo = bool(body.get("redo"))
-    # Edit path: match original trailing user text for rewind; new text is user_msg.
     rewind_msg = (body.get("rewind_message") or user_msg or "").strip() or user_msg
+    username = _username(body)
+
     log(
         "GATEWAY",
         f"Received: {user_msg[:80]} (photos={image_count} aspect={image_aspect}"
         f"{', redo' if redo else ''}{', edit' if redo and rewind_msg != user_msg else ''})",
     )
 
-    from src.brain.pipeline import rewind_for_redo, run_turn
-    if redo:
-        try:
-            rewind_for_redo(rewind_msg)
-        except Exception as e:
-            log("GATEWAY/ERR", f"redo rewind failed: {e}")
-            return JSONResponse(
-                status_code=500,
-                content={"error": f"Redo rewind failed: {e}"},
-            )
+    from src.application.infra.turn_job import submit
 
-    try:
-        result = await run_turn(
-            user_msg,
-            username,
-            _sim,
-            image_count=image_count,
-            image_aspect=image_aspect,
-        )
-    except Exception as e:
-        log("GATEWAY/ERR", str(e))
-        return JSONResponse(status_code=500, content={"error": str(e)})
-
-    # run_turn returns {"reply", "images"}; tolerate legacy bare string
-    if isinstance(result, dict):
-        reply = result.get("reply") or ""
-        images = result.get("images") or []
-    else:
-        reply = result or ""
-        images = []
-
-    completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
-    return {
-        "id": completion_id,
-        "object": "chat.completion",
-        "created": int(time.time()),
-        "model": "mina",
-        "choices": [
-            {"index": 0, "message": {"role": "assistant", "content": reply}, "finish_reason": "stop"}
-        ],
-        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-        # Explicit for the Next UI (markdown in content can be missed by clients)
-        "images": images,
-    }
+    status, payload = await submit(
+        sim=_sim,
+        user_message=user_msg,
+        username=username,
+        image_count=image_count,
+        image_aspect=image_aspect,
+        redo=redo,
+        rewind_message=rewind_msg,
+    )
+    # Keep a chatcmpl-ish id for tools that expect one.
+    if status < 400:
+        payload = {
+            **payload,
+            "id": f"chatcmpl-{payload.get('turn_id') or uuid.uuid4().hex[:12]}",
+            "object": "chat.completion.accepted",
+            "created": int(time.time()),
+            "model": "mina",
+        }
+    return JSONResponse(status_code=status, content=payload)
 
 
 # ── /health ───────────────────────────────────────────────────────────────────
@@ -380,10 +447,16 @@ async def reset_state():
 async def erase_conversation():
     """
     Erase chat history Mina can still see: conversation logs, rolling window,
-    turn dumps, prior affect stickiness, short-term sliding RAG.
+    turn dumps, prior affect stickiness, short-term sliding RAG, UI transcript.
 
     Does not touch chemistry, episodic RAG, KAG, or relationships.
     """
+    from src.application.infra.turn_job import is_running
+    if is_running():
+        return JSONResponse(
+            status_code=409,
+            content={"error": "Cannot erase while a turn is running."},
+        )
     from src.brain.pipeline import erase_chat_history
     result = erase_chat_history()
     log("GATEWAY", f"Conversation erased: {result.get('removed')}")

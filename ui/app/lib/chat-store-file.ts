@@ -3,6 +3,9 @@
  * Ground truth for every device hitting :2050 — same transcript, same settings.
  *
  * Path: run/ui_chat.json (Next cwd is usually ui/).
+ *
+ * Messages are written by the Python turn job (server-owned). The Next UI
+ * primarily GETs; PUTs are for image prefs (and explicit Clear).
  */
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'

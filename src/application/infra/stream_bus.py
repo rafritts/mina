@@ -36,6 +36,12 @@ class StreamBus:
     def register(self, handler: Callable[[StreamEvent], None]) -> None:
         self._handlers.append(handler)
 
+    def unregister(self, handler: Callable[[StreamEvent], None]) -> None:
+        try:
+            self._handlers.remove(handler)
+        except ValueError:
+            pass
+
     def set_trace(self, tid: str) -> None:
         _trace_id.set(tid)
 

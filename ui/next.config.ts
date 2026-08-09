@@ -107,6 +107,11 @@ const nextConfig: NextConfig = {
         source: '/api/conversation/erase',
         destination: `http://${backendHost}:${backendPort}/api/conversation/erase`,
       },
+      {
+        // Server-owned turn status (POST submit goes through /api/chat route)
+        source: '/api/turn',
+        destination: `http://${backendHost}:${backendPort}/api/turn`,
+      },
     ]
   },
   async headers() {

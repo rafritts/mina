@@ -715,6 +715,14 @@ def erase_chat_history() -> dict:
     except Exception as e:
         log("PIPELINE/ERASE", f"sliding_rag: {e}")
 
+    # Server-owned UI transcript (run/ui_chat.json messages)
+    try:
+        from src.application.infra import ui_chat
+        ui_chat.clear_messages()
+        removed.append("ui_chat")
+    except Exception as e:
+        log("PIPELINE/ERASE", f"ui_chat: {e}")
+
     log("PIPELINE", f"Chat history erased: {', '.join(removed) or '(nothing)'}")
     return {"ok": True, "removed": removed}
 
