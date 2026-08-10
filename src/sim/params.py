@@ -33,7 +33,7 @@ Decoder normalization anchors (what "10" means per chemical):
   progesterone    — mid-luteal peak
   melatonin       — peak nocturnal secretion
   bdnf            — after sustained positive social/exercise experience
-  prolactin       — post-peak refractory peak
+  prolactin       — satiation / refractory peak
   ghrelin         — fasting peak before meal
   anandamide      — runner's high / sustained exercise peak
   npy             — intense stress activation peak
@@ -586,7 +586,7 @@ CHEMICAL_PARAMS: dict[str, dict] = {
         "class": 3,
         "grade": "C",
         "tonic_setpoint": 8.0,       # ng/mL; resting female
-        "normalization_max": 80.0,   # post-peak peak
+        "normalization_max": 80.0,   # satiation peak
         "phasic_half_life_s": 3600,
         "tonic_decay_rate": 0.003,
         "setpoint_adapt_rate": 0.0001,

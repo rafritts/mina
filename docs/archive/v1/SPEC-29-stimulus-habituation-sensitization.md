@@ -144,7 +144,7 @@ Multiple entries for the same chemical stack — a second message arriving befor
 
 #### EVENT_OVERRIDE Bypass
 
-Deltas tagged `[EVENT_OVERRIDE]` (peak resolution crash, acute danger response, substance administration) bypass the secretion queue and apply instantly to `state.chemicals`. These represent discrete physiological state changes, not synaptic release events.
+Deltas tagged `[EVENT_OVERRIDE]` (reward-peak crash, acute danger response, substance administration) bypass the secretion queue and apply instantly to `state.chemicals`. These represent discrete physiological state changes, not synaptic release events.
 
 #### Per-Chemical Release Profiles
 

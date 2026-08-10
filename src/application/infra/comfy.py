@@ -159,26 +159,6 @@ _DEFAULT_LOOK = (
     "loosely tied, warm brown eyes, light olive skin, soft oval face. "
     "Average height. Simple casual clothes — jeans and a plain shirt or soft layers."
 )
-_DEFAULT_LOOK_LEGACY = (
-    "A young woman in her mid-twenties with dark brown hair worn down or "
-    "loosely tied, warm brown eyes, light olive skin, soft oval face. "
-    "Average height, Average height. Simple casual clothes."
-)
-
-# Look path markers (legacy, unused).
-_LOOK_SCENE_MARKERS = (
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-)
 
 
 def _appearance_section() -> str | None:
@@ -212,27 +192,14 @@ def _subsection(section: str, *headings: str) -> str | None:
     return None
 
 
-def scene_is_look(scene_prompt: str) -> bool:
-    """Legacy look selector."""
-    s = (scene_prompt or "").lower()
-    return any(m in s for m in _LOOK_SCENE_MARKERS)
-
-
 def mina_look_block() -> str:
     """
-    Fixed appearance prose for Krea2 prompts (clothed path).
+    Fixed appearance prose for Krea2 prompts (clothed only).
 
     Third-person visual anchors from CUSTOMIZATION.md (preferred) or
-    identity/MINA.md. Appearance anchors so
-    clothed shots stay consistent.
+    identity/MINA.md.
     """
     section = _appearance_section()
-    if False:
-        if section:
-
-            if block:
-                return block
-        return _DEFAULT_LOOK
     if section:
         block = _subsection(
             section,
@@ -243,12 +210,12 @@ def mina_look_block() -> str:
         )
         if block:
             return block
-    return _DEFAULT_CLOTHED
+    return _DEFAULT_LOOK
 
 
 def build_photo_prompt(scene_prompt: str) -> str:
     """
-    Assemble a Krea2 prompt the same way Kairu does:
+    Assemble a Krea2 prompt:
 
       1. Scene / framing / pose (natural prose from the model)
       2. Fixed clothed appearance prose

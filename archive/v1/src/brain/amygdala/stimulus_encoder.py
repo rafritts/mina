@@ -34,7 +34,7 @@ _DELTA_FIELDS = {
     "oxytocin", "endorphins", "sleep_pressure", "glucose",
     "hydration", "acetylcholine",
     "anandamide",   # SPEC-30: exercise/relaxation; activity encoder only
-    "prolactin",    # SPEC-30: post-peak event_override only
+    "prolactin",    # SPEC-30: satiation event_override only
 }
 
 _DELTA_FORMAT = """\
@@ -69,7 +69,7 @@ If an external event occurred:
   "hydration": <number>,      // % TBW delta
   "acetylcholine": <number>,  // nmol/L delta
   "anandamide": <number>,     // nM delta — activity encoder only (exercise, relaxation)
-  "prolactin": <number>,      // ng/mL delta — peak resolution event_override only
+  "prolactin": <number>,      // ng/mL delta — satiation event_override only
   "event_override": false,    // true only for discrete biological events (see below)
   "event_category": null      // relationship event type — see SPEC-38 section in stimulus prompt
 }
@@ -82,7 +82,7 @@ When true, your deltas bypass personality modulation and momentum dampening and 
 Saturation is still enforced — use the calibrated magnitudes below and they will land correctly.
 Use calibrated magnitudes for these events:
 
-- Peak resolution: prolactin +35 to +45, sleep_pressure +30 to +40. Do NOT post negative dopamine or norepinephrine — the prolactin spike activates the endocrine suppression mechanism that gradually reduces dopamine and NE over 30–60 minutes, modeling the refractory period correctly.
+- Intense physical exertion (resolution): prolactin +35 to +45, sleep_pressure +30 to +40. Do NOT post negative dopamine or norepinephrine — the prolactin spike activates the endocrine suppression mechanism that gradually reduces dopamine and NE over 30–60 minutes, modeling the refractory period correctly.
 - Panic attack: cortisol +300 to +400, norepinephrine +500 to +700, dopamine -30 to -50
 - Hard laughter (genuine, sustained): endorphins +30 to +50, dopamine +15 to +25
 - Crying (emotional release): cortisol -40 to -80, endorphins +10 to +20
@@ -1065,7 +1065,7 @@ Activity magnitude guidance:
   serotonin +3 to +8, anandamide +1.5 to +3.5 (runner's high — anandamide crosses the
   blood-brain barrier; endorphins largely don't), cortisol -10 to -20 (post), norepinephrine +10 to +20 (during).
   Do NOT post oxytocin — solo physical activity does not build interpersonal bonds.
-- Intense bonding activity: dopamine +60 to +100 building, oxytocin +20 to +40, endorphins +20 to +40.
+- Intense social bonding activity: dopamine +60 to +100 building, oxytocin +20 to +40, endorphins +20 to +40.
   Peak resolution: use event_override=true, prolactin +35 to +45, sleep_pressure +30 to +40.
   Do NOT post negative dopamine or norepinephrine — the prolactin spike triggers the endocrine
   suppression mechanism that drains dopamine and NE gradually over 30–60 minutes.

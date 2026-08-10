@@ -34,7 +34,7 @@ arousal      — non-valenced activation; urgency, attention demand
 aversion     — disgust, repulsion, wrongness
 novelty      — unexpectedness, prediction error, curiosity (distinct from reward)
 loss         — absence, goodbye, separation distress, grief
-romance       — romantic or romantic content ONLY. Intimacy, closeness, vulnerability, and personal questions do not qualify. Must involve romantic language, romantic interest, or overtly romantic content to score above 0.
+romance       — romantic or romantic content ONLY. Ordinary intimacy, closeness, vulnerability, and personal questions do not qualify. Must involve clear romantic/romantic language or romantic interest to score above 0.
 shame        — internally-directed social pain (distinct from social_threat, which requires external agent)
 
 ## Flags

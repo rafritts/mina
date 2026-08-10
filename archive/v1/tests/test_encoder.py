@@ -182,11 +182,11 @@ def test_evaluate_activity_deltas_passes_activity_and_description_to_llm(mock_pe
 def test_event_override_bypasses_queue(mock_personality, mock_chat, mock_embed):
     """EVENT_OVERRIDE deltas are returned immediately, not queued."""
     mock_chat.return_value = _mock_llm_response(
-        '{"no_external_deltas": false, "reasoning": "peak resolution", "event_override": true, '
+        '{"no_external_deltas": false, "reasoning": "exertion peak", "event_override": true, '
         '"dopamine": -120.0, "norepinephrine": -80.0}'
     )
     state = BiologicalState()
-    result = evaluate_activity_deltas(state, "intense physical exertion", "Peak resolution resolution.")
+    result = evaluate_activity_deltas(state, "intense exercise", "Peak resolution.")
     # EVENT_OVERRIDE: returned directly for immediate application
     assert "dopamine" in result
     assert result["dopamine"] == pytest.approx(-120.0, rel=0.01)
