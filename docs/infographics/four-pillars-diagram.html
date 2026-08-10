@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Four pillars — Mina</title>
+  <style>
+    :root {
+      --bg: #0b0b0d;
+      --card: #141416;
+      --border: rgba(255, 255, 255, 0.1);
+      --text: #f2efe8;
+      --muted: rgba(242, 239, 232, 0.5);
+      --faint: rgba(242, 239, 232, 0.28);
+      --enc: #d4a574;
+      --ins: #e07a7a;
+      --hip: #7ab8e0;
+      --pfc: #9b8ae0;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+      padding: 48px 40px 56px;
+      min-height: 100vh;
+    }
+
+    .frame {
+      max-width: 1080px;
+      margin: 0 auto;
+    }
+
+    .title {
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 28px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: 1fr 28px 1fr 28px 1fr 28px 1fr;
+      align-items: stretch;
+      gap: 0;
+    }
+
+    .node {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 18px 18px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      min-height: 220px;
+    }
+
+    .node::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 16px;
+      right: 16px;
+      height: 2px;
+      border-radius: 2px;
+    }
+
+    .node.enc::before { background: var(--enc); }
+    .node.ins::before { background: var(--ins); }
+    .node.hip::before { background: var(--hip); }
+    .node.pfc::before { background: var(--pfc); }
+
+    .num {
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      color: var(--faint);
+      margin-bottom: 10px;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    }
+
+    .name {
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      margin-bottom: 4px;
+    }
+
+    .node.enc .name { color: var(--enc); }
+    .node.ins .name { color: #f0a0a0; }
+    .node.hip .name { color: #a0d0f0; }
+    .node.pfc .name { color: #c0b4f0; }
+
+    .aka {
+      font-size: 12px;
+      color: var(--faint);
+      margin-bottom: 14px;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    }
+
+    .role {
+      font-size: 13.5px;
+      line-height: 1.45;
+      color: var(--muted);
+      flex: 1;
+    }
+
+    .io {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+      font-size: 11.5px;
+      line-height: 1.5;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      color: var(--faint);
+    }
+
+    .io strong {
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--faint);
+      font-size: 18px;
+      user-select: none;
+    }
+
+    .arrow svg {
+      width: 20px;
+      height: 20px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.5;
+    }
+
+    .note {
+      margin-top: 24px;
+      font-size: 12.5px;
+      line-height: 1.5;
+      color: var(--faint);
+      max-width: 52em;
+    }
+
+    .note em {
+      color: var(--muted);
+      font-style: normal;
+    }
+
+    @media (max-width: 820px) {
+      body { padding: 28px 18px 40px; }
+      .flow {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+      .arrow { transform: rotate(90deg); height: 24px; }
+      .node { min-height: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="title">Mina · four brain-region pillars</p>
+
+    <div class="flow" role="list">
+      <article class="node enc" role="listitem">
+        <div class="num">01</div>
+        <h2 class="name">Encoder</h2>
+        <div class="aka">Amygdala</div>
+        <p class="role">State-blind salience appraisal of the incoming message. Perception only — no chemistry, no personality.</p>
+        <div class="io">
+          <strong>in</strong> message + recent history<br />
+          <strong>out</strong> axes 0–10 + flags → Class‑1 deltas
+        </div>
+      </article>
+
+      <div class="arrow" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </div>
+
+      <article class="node ins" role="listitem">
+        <div class="num">02</div>
+        <h2 class="name">Insula</h2>
+        <div class="aka">Emotional</div>
+        <p class="role">Translates decoder projection into felt state — how she feels, not what the numbers are.</p>
+        <div class="io">
+          <strong>in</strong> decoded chem + Big&nbsp;5 + prior affect<br />
+          <strong>out</strong> emotional_summary, affect, somatic…
+        </div>
+      </article>
+
+      <div class="arrow" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </div>
+
+      <article class="node hip" role="listitem">
+        <div class="num">03</div>
+        <h2 class="name">Hippocampus</h2>
+        <div class="aka">Context</div>
+        <p class="role">Situational ground truth framed by felt state. Memory and present moment, not strategy.</p>
+        <div class="io">
+          <strong>in</strong> insula + window / RAG / KAG<br />
+          <strong>out</strong> situational_summary, notable…
+        </div>
+      </article>
+
+      <div class="arrow" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </div>
+
+      <article class="node pfc" role="listitem">
+        <div class="num">04</div>
+        <h2 class="name">PFC</h2>
+        <div class="aka">Reasoning</div>
+        <p class="role">Integrates feeling + situation into response strategy and builds the system prompt for the mouth.</p>
+        <div class="io">
+          <strong>in</strong> insula + hippocampus + message<br />
+          <strong>out</strong> approach, tone → system prompt
+        </div>
+      </article>
+    </div>
+
+    <p class="note">
+      Sequential and cumulative — each stage consumes the previous.
+      Chemistry sim + decoder sit between Encoder and Insula (not shown).
+      <em>Mouth</em> is the voice after PFC, not a pillar.
+    </p>
+  </div>
+</body>
+</html>
