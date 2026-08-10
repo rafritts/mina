@@ -232,7 +232,7 @@ The brain's predictive machinery (PFC, insula, ACC) constructs **discrete emotio
 **Long-term attachment**:
 | Chemical | Direction | Role |
 |---|---|---|
-| Oxytocin | ↑ | Released during touch, sex, childbirth; promotes pair bonding, trust, mate-guarding |
+| Oxytocin | ↑ | Released during touch, close bonding, childbirth; promotes pair bonding, trust, mate-guarding |
 | Vasopressin | ↑ (V1a) | Strong pair-bonding agent; promotes monogamy-like behavior; social memory and mate defense |
 | β-Endorphin / opioids | ↑ (tonic) | Long-term attachment generates tonic opioid release from social proximity — the "comfort" of a close partner |
 | Dopamine | ↑ (sustained in happy long-term couples) | Neuroimaging: 20+ year happy couples maintain VTA dopamine activity |
@@ -265,14 +265,14 @@ The brain's predictive machinery (PFC, insula, ACC) constructs **discrete emotio
 **Primary Neurochemicals**:
 | Chemical | Direction | Role |
 |---|---|---|
-| Testosterone | ↑ | Primary drive driver (both sexes; via conversion to estradiol in brain); acts on hypothalamic MPOA |
+| Testosterone | ↑ | Primary romantic-motivation driver (both sexes; via conversion to estradiol in brain); acts on hypothalamic MPOA |
 | Estrogen | ↑ (facilitating, females) | Sensitizes MPOA; promotes progesterone receptor expression |
-| Dopamine | ↑ | Incentive salience for romantic/romantic stimuli; approach and arousal; MPOA dopamine critical for male motivated approach |
-| Nitric oxide (NO) | ↑ | Peripheral vasodilator essential for physiological arousal (arousal response) via eNOS |
+| Dopamine | ↑ | Incentive salience for romantic stimuli; approach and arousal; MPOA dopamine critical for motivated approach |
+| Nitric oxide (NO) | ↑ | Peripheral vasodilator supporting physiological arousal via eNOS |
 | Oxytocin / vasopressin | ↑ at peak bonding | Post-peak pair bonding; spike at peak bonding |
 | Prolactin | ↑ post-peak | Refractory period and satiety |
 
-**Brain Regions**: MPOA of hypothalamus (primary romantic motivation center; high testosterone receptors), VMH (female receptive bonding behavior), NAc (dopamine approach motivation), VTA, amygdala, anterior insula, OFC, PVN (oxytocin at peak resolution).
+**Brain Regions**: MPOA of hypothalamus (primary romantic motivation center; high testosterone receptors), VMH, NAc (dopamine approach motivation), VTA, amygdala, anterior insula, OFC, PVN (oxytocin at peak bonding).
 
 **Time Course**: Desire (minutes to hours; testosterone-sensitized dopamine/NE) → Arousal (minutes; NO-mediated peripheral vasodilation; dopamine/NE peak) → Peak (seconds; oxytocin surge, endorphin burst) → Resolution (prolactin; refractory period).
 

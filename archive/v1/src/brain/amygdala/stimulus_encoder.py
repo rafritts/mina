@@ -858,10 +858,10 @@ register produce no additional epinephrine — the system is already activated.
   news). Normal emotional conversation in an established register = zero epinephrine.
 - **SURGE** (> 700 pg/mL): Do not add epinephrine under any conversational stimulus.
 
-Example: "will you be my girlfriend?" fires from casual close personal conversation → legitimate
-SAM event. The boyfriend kiss immediately after in the same intimate register → NOT a new
-shift; epi = 0. The person using her name tenderly during that same scene → also not new;
-epi = 0. A sudden argument erupting mid-intimacy → genuinely new register; SAM re-fires.
+Example: "will you be my girlfriend?" fires after a long, warm personal conversation → legitimate
+SAM event. A tender follow-up in the same intimate register → NOT a new
+shift; epi = 0. Using her name softly in that same beat → also not new;
+epi = 0. A sudden argument erupting mid-closeness → genuinely new register; SAM re-fires.
 
 Fire epinephrine + norepinephrine for these moment types:
 

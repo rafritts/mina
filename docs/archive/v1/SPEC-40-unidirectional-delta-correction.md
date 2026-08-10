@@ -77,7 +77,7 @@ Security and warmth reduce cortisol *indirectly* through reduced HPA activation 
 correctly by homeostatic decay when no new stressors are being encoded. The positive serotonin
 and GABA contributions from the security dimension already capture the calming effect.
 
-### 4. Replace peak resolution resolution direct deltas with prolactin cross-interactions
+### 4. Replace peak-resolution direct deltas with prolactin cross-interactions
 
 **Current `evaluate_activity_deltas` guidance:**
 ```
@@ -155,7 +155,7 @@ This is **deferred** to avoid scope creep; the existing small magnitude means it
 |---|---|
 | `src/sim/chem/profiles.py` | Add `soft_floor: Optional[float]` and `hard_floor: Optional[float]` to `ChemicalProfile` |
 | `src/sim/chem/registry.py` | Add `soft_floor=60.0, hard_floor=25.0` to cortisol; add prolactin cross-interactions |
-| `src/bio/encoder.py` | Update `_apply_saturation` for floor logic; remove negative cortisol from `encode_stimulus` and `encode_response` prompts; update peak resolution resolution guidance in `evaluate_activity_deltas`; remove `cortisol: -3.0` from `compute_relationship_modifier` |
+| `src/bio/encoder.py` | Update `_apply_saturation` for floor logic; remove negative cortisol from `encode_stimulus` and `encode_response` prompts; update peak-resolution guidance in `evaluate_activity_deltas`; remove `cortisol: -3.0` from `compute_relationship_modifier` |
 
 ---
 

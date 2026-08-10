@@ -390,7 +390,7 @@ gaba_bonus = max(0, prog - 2.0) * 0.1  # +0.1 µmol/L GABA per ng/mL prog above 
 **Testosterone** (low but real at female baseline 15–70 ng/dL):
 
 ```python
-# Testosterone drives motivation and drive
+# Testosterone drives motivation and assertiveness
 # Low testosterone (<20 ng/dL) → reduced dopamine drive, reduced energy
 test = s.neuroendocrine["testosterone"]
 if test < 20.0:
@@ -541,7 +541,7 @@ def _vasopressin_baseline_fn(hour: float, ctx: dict) -> float:
 
 ### Prolactin
 
-Released after social bonding, sex, nursing, and rewarding interactions. "The afterglow hormone."
+Released after social bonding, close contact, nursing, and rewarding interactions. "The afterglow hormone."
 
 | Property | Value |
 |----------|-------|

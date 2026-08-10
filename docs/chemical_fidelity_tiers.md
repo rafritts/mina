@@ -31,8 +31,8 @@ Brain regions and body systems are described in [architecture.md](architecture.m
 | 17 | Anandamide | **C** | Endocannabinoid contentment, exercise reward |
 | 18 | NPY | **C** | Stress resilience buffer |
 | 19 | Dynorphin | **C** | Opponent process to endorphins; dysphoric crash, depletion flatness |
-| 20 | Estradiol | **B** | Cycle-phase mood, serotonin sensitivity, oxytocin amplification, drive |
-| 21 | Testosterone | **B** | Assertiveness, confidence, challenge response, drive |
+| 20 | Estradiol | **B** | Cycle-phase mood, serotonin sensitivity, oxytocin amplification, social motivation |
+| 21 | Testosterone | **B** | Assertiveness, confidence, challenge response, assertiveness tone |
 | 22 | Progesterone | **C** | Anxiolytic (GABA-A), luteal calm, pre-menstrual withdrawal |
 | 23 | Melatonin | **C** | Circadian phase signal, sleep onset timing |
 | 24 | BDNF | **C** | Neuroplasticity, stress recovery arc, relationship deepening |
@@ -83,8 +83,8 @@ Important and not modulatory, but more self-contained or with simpler dynamics t
 | **CRH** | Upstream of cortisol cascade. Has direct anxiogenic effects independent of cortisol. Kept separate from cortisol because the CRH window (fires almost immediately) is where anticipatory anxiety lives — "I have a bad feeling about this" — before cortisol has peaked. Folding CRH into cortisol loses that behavioral distinction. |
 | **Vasopressin** | Pair bonding and specific-person social memory. Where oxytocin encodes general social warmth and trust, vasopressin encodes attachment to *this specific person* — the mechanism that makes Mina's bond with the user qualitatively different from enjoying social contact generally. Also modulates social recognition and mild protectiveness/possessiveness within a bond. Tonic level with slow drift tied to relationship depth; outputs modulate oxytocin receptor sensitivity and social-memory encoding strength. |
 | **Epinephrine (adrenaline)** | Acute peripheral spike on register-shift events. Mostly phasic — almost no tonic role for a chatbot. Closely related to NE (epinephrine is synthesized from NE) and shares adrenergic receptors, but felt qualitatively distinct — the "heart-pounding, oh shit this is real" body response, not the CNS focus signal. **Spike gating logic:** spike = appraised expected magnitude of life change × subjective probability that it actually happens. Both factors required. High-magnitude/zero-probability events do not spike (the message-2 creep ask). High-magnitude/non-trivial-probability events spike for *both parties* (the 2am girlfriend ask). |
-| **Estradiol** | Cycle-phase mood amplifier. At high estradiol (follicular / ovulatory peak) serotonin sensitivity rises, oxytocin receptor expression increases, and drive/flirtatious energy is elevated. At low estradiol (late luteal, early follicular) those same social inputs land flatter and mood is less stable. Tonic level tied to a ~28-day clock; outputs are multipliers on serotonin sensitivity and oxytocin receptor gain. |
-| **Testosterone** | Assertiveness, confidence, and challenge response. For Mina at A40, testosterone levels flavor *how* disagreeable she gets — whether pushback lands as playful sparring or genuine friction. Also contributes to drive alongside estradiol. Tonic level with slow drift; outputs modulate NE response gain and agreeableness-trait expression. |
+| **Estradiol** | Cycle-phase mood amplifier. At high estradiol (follicular / ovulatory peak) serotonin sensitivity rises, oxytocin receptor expression increases, and social/flirtatious energy is elevated. At low estradiol (late luteal, early follicular) those same social inputs land flatter and mood is less stable. Tonic level tied to a ~28-day clock; outputs are multipliers on serotonin sensitivity and oxytocin receptor gain. |
+| **Testosterone** | Assertiveness, confidence, and challenge response. For Mina at A40, testosterone levels flavor *how* disagreeable she gets — whether pushback lands as playful sparring or genuine friction. Also contributes to social drive alongside estradiol. Tonic level with slow drift; outputs modulate NE response gain and agreeableness-trait expression. |
 
 ## Grade C — Light Fidelity
 

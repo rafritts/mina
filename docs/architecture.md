@@ -468,7 +468,7 @@ The chemistry function maps axis activations to chemical deltas via weighted sum
 | `aversion` | serotonin drop, cortisol | Disgust, repulsion |
 | `novelty` | dopamine | Prediction error, unexpectedness, curiosity — distinct from reward |
 | `loss` | endorphin withdrawal, dynorphin, substance P, cortisol | Absence, goodbye, separation distress |
-| `romance` | testosterone, estradiol, dopamine, oxytocin | Romantic/warm salience; routes to sex-hormone pathway when elevated |
+| `romance` | testosterone, estradiol, dopamine, oxytocin | Romantic closeness salience; routes to hormone pathway when elevated |
 | `shame` | substance P, cortisol, endorphin withdrawal | Internally directed social pain — distinct from `social_threat` which requires an external agent |
 
 **Note on class routing:** The "primary chemicals driven" column describes the full causal picture including tick-mediated effects — not direct encoder deltas. Class 2 chemicals (oxytocin, endorphins, substance P, vasopressin) listed here are driven indirectly: sustained Class 1 elevation in the tick produces Class 2 accumulation. The chemistry function only applies direct deltas to Class 1.

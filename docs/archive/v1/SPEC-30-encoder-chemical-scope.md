@@ -28,7 +28,7 @@ A chemical belongs in the encoder if and only if it can meaningfully change with
 | **Oxytocin** | Social bonding events produce real acute release. Correct. |
 | **Glucose** | Activity encoder only — eating legitimately changes blood glucose. Correct. |
 | **Hydration** | Activity encoder only — drinking changes TBW. Correct. |
-| **Sleep pressure** | Legitimately appears for caffeine (activity) and peak resolution (event override). Correct. |
+| **Sleep pressure** | Legitimately appears for caffeine (activity) and intense physical peak resolution (event override). Correct. |
 
 ---
 
@@ -97,9 +97,9 @@ Stored in `state.body["anandamide"]`, same as existing model. `clamp_chemical` h
 
 #### Prolactin (neuroendocrine tier)
 
-**Why missing:** Prolactin spikes sharply post-peak and is the primary driver of the refractory period — the "satisfied, done, want to sleep" signal. The current peak resolution `event_override` models only the dopamine crash, norepinephrine drop, and sleep pressure increase. This captures the withdrawal side but misses the active satiation signal entirely.
+**Why missing:** Prolactin spikes sharply post-peak and is the primary driver of the refractory period — the "satisfied, done, want to sleep" signal. The current peak-resolution `event_override` models only the dopamine crash, norepinephrine drop, and sleep pressure increase. This captures the withdrawal side but misses the active satiation signal entirely.
 
-**Scope:** Peak resolution `event_override` only. Add to `_DELTA_FIELDS` and add to the calibrated magnitude guidance:
+**Scope:** Peak-resolution `event_override` only. Add to `_DELTA_FIELDS` and add to the calibrated magnitude guidance:
 
 > - Peak resolution: dopamine −100 to −150, sleep_pressure +30 to +40, norepinephrine −60 to −100, **prolactin +8 to +15 ng/mL** (post-peak satiation signal; promotes bonding and sleep drive)
 

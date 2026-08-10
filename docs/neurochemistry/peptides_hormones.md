@@ -88,7 +88,7 @@ PVN/SON (source), medial/central amygdala (fear regulation), nucleus accumbens (
 - Anti-inflammatory, cardioprotective, blood pressure regulation
 
 ### High OXT Phenotype
-Warmth, love, trust, social ease, openness. Reduced fear response to threatening faces. Heightened sense of connection during touch, eye contact, sex. "Cuddle hormone" phenomenology.
+Warmth, love, trust, social ease, openness. Reduced fear response to threatening faces. Heightened sense of connection during touch, eye contact, and close bonding. "Cuddle hormone" phenomenology.
 
 ### Low OXT Phenotype
 Social withdrawal, difficulty trusting, heightened amygdala reactivity, loneliness, reduced parental bonding impulse. Chronic low OXT is associated with autism spectrum features, social anxiety, borderline personality disorder.
