@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>How the Pillars Work — Mina</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0b0b0d;
+      --bg-elevated: #121214;
+      --bg-card: #161618;
+      --bg-sunken: #08080a;
+      --surface: rgba(255, 255, 255, 0.035);
+      --surface-2: rgba(255, 255, 255, 0.055);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.14);
+      --text: #f2efe8;
+      --text-secondary: rgba(242, 239, 232, 0.68);
+      --text-muted: rgba(242, 239, 232, 0.42);
+      --text-faint: rgba(242, 239, 232, 0.24);
+      --accent: #d4a574;
+      --accent-bright: #e8bc8a;
+      --accent-dim: rgba(212, 165, 116, 0.14);
+      --accent-border: rgba(212, 165, 116, 0.32);
+      --insula: #e07a7a;
+      --insula-dim: rgba(224, 122, 122, 0.12);
+      --insula-border: rgba(224, 122, 122, 0.35);
+      --hippo: #7ab8e0;
+      --hippo-dim: rgba(122, 184, 224, 0.12);
+      --hippo-border: rgba(122, 184, 224, 0.35);
+      --pfc: #9b8ae0;
+      --pfc-dim: rgba(155, 138, 224, 0.12);
+      --pfc-border: rgba(155, 138, 224, 0.35);
+      --mouth: #5dcf9b;
+      --mouth-dim: rgba(93, 207, 155, 0.12);
+      --mouth-border: rgba(93, 207, 155, 0.3);
+      --chem: #d4a574;
+      --radius: 16px;
+      --radius-sm: 10px;
+      --max: 920px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html {
+      font-size: 16px;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+      font-family: "DM Sans", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+      min-height: 100vh;
+    }
+
+    /* Noise + ambient glow */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(212, 165, 116, 0.08), transparent 55%),
+        radial-gradient(ellipse 40% 30% at 10% 40%, rgba(224, 122, 122, 0.04), transparent 50%),
+        radial-gradient(ellipse 40% 30% at 90% 60%, rgba(122, 184, 224, 0.04), transparent 50%),
+        radial-gradient(ellipse 30% 25% at 50% 90%, rgba(155, 138, 224, 0.05), transparent 50%);
+    }
+
+    .page {
+      position: relative;
+      z-index: 1;
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 3.5rem 1.5rem 5rem;
+    }
+
+    /* ── Typography ── */
+    .eyebrow {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    h1 {
+      font-family: "Instrument Serif", Georgia, serif;
+      font-weight: 400;
+      font-size: clamp(2.6rem, 6vw, 3.75rem);
+      line-height: 1.08;
+      letter-spacing: -0.02em;
+      margin: 0.6rem 0 1rem;
+      color: var(--text);
+    }
+
+    h1 em {
+      font-style: italic;
+      color: var(--accent-bright);
+    }
+
+    h2 {
+      font-family: "Instrument Serif", Georgia, serif;
+      font-weight: 400;
+      font-size: 1.75rem;
+      letter-spacing: -0.01em;
+      margin-bottom: 0.75rem;
+    }
+
+    h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin-bottom: 0.35rem;
+    }
+
+    .lede {
+      font-size: 1.125rem;
+      color: var(--text-secondary);
+      max-width: 38em;
+      line-height: 1.65;
+    }
+
+    /* ── Writeable text areas ── */
+    .write {
+      position: relative;
+      background: var(--surface);
+      border: 1.5px dashed var(--border-strong);
+      border-radius: var(--radius-sm);
+      padding: 1rem 1.15rem 1.15rem;
+      min-height: 4.5rem;
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      line-height: 1.6;
+      transition: border-color 0.2s, background 0.2s, color 0.2s;
+    }
+
+    .write:focus {
+      outline: none;
+      border-color: var(--accent-border);
+      border-style: solid;
+      background: var(--accent-dim);
+      color: var(--text);
+    }
+
+    .write:empty::before {
+      content: attr(data-placeholder);
+      color: var(--text-faint);
+      font-style: italic;
+    }
+
+    .write-label {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.62rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-faint);
+      margin-bottom: 0.55rem;
+    }
+
+    .write-label::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      opacity: 0.55;
+    }
+
+    .write-block {
+      margin-top: 1.25rem;
+    }
+
+    /* ── Sections ── */
+    section {
+      margin-top: 3.5rem;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+      flex-wrap: wrap;
+    }
+
+    .section-num {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      letter-spacing: 0.08em;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .hero-mark {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.65rem;
+      margin-bottom: 1.75rem;
+    }
+
+    .mark {
+      width: 28px;
+      height: 28px;
+      flex-shrink: 0;
+    }
+
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 1.25rem;
+      margin-top: 1.75rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .hero-meta span {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .hero-meta span::before {
+      content: "";
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--accent);
+      opacity: 0.6;
+    }
+
+    /* ── Principle card ── */
+    .principle {
+      margin-top: 2rem;
+      padding: 1.5rem 1.6rem;
+      background:
+        linear-gradient(135deg, var(--accent-dim), transparent 60%),
+        var(--bg-elevated);
+      border: 1px solid var(--accent-border);
+      border-radius: var(--radius);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .principle::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--accent), transparent);
+    }
+
+    .principle p {
+      font-size: 1.05rem;
+      color: var(--text-secondary);
+      max-width: 40em;
+    }
+
+    .principle strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* ── Pipeline strip ── */
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 0.4rem;
+      align-items: stretch;
+    }
+
+    @media (max-width: 780px) {
+      .pipeline {
+        grid-template-columns: 1fr 1fr;
+      }
+      .pipeline .arrow-cell { display: none; }
+    }
+
+    .pipe-step {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.85rem 0.7rem;
+      text-align: center;
+      min-height: 5.5rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0.25rem;
+    }
+
+    .pipe-step.is-pillar {
+      border-color: var(--border-strong);
+      background: var(--bg-card);
+    }
+
+    .pipe-step .step-idx {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.58rem;
+      letter-spacing: 0.1em;
+      color: var(--text-faint);
+      text-transform: uppercase;
+    }
+
+    .pipe-step .step-name {
+      font-size: 0.78rem;
+      font-weight: 600;
+      line-height: 1.25;
+    }
+
+    .pipe-step .step-role {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      line-height: 1.3;
+    }
+
+    .pipe-step.insula { border-color: var(--insula-border); background: var(--insula-dim); }
+    .pipe-step.insula .step-name { color: #f0a0a0; }
+    .pipe-step.hippo { border-color: var(--hippo-border); background: var(--hippo-dim); }
+    .pipe-step.hippo .step-name { color: #a0d0f0; }
+    .pipe-step.pfc { border-color: var(--pfc-border); background: var(--pfc-dim); }
+    .pipe-step.pfc .step-name { color: #c0b4f0; }
+    .pipe-step.mouth { border-color: var(--mouth-border); background: var(--mouth-dim); }
+    .pipe-step.mouth .step-name { color: #8de0b8; }
+
+    .arrow-cell {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-faint);
+      font-size: 0.9rem;
+      padding: 0;
+      min-width: 0;
+    }
+
+    .pipeline-note {
+      margin-top: 1rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    .pipeline-note strong {
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    /* ── Three pillars ── */
+    .pillars {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .pillar {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .pillar-bar {
+      height: 3px;
+      width: 100%;
+    }
+
+    .pillar.insula .pillar-bar { background: linear-gradient(90deg, var(--insula), transparent); }
+    .pillar.hippo .pillar-bar { background: linear-gradient(90deg, var(--hippo), transparent); }
+    .pillar.pfc .pillar-bar { background: linear-gradient(90deg, var(--pfc), transparent); }
+
+    .pillar-inner {
+      padding: 1.5rem 1.6rem 1.6rem;
+    }
+
+    .pillar-top {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 1.25rem;
+      align-items: start;
+    }
+
+    @media (max-width: 560px) {
+      .pillar-top { grid-template-columns: 1fr; }
+    }
+
+    .pillar-badge {
+      width: 72px;
+      height: 72px;
+      border-radius: 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.15rem;
+      flex-shrink: 0;
+      border: 1px solid;
+    }
+
+    .pillar.insula .pillar-badge {
+      background: var(--insula-dim);
+      border-color: var(--insula-border);
+      color: #f0a0a0;
+    }
+    .pillar.hippo .pillar-badge {
+      background: var(--hippo-dim);
+      border-color: var(--hippo-border);
+      color: #a0d0f0;
+    }
+    .pillar.pfc .pillar-badge {
+      background: var(--pfc-dim);
+      border-color: var(--pfc-border);
+      color: #c0b4f0;
+    }
+
+    .badge-num {
+      font-family: "Instrument Serif", Georgia, serif;
+      font-size: 1.6rem;
+      line-height: 1;
+    }
+
+    .badge-label {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.55rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0.75;
+    }
+
+    .pillar-title-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0.5rem 0.85rem;
+      margin-bottom: 0.4rem;
+    }
+
+    .pillar-title-row h3 {
+      font-size: 1.35rem;
+      font-family: "Instrument Serif", Georgia, serif;
+      font-weight: 400;
+      margin: 0;
+    }
+
+    .tag {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.62rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 0.2rem 0.5rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+
+    .pillar.insula .tag { border-color: var(--insula-border); color: #e8a0a0; }
+    .pillar.hippo .tag { border-color: var(--hippo-border); color: #9ec8e8; }
+    .pillar.pfc .tag { border-color: var(--pfc-border); color: #b8aef0; }
+
+    .pillar-desc {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+      max-width: 42em;
+    }
+
+    .io-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-top: 1.35rem;
+    }
+
+    @media (max-width: 640px) {
+      .io-grid { grid-template-columns: 1fr; }
+    }
+
+    .io-card {
+      background: var(--bg-sunken);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 1rem 1.1rem;
+    }
+
+    .io-card h4 {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.62rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 0.65rem;
+      font-weight: 500;
+    }
+
+    .io-card ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .io-card li {
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+      padding-left: 0.9rem;
+      position: relative;
+      line-height: 1.4;
+    }
+
+    .io-card li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.5em;
+      width: 5px;
+      height: 5px;
+      border-radius: 1px;
+      background: var(--text-faint);
+    }
+
+    .pillar.insula .io-card.out li::before { background: var(--insula); }
+    .pillar.hippo .io-card.out li::before { background: var(--hippo); }
+    .pillar.pfc .io-card.out li::before { background: var(--pfc); }
+
+    .io-card li code {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.72rem;
+      color: var(--text);
+      background: var(--surface-2);
+      padding: 0.05rem 0.3rem;
+      border-radius: 4px;
+    }
+
+    /* ── Cumulative flow ── */
+    .cumulative {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr auto 1fr;
+      gap: 0.75rem;
+      align-items: center;
+    }
+
+    @media (max-width: 700px) {
+      .cumulative {
+        grid-template-columns: 1fr;
+      }
+      .cumulative .flow-arrow { transform: rotate(90deg); justify-self: center; }
+    }
+
+    .flow-card {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 1.15rem 1.2rem;
+      min-height: 9rem;
+    }
+
+    .flow-card.f1 { border-color: var(--insula-border); background: linear-gradient(180deg, var(--insula-dim), var(--bg-elevated) 70%); }
+    .flow-card.f2 { border-color: var(--hippo-border); background: linear-gradient(180deg, var(--hippo-dim), var(--bg-elevated) 70%); }
+    .flow-card.f3 { border-color: var(--pfc-border); background: linear-gradient(180deg, var(--pfc-dim), var(--bg-elevated) 70%); }
+
+    .flow-card .flow-step {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.6rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 0.35rem;
+    }
+
+    .flow-card h3 {
+      font-size: 1rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .flow-card p {
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+      line-height: 1.45;
+    }
+
+    .flow-arrow {
+      color: var(--text-faint);
+      font-size: 1.25rem;
+      user-select: none;
+    }
+
+    /* ── Body / mouth split ── */
+    .split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    @media (max-width: 640px) {
+      .split { grid-template-columns: 1fr; }
+    }
+
+    .split-card {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.4rem 1.5rem;
+    }
+
+    .split-card.chem {
+      border-color: var(--accent-border);
+      background: linear-gradient(160deg, var(--accent-dim), var(--bg-elevated) 55%);
+    }
+
+    .split-card.voice {
+      border-color: var(--mouth-border);
+      background: linear-gradient(160deg, var(--mouth-dim), var(--bg-elevated) 55%);
+    }
+
+    .split-card .eyebrow { margin-bottom: 0.5rem; }
+    .split-card h3 {
+      font-family: "Instrument Serif", Georgia, serif;
+      font-weight: 400;
+      font-size: 1.35rem;
+      margin-bottom: 0.5rem;
+    }
+    .split-card p {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+    }
+
+    /* ── Prompt blocks ── */
+    .prompt-blocks {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+    }
+
+    @media (max-width: 700px) {
+      .prompt-blocks { grid-template-columns: 1fr; }
+    }
+
+    .prompt-block {
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      padding: 1rem 1.1rem;
+      background: var(--bg-elevated);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.72rem;
+      line-height: 1.5;
+    }
+
+    .prompt-block .pb-title {
+      font-size: 0.68rem;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+    }
+
+    .prompt-block.pb-e { border-color: var(--insula-border); }
+    .prompt-block.pb-e .pb-title { color: #e8a0a0; }
+    .prompt-block.pb-c { border-color: var(--hippo-border); }
+    .prompt-block.pb-c .pb-title { color: #9ec8e8; }
+    .prompt-block.pb-s { border-color: var(--pfc-border); }
+    .prompt-block.pb-s .pb-title { color: #b8aef0; }
+
+    .prompt-block .pb-body {
+      color: var(--text-muted);
+    }
+
+    /* ── Rules ── */
+    .rules {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.85rem;
+    }
+
+    @media (max-width: 640px) {
+      .rules { grid-template-columns: 1fr; }
+    }
+
+    .rule {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 1.15rem 1.25rem;
+    }
+
+    .rule-num {
+      font-family: "Instrument Serif", Georgia, serif;
+      font-size: 1.5rem;
+      color: var(--accent);
+      line-height: 1;
+      margin-bottom: 0.4rem;
+    }
+
+    .rule h3 {
+      font-size: 0.95rem;
+      margin-bottom: 0.35rem;
+    }
+
+    .rule p {
+      font-size: 0.84rem;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    /* ── Footer ── */
+    footer {
+      margin-top: 4rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 1rem;
+      font-size: 0.75rem;
+      color: var(--text-faint);
+    }
+
+    footer a {
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+
+    /* ── Decorative connector between pillars ── */
+    .pillar-connector {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 1.5rem;
+      margin: -0.25rem 0;
+      color: var(--text-faint);
+      font-size: 0.75rem;
+      letter-spacing: 0.15em;
+      gap: 0.5rem;
+    }
+
+    .pillar-connector span {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.58rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .pillar-connector::before,
+    .pillar-connector::after {
+      content: "";
+      height: 1px;
+      width: 2.5rem;
+      background: linear-gradient(90deg, transparent, var(--border-strong));
+    }
+
+    .pillar-connector::after {
+      background: linear-gradient(90deg, var(--border-strong), transparent);
+    }
+
+    /* Print / export */
+    @media print {
+      body::before { display: none; }
+      .page { max-width: none; padding: 1rem; }
+      .write { border-style: solid; min-height: 3rem; }
+      .write:empty::before { content: ""; }
+    }
+  </style>
+</head>
+<body>
+  <article class="page">
+
+    <!-- ════════════ HERO ════════════ -->
+    <header class="hero">
+      <div class="hero-mark">
+        <svg class="mark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <rect width="32" height="32" fill="#0b0b0d"/>
+          <path d="M16 2.5L29.5 16 16 29.5 2.5 16 16 2.5z" stroke="#d4a574" stroke-width="1.2" opacity="0.85"/>
+          <path d="M16 5.5L26.5 16 16 26.5 5.5 16 16 5.5z" stroke="#d4a574" stroke-width="0.75" opacity="0.35"/>
+          <path d="M9 26V7l7 13 7-13v19" stroke="#e8bc8a" stroke-width="2.3" stroke-linejoin="miter"/>
+        </svg>
+        <span class="eyebrow">Mina architecture · brain region pipeline</span>
+      </div>
+
+      <h1>How the <em>pillars</em> work</h1>
+      <p class="lede">
+        Chemistry is the body. Three sequential LLM “pillars” turn that body into felt state,
+        situation, and strategy — then the mouth speaks. The chatbot never sees raw dopamine bars.
+      </p>
+
+      <div class="write-block">
+        <div class="write-label">Blog intro — write freely</div>
+        <div class="write" contenteditable="true" data-placeholder="Open the post here. e.g. why companions usually pin personality in a system prompt, and what it means to put a body underneath the voice…"></div>
+      </div>
+
+      <div class="hero-meta">
+        <span>3 sequential pillars</span>
+        <span>5 LLM calls per turn</span>
+        <span>Mouth never sees chemistry</span>
+        <span>Cumulative, not parallel</span>
+      </div>
+    </header>
+
+    <!-- ════════════ CORE PRINCIPLE ════════════ -->
+    <section>
+      <div class="section-head">
+        <h2>The core principle</h2>
+        <span class="section-num">01 · visibility</span>
+      </div>
+
+      <div class="principle">
+        <p>
+          <strong>Mina has knowledge of, but no visibility into, her simulation.</strong>
+          She knows she has a neurological body the way a person knows they have a brain —
+          as fact, not as live instrumentation. Pillars invent the qualia; the mouth answers from how she <em>feels</em>, not from nM concentrations.
+        </p>
+      </div>
+
+      <div class="write-block">
+        <div class="write-label">Expand on the human analogy</div>
+        <div class="write" contenteditable="true" data-placeholder="You don’t report serotonin levels — you report mood, energy, warmth. That gap is the design. Write the anecdote or metaphor you want readers to carry…"></div>
+      </div>
+    </section>
+
+    <!-- ════════════ BODY VS VOICE ════════════ -->
+    <section>
+      <div class="section-head">
+        <h2>Body and voice</h2>
+        <span class="section-num">02 · split</span>
+      </div>
+
+      <div class="split">
+        <div class="split-card chem">
+          <div class="eyebrow" style="color: var(--accent)">The body</div>
+          <h3>Chemistry sim</h3>
+          <p>
+            Deterministic levels, decay, circadian ticks, cascades. Encoder perception drives
+            Class‑1 deltas. A decoder projects ratio‑to‑setpoint into pillar‑legible numbers.
+            Always live — even between messages.
+          </p>
+        </div>
+        <div class="split-card voice">
+          <div class="eyebrow" style="color: var(--mouth)">The voice</div>
+          <h3>Mouth (Mina)</h3>
+          <p>
+            One chatbot LLM call. Receives a constructed system prompt plus a small conversation
+            window. Operates on felt state and strategy — never raw chemistry instrumentation.
+          </p>
+        </div>
+      </div>
+
+      <div class="write-block">
+        <div class="write-label">Why this split matters for product / experience</div>
+        <div class="write" contenteditable="true" data-placeholder="Tone shifts with sleep pressure. Warmth isn’t a prompt knob. Readers should feel the difference — put that in their words here…"></div>
+      </div>
+    </section>
+
+    <!-- ════════════ FULL PIPELINE ════════════ -->
+    <section>
+      <div class="section-head">
+        <h2>Per-turn pipeline</h2>
+        <span class="section-num">03 · end to end</span>
+      </div>
+
+      <div class="pipeline" aria-label="Full per-turn pipeline">
+        <div class="pipe-step">
+          <span class="step-idx">01</span>
+          <span class="step-name">Encoder</span>
+          <span class="step-role">Amygdala · state-blind salience</span>
+        </div>
+        <div class="pipe-step">
+          <span class="step-idx">02</span>
+          <span class="step-name">Chemistry</span>
+          <span class="step-role">Class‑1 deltas land</span>
+        </div>
+        <div class="pipe-step">
+          <span class="step-idx">03</span>
+          <span class="step-name">Decoder</span>
+          <span class="step-role">Projection · setpoint-aware</span>
+        </div>
+        <div class="pipe-step insula is-pillar">
+          <span class="step-idx">04</span>
+          <span class="step-name">Insula</span>
+          <span class="step-role">Felt state</span>
+        </div>
+        <div class="pipe-step hippo is-pillar">
+          <span class="step-idx">05</span>
+          <span class="step-name">Hippocampus</span>
+          <span class="step-role">Situation</span>
+        </div>
+        <div class="pipe-step pfc is-pillar">
+          <span class="step-idx">06</span>
+          <span class="step-name">PFC</span>
+          <span class="step-role">Strategy + prompt</span>
+        </div>
+        <div class="pipe-step mouth">
+          <span class="step-idx">07</span>
+          <span class="step-name">Mouth</span>
+          <span class="step-role">Reply</span>
+        </div>
+      </div>
+      <p class="pipeline-note">
+        Highlighted steps are the <strong>three pillars</strong>. Memory retrieve + context assembly
+        feed Hippocampus between Insula and the context pass (not shown as separate LLM pillars).
+      </p>
+
+      <div class="write-block">
+        <div class="write-label">Walk the reader through one message</div>
+        <div class="write" contenteditable="true" data-placeholder="Pick a concrete example: a teasing late-night message, a harsh one, a quiet check-in. Trace it from encoder axes through a reply…"></div>
+      </div>
+    </section>
+
+    <!-- ════════════ THREE PILLARS ════════════ -->
+    <section>
+      <div class="section-head">
+        <h2>The three pillars</h2>
+        <span class="section-num">04 · sequential · cumulative</span>
+      </div>
+
+      <p class="lede" style="margin-bottom: 1.5rem; font-size: 1rem;">
+        Each pillar is a fixed-contract LLM call. Order is the compliance mechanism —
+        no pillar runs until the previous one finishes. Emotion reframes what counts as notable;
+        situation reframes strategy; strategy builds the system prompt.
+      </p>
+
+      <div class="pillars">
+
+        <!-- INSULA -->
+        <article class="pillar insula">
+          <div class="pillar-bar"></div>
+          <div class="pillar-inner">
+            <div class="pillar-top">
+              <div class="pillar-badge">
+                <span class="badge-num">01</span>
+                <span class="badge-label">Pillar</span>
+              </div>
+              <div>
+                <div class="pillar-title-row">
+                  <h3>Insula</h3>
+                  <span class="tag">Emotional</span>
+                  <span class="tag">Felt-state translator</span>
+                </div>
+                <p class="pillar-desc">
+                  Turns decoder projection (gap from setpoint, not absolute nM) into how Mina feels —
+                  arousal, valence, somatic texture, and a short bias for the reasoner. Personality
+                  (Big&nbsp;5) shapes the vocabulary of feeling, not the chemistry itself.
+                </p>
+              </div>
+            </div>
+
+            <div class="io-grid">
+              <div class="io-card">
+                <h4>Inputs</h4>
+                <ul>
+                  <li>Decoded chemistry · gap / rate / setpoint</li>
+                  <li>Prior emotional state · trend tracking</li>
+                  <li>Big&nbsp;5 vector (neuroticism → language)</li>
+                </ul>
+              </div>
+              <div class="io-card out">
+                <h4>Outputs</h4>
+                <ul>
+                  <li><code>emotional_summary</code> · 2nd person felt state</li>
+                  <li><code>dominant_affect</code> · single word</li>
+                  <li><code>arousal</code> / <code>valence</code> · 0–100</li>
+                  <li><code>somatic</code> · felt-sense sentence</li>
+                  <li><code>interpretation_bias</code> → PFC</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="write-block">
+              <div class="write-label">Insula — your commentary</div>
+              <div class="write" contenteditable="true" data-placeholder="Why gap-from-setpoint beats absolute levels. What “pharmacological above 10” means for felt language. Optional anecdote…"></div>
+            </div>
+          </div>
+        </article>
+
+        <div class="pillar-connector" aria-hidden="true"><span>↓ cumulative</span></div>
+
+        <!-- HIPPOCAMPUS -->
+        <article class="pillar hippo">
+          <div class="pillar-bar"></div>
+          <div class="pillar-inner">
+            <div class="pillar-top">
+              <div class="pillar-badge">
+                <span class="badge-num">02</span>
+                <span class="badge-label">Pillar</span>
+              </div>
+              <div>
+                <div class="pillar-title-row">
+                  <h3>Hippocampus</h3>
+                  <span class="tag">Context</span>
+                  <span class="tag">Memory · situation</span>
+                </div>
+                <p class="pillar-desc">
+                  Builds situational ground truth given how she feels. Window synthesis, RAG, and KAG
+                  arrive pre-assembled; this pillar decides what is contextually notable when the
+                  body is already in a particular affective frame.
+                </p>
+              </div>
+            </div>
+
+            <div class="io-grid">
+              <div class="io-card">
+                <h4>Inputs</h4>
+                <ul>
+                  <li>Insula output (felt state frames attention)</li>
+                  <li>Window context · present-moment synthesis</li>
+                  <li>RAG / KAG memory synthesis</li>
+                </ul>
+              </div>
+              <div class="io-card out">
+                <h4>Outputs</h4>
+                <ul>
+                  <li><code>situational_summary</code> · 2nd person reality</li>
+                  <li><code>social_context</code> · short label</li>
+                  <li><code>urgency</code> · none | low | high</li>
+                  <li><code>notable</code> · flag or null</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="write-block">
+              <div class="write-label">Hippocampus — your commentary</div>
+              <div class="write" contenteditable="true" data-placeholder="Same memory, different mood: what becomes “notable” when she’s anxious vs content. Why context is framed, not dumped…"></div>
+            </div>
+          </div>
+        </article>
+
+        <div class="pillar-connector" aria-hidden="true"><span>↓ cumulative</span></div>
+
+        <!-- PFC -->
+        <article class="pillar pfc">
+          <div class="pillar-bar"></div>
+          <div class="pillar-inner">
+            <div class="pillar-top">
+              <div class="pillar-badge">
+                <span class="badge-num">03</span>
+                <span class="badge-label">Pillar</span>
+              </div>
+              <div>
+                <div class="pillar-title-row">
+                  <h3>PFC</h3>
+                  <span class="tag">Reasoning</span>
+                  <span class="tag">Executive · strategy</span>
+                </div>
+                <p class="pillar-desc">
+                  Integrates felt state + situation into how she will respond — approach, tone,
+                  subtext, and whether to show the internal intensity. Constructs the system prompt
+                  the mouth actually reads. Backend regulation lives here: high adrenaline can still
+                  surface as composure when traits allow.
+                </p>
+              </div>
+            </div>
+
+            <div class="io-grid">
+              <div class="io-card">
+                <h4>Inputs</h4>
+                <ul>
+                  <li>Insula output</li>
+                  <li>Hippocampus output</li>
+                  <li>Current user message</li>
+                  <li>Big&nbsp;5 (N &amp; C modulate expression)</li>
+                </ul>
+              </div>
+              <div class="io-card out">
+                <h4>Outputs</h4>
+                <ul>
+                  <li><code>internal_reaction</code> · raw first-person</li>
+                  <li><code>approach</code> · banter | warm | …</li>
+                  <li><code>tone</code> / <code>lead_with</code></li>
+                  <li><code>strategy_rationale</code></li>
+                  <li>→ assembled system prompt for Mouth</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="write-block">
+              <div class="write-label">PFC — your commentary</div>
+              <div class="write" contenteditable="true" data-placeholder="Surface composure vs internal spike. skip_primary_response (silence as a choice). How strategy is not a second personality…"></div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ════════════ CUMULATIVE FLOW ════════════ -->
+    <section>
+      <div class="section-head">
+        <h2>Why sequential, not one mega-call</h2>
+        <span class="section-num">05 · design choice</span>
+      </div>
+
+      <div class="cumulative">
+        <div class="flow-card f1">
+          <div class="flow-step">Step A</div>
+          <h3>Feel first</h3>
+          <p>Attention is affectively primed. Without this, “notable” is generic retrieval.</p>
+        </div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-card f2">
+          <div class="flow-step">Step B</div>
+          <h3>Then situate</h3>
+          <p>Same history, different frame. Anxiety and ease notice different things.</p>
+        </div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-card f3">
+          <div class="flow-step">Step C</div>
+          <h3>Then choose</h3>
+          <p>Strategy integrates both. One split-attention call degrades all three jobs.</p>
+        </div>
+      </div>
+
+      <div class="write-block">
+        <div class="write-label">Latency tradeoff, token budgets, quality argument</div>
+        <div class="write" contenteditable="true" data-placeholder="Five LLM calls is slow by chatbot standards — and that’s acceptable. Make the quality case; mention bounded tokens even at long threads…"></div>
+      </div>
+    </section>
+
+    <!-- ════════════ SYSTEM PROMPT ASSEMBLY ════════════ -->
+    <section>
+      <div class="section-head">
+        <h2>What the mouth actually reads</h2>
+        <span class="section-num">06 · prompt assembly</span>
+      </div>
+
+      <p class="lede" style="margin-bottom: 1.25rem; font-size: 1rem;">
+        PFC serializes the three pillar outputs into labeled blocks. The mouth never receives
+        encoder axes, nM values, or decoder tables — only qualia and strategy.
+      </p>
+
+      <div class="prompt-blocks">
+        <div class="prompt-block pb-e">
+          <div class="pb-title">[Emotional State]</div>
+          <div class="pb-body">
+            emotional_summary<br />
+            affect · trend<br />
+            arousal / valence<br />
+            somatic · drive
+          </div>
+        </div>
+        <div class="prompt-block pb-c">
+          <div class="pb-title">[Situational Context]</div>
+          <div class="pb-body">
+            situational_summary<br />
+            social_context<br />
+            urgency<br />
+            notable
+          </div>
+        </div>
+        <div class="prompt-block pb-s">
+          <div class="pb-title">[Response Strategy]</div>
+          <div class="pb-body">
+            internal_reaction<br />
+            approach · tone<br />
+            lead_with<br />
+            rationale
+          </div>
+        </div>
+      </div>
+
+      <div class="write-block">
+        <div class="write-label">Quote a real assembled prompt (redact as needed)</div>
+        <div class="write" contenteditable="true" data-placeholder="Paste or paraphrase a real [Emotional State] / [Situational Context] / [Response Strategy] block so readers see the texture…"></div>
+      </div>
+    </section>
+
+    <!-- ════════════ RULES ════════════ -->
+    <section>
+      <div class="section-head">
+        <h2>Non-negotiables</h2>
+        <span class="section-num">07 · contracts</span>
+      </div>
+
+      <div class="rules">
+        <div class="rule">
+          <div class="rule-num">01</div>
+          <h3>Encoder is state-blind</h3>
+          <p>Perception does not see chemistry. Salience is appraised without knowing how the body already feels — same as human sensory gating under uncertainty.</p>
+        </div>
+        <div class="rule">
+          <div class="rule-num">02</div>
+          <h3>Pillars are cumulative</h3>
+          <p>Each stage consumes prior outputs. Parallel or merged calls collapse the reframing chain that makes felt state matter.</p>
+        </div>
+        <div class="rule">
+          <div class="rule-num">03</div>
+          <h3>Mouth is chemistry-blind</h3>
+          <p>No dopamine bars in the chat model. Instrumentation stays upstream; expression stays human-legible.</p>
+        </div>
+        <div class="rule">
+          <div class="rule-num">04</div>
+          <h3>Contracts over vibes</h3>
+          <p>Typed inputs and outputs per pillar. Implicit spaghetti is how v1 grew unmaintainable; schemas keep duties separated.</p>
+        </div>
+      </div>
+
+      <div class="write-block">
+        <div class="write-label">Closing / next post teaser</div>
+        <div class="write" contenteditable="true" data-placeholder="Where you’ll go next: chemistry fidelity, FREETIME solitude, decoder scales, personality as expression not perception…"></div>
+      </div>
+    </section>
+
+    <footer>
+      <span>Mina · How the pillars work · editable draft for blog</span>
+      <span>Dashed boxes are contenteditable — click and write</span>
+    </footer>
+
+  </article>
+</body>
+</html>
