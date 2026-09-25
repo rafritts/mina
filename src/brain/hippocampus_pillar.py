@@ -50,6 +50,8 @@ def run_hippocampus(
     window_context: str,
     rag_context: str,
     scene_block: str = "",
+    *,
+    stage_directions: list[str] | None = None,
 ) -> dict:
     """Run the hippocampus context pillar."""
     emotional_block = "\n".join(f"{k}: {v}" for k, v in insula_output.items())
@@ -58,6 +60,11 @@ def run_hippocampus(
     ]
     if scene_block and scene_block.strip():
         parts.append(f"## Live scene (prior snapshot — ground truth for place/clothes/time)\n{scene_block.strip()}")
+    from src.brain.stage_direction import format_hippocampus_block
+
+    direction_block = format_hippocampus_block(stage_directions or [])
+    if direction_block:
+        parts.append(direction_block)
     parts.append(f"## Window context\n{window_context or '(none)'}")
     parts.append(f"## Memory context\n{rag_context or '(none)'}")
     user_prompt = "\n\n".join(parts)

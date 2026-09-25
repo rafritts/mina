@@ -657,6 +657,7 @@ async def run_freetime(sim: Sim) -> None:
     from src.brain.pipeline import (
         _load_decoder_window, _load_prior_emotional_state
     )
+    from src.brain.stage_direction import visible_speech
 
     decoder_window = _load_decoder_window()
 
@@ -699,8 +700,14 @@ async def run_freetime(sim: Sim) -> None:
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
     # Include recent window context
     for m in decoder_window[-6:]:
-        if m.get("role") in ("user", "assistant") and m.get("content"):
-            messages.append({"role": m["role"], "content": m["content"]})
+        if m.get("role") not in ("user", "assistant") or not m.get("content"):
+            continue
+        content = m["content"]
+        if m["role"] == "user":
+            content = visible_speech(content)
+            if not content:
+                continue
+        messages.append({"role": m["role"], "content": content})
     messages.append({"role": "user", "content": synthetic_message})
 
     _append_to_conversation("user", synthetic_message)

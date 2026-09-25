@@ -68,6 +68,11 @@ Be precise. Low-salience turns should return mostly 0-2. Do not inflate values.
 """
 
 
+def neutral_appraisal() -> dict:
+    """No new salience. A direction-only turn must not move chemistry."""
+    return _zero_output()
+
+
 def encode(message: str, history: list[dict]) -> dict:
     """
     Run the amygdala encoder on the incoming message + recent history.
@@ -99,12 +104,19 @@ def encode(message: str, history: list[dict]) -> dict:
 
 
 def _format_history(history: list[dict]) -> str:
+    from src.brain.stage_direction import visible_speech
+
     lines = []
     for msg in history:
         role    = msg.get("role", "")
         content = msg.get("content", "")
         if isinstance(content, list):
             content = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
+        if role == "user":
+            spoken = visible_speech(content)
+            if not spoken:
+                continue
+            content = spoken
         if role in ("user", "assistant") and content:
             label = "USER" if role == "user" else "MINA"
             lines.append(f"{label}: {str(content)[:300]}")

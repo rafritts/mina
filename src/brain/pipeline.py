@@ -31,7 +31,7 @@ from src.config.config import MODEL, get_conversation_file, RUN_DIR
 from src.sim.sim import Sim
 from src.sim.decoder import format_decoder_output
 
-from .encoder import encode
+from .encoder import encode, neutral_appraisal
 from .insula import run_insula, format_emotional_state_block
 from .hippocampus_pillar import run_hippocampus
 from .pfc import run_pfc, build_system_prompt
@@ -55,6 +55,12 @@ from .chat_tools import (
     photo_turn_context,
 )
 from .time_context import format_host_time_block
+from .stage_direction import (
+    apply_direction_to_strategy,
+    format_mouth_block,
+    parse_stage_direction,
+    visible_speech,
+)
 
 
 def _emit_stage(stage: str, label: str) -> None:
@@ -198,6 +204,13 @@ async def run_turn(
     photo_cap = max_photos(image_count)
     aspect = image_aspect if image_aspect in ("landscape", "square", "portrait") else "square"
 
+    # `[Host: ...]` is a beat, not dialogue. Speech still appraises; the note does not.
+    parsed = parse_stage_direction(message)
+    directions = list(parsed.directions)
+    stimulus = parsed.speech if parsed.matched else message
+    if directions:
+        log("PIPELINE", f"stage direction ({len(directions)}): {directions[0][:80]}")
+
     stream_bus.new_trace()
     stream_bus.emit("stimulus_land", {"preview": message[:280]})
     _emit_stage("sense", "Sensing")
@@ -205,12 +218,17 @@ async def run_turn(
     # Load rolling window
     decoder_window = _load_decoder_window()
 
-    # Append user message to window and conversation log
+    # Append user message to window and conversation log (raw, so redo matches).
     decoder_window.append({"role": "user", "content": message, "ts": ts})
     _append_conversation("user", message)
 
     # ── 1. Encoder (state-blind) ────────────────────────────────────────────
-    encoder_output = await asyncio.to_thread(encode, message, decoder_window[:-1])
+    # Direction-only turns leave chemistry where the sim already is.
+    if parsed.matched and not stimulus:
+        encoder_output = neutral_appraisal()
+        log("PIPELINE", "stage direction only — encoder skipped; mood unchanged by the note")
+    else:
+        encoder_output = await asyncio.to_thread(encode, stimulus, decoder_window[:-1])
     axes = {
         k: v for k, v in encoder_output.items() if not isinstance(v, (dict, list))
     }
@@ -225,8 +243,12 @@ async def run_turn(
     )
     _emit_stage("chemistry", "Chemistry settling")
     # Appraisal + applied Class-1 deltas for mind stream (after chemistry runs)
+    if parsed.matched and not stimulus:
+        encoder_preview = "(stage direction only — mood unchanged)"
+    else:
+        encoder_preview = (stimulus or message)[:120]
     stream_bus.emit("encoder", {
-        "preview": message[:120],
+        "preview": encoder_preview,
         "axes": axes,
         "deltas": chem_deltas or {},
         "relationship_modifier": relationship_modifier,
@@ -263,10 +285,14 @@ async def run_turn(
         build_kag_context, sliding_rag_query, build_rag_context_dual
     )
 
+    if parsed.matched:
+        retrieval_query = "\n".join(p for p in (stimulus, *directions) if p)
+    else:
+        retrieval_query = message
     kag_context, sliding_result, (semi_recent, historical) = await asyncio.gather(
-        asyncio.to_thread(build_kag_context, message),
-        asyncio.to_thread(sliding_rag_query, message),
-        asyncio.to_thread(build_rag_context_dual, message),
+        asyncio.to_thread(build_kag_context, retrieval_query),
+        asyncio.to_thread(sliding_rag_query, retrieval_query),
+        asyncio.to_thread(build_rag_context_dual, retrieval_query),
     )
     experiences_result = "\n".join(filter(None, [semi_recent, historical]))
     _memory_excerpts(sliding_result or "", "sliding")
@@ -293,7 +319,12 @@ async def run_turn(
     # ── 8. Hippocampus pillar ────────────────────────────────────────────────
     _emit_stage("situate", "Situating")
     context_output = await asyncio.to_thread(
-        run_hippocampus, insula_output, window_context, rag_context, scene_block
+        run_hippocampus,
+        insula_output,
+        window_context,
+        rag_context,
+        scene_block,
+        stage_directions=directions or None,
     )
     stream_bus.emit("context_pillar", {
         "social_context": context_output.get("social_context", ""),
@@ -304,9 +335,21 @@ async def run_turn(
 
     # ── 9. PFC pillar ────────────────────────────────────────────────────────
     _emit_stage("decide", "Deciding")
+    if parsed.matched:
+        pfc_message = stimulus or "(No new spoken line. The stage direction is the beat.)"
+    else:
+        pfc_message = message
     pfc_output = await asyncio.to_thread(
-        run_pfc, insula_output, context_output, message, big5, scene_block
+        run_pfc,
+        insula_output,
+        context_output,
+        pfc_message,
+        big5,
+        scene_block,
+        stage_directions=directions or None,
     )
+    if directions:
+        pfc_output = apply_direction_to_strategy(pfc_output, directions)
     stream_bus.emit("reasoning", {
         "approach": pfc_output.get("approach", ""),
         "tone": pfc_output.get("tone", ""),
@@ -367,15 +410,24 @@ async def run_turn(
     system_prompt += "\n\n" + format_host_time_block(last_activity_ts=last_activity_ts)
     system_prompt += "\n\n" + photo_turn_context(image_count, aspect)
     system_prompt += "\n\n" + mouth_scene_instructions()
+    if directions:
+        system_prompt += "\n\n" + format_mouth_block(directions)
 
     # ── 11. Mina LLM call (+ optional send_photo tool loop) ────────────────
     _emit_stage("speak", "Speaking")
     mina_window = decoder_window[-_MINA_WINDOW:]
-    messages: list[dict] = [{"role": "system", "content": system_prompt}] + [
-        {"role": m["role"], "content": m["content"]}
-        for m in mina_window
-        if m.get("role") in ("user", "assistant") and m.get("content")
-    ]
+    messages: list[dict] = [{"role": "system", "content": system_prompt}]
+    for m in mina_window:
+        if m.get("role") not in ("user", "assistant") or not m.get("content"):
+            continue
+        content = m["content"]
+        if m["role"] == "user":
+            # Brackets stay in the log. The mouth hears speech. The beat is
+            # the stage-direction block above, not a spoken line.
+            content = visible_speech(content)
+            if not content:
+                continue
+        messages.append({"role": m["role"], "content": content})
 
     tools = CHAT_TOOLS if photo_cap > 0 else None
     photo_units: list[str] = []

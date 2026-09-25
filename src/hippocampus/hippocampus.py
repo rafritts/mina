@@ -533,6 +533,8 @@ def _save_consolidation_state(state_dict: dict) -> None:
 
 
 def _format_conversation_block(entries: list[dict]) -> str:
+    from src.brain.stage_direction import visible_speech
+
     lines = []
     for e in entries:
         role    = e.get("role", "?")
@@ -542,6 +544,11 @@ def _format_conversation_block(entries: list[dict]) -> str:
             continue
         if isinstance(content, list):
             content = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
+        if role == "user":
+            spoken = visible_speech(content)
+            if not spoken:
+                continue
+            content = spoken
         content = str(content).strip()[:400]
         if not content:
             continue

@@ -78,6 +78,8 @@ def run_pfc(
     message: str,
     big5: dict[str, float],
     scene_block: str = "",
+    *,
+    stage_directions: list[str] | None = None,
 ) -> dict:
     """Run the PFC reasoning pillar. Returns strategy dict."""
     emotional_block    = _format_emotional(insula_output)
@@ -92,9 +94,15 @@ def run_pfc(
             f"## Live scene (prior snapshot)\n{scene_block.strip()}\n\n"
         )
 
+    from src.brain.stage_direction import format_pfc_block
+
+    direction_block = format_pfc_block(stage_directions or [])
+    direction_section = f"{direction_block}\n\n" if direction_block else ""
+
     user_prompt = (
         f"## Wall clock\n{format_host_time_line()}\n\n"
         f"## Current message\n{message}\n\n"
+        f"{direction_section}"
         f"## Emotional state\n{emotional_block}\n\n"
         f"## Situational context\n{context_block}\n\n"
         f"{scene_section}"
