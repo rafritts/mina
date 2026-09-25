@@ -211,6 +211,8 @@ factory-reset)
     rm -f "$RUN_DIR/sliding_seq.json"
     rm -f "$RUN_DIR/prior_emotional_state.json"
     rm -f "$RUN_DIR/last_freetime.json"
+    rm -f "$RUN_DIR/last_freetime.md"
+    rm -f "$RUN_DIR/freetime_log.jsonl"
     rm -f "$RUN_DIR/turns.jsonl"
     rm -rf "$REPO_DIR/memory/rag"
     echo "Factory reset complete. Restarting service..."

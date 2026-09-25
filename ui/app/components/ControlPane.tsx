@@ -271,7 +271,7 @@ export function ControlPane({
   const eraseHistory = async () => {
     if (
       !confirm(
-        'Erase conversation history?\n\nWipes chat logs, rolling window, and short-term memory.\nKeeps chemistry and long-term memory.',
+        'Erase conversation history?\n\nWipes chat logs, the rolling window, short-term memory, and free-time sessions.\nKeeps chemistry and long-term memory.',
       )
     ) {
       return
