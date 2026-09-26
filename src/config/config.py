@@ -63,3 +63,18 @@ def load_big5() -> dict[str, float]:
     }
     user = cfg.get("big5", {})
     return {k: float(user.get(k, defaults[k])) for k in defaults}
+
+
+# CLI --reasoning-effort values. "none" is not accepted; treat it as low.
+_REASONING_EFFORTS = ("low", "medium", "high", "xhigh")
+
+
+def load_reasoning_effort() -> str:
+    """Grok reasoning effort for every headless call. config.json key, default low."""
+    raw = load_config().get("reasoning_effort", "low")
+    effort = str(raw).strip().lower() if raw is not None else "low"
+    if effort == "none":
+        return "low"
+    if effort in _REASONING_EFFORTS:
+        return effort
+    return "low"

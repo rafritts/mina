@@ -90,7 +90,6 @@ def encode(message: str, history: list[dict]) -> dict:
             ],
             temperature=0.0,
             response_format={"type": "json_object"},
-            reasoning_effort="low",
         )
         raw = resp.choices[0].message.content or ""
         result = _parse(raw)

@@ -115,11 +115,14 @@ Do **not** set process-wide `GROK_HOME` to Mina’s isolation path for interacti
 }
 ```
 
+`reasoning_effort` is sent on every headless Grok call (`low`, `medium`, `high`, or `xhigh`). Omitted or `none` means `low`.
+
 Optional Big 5 overrides (0–100); omitted keys use defaults in `src/config/config.py`:
 
 ```json
 {
   "username": "ryan",
+  "reasoning_effort": "low",
   "big5": {
     "openness": 72,
     "conscientiousness": 55,

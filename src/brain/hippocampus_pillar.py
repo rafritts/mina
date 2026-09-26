@@ -78,7 +78,6 @@ def run_hippocampus(
             ],
             temperature=0.3,
             response_format={"type": "json_object"},
-            reasoning_effort="none",
         )
         raw = resp.choices[0].message.content or ""
         result = _parse(raw)

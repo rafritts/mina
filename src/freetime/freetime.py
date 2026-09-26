@@ -721,7 +721,6 @@ async def run_freetime(sim: Sim) -> None:
             max_tokens=1024,
             tools=FREETIME_TOOLS,
             tool_choice="auto",
-            reasoning_effort="none",
         )
         choice = resp.choices[0]
         msg    = choice.message

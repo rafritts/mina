@@ -157,7 +157,6 @@ def run_insula(
             ],
             temperature=0.3,
             response_format={"type": "json_object"},
-            reasoning_effort="low",
         )
         raw = resp.choices[0].message.content or ""
         result = _parse(raw)

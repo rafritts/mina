@@ -22,9 +22,9 @@ import subprocess
 import tempfile
 import uuid
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-from src.config.config import MODEL, BASE_URL, API_KEY
+from src.config.config import MODEL, BASE_URL, API_KEY, load_reasoning_effort
 
 __all__ = ["get_client", "chat_create", "MODEL", "BASE_URL", "API_KEY", "grok_bin"]
 
@@ -574,7 +574,6 @@ def run_grok_oneshot(
     prompt: str,
     *,
     json_schema: dict | None = None,
-    reasoning_effort: str | None = None,
     model: str | None = None,
     max_turns: int = 1,
     timeout_sec: float | None = None,
@@ -615,12 +614,8 @@ def run_grok_oneshot(
         ]
         if json_schema is not None:
             args.extend(["--json-schema", json.dumps(json_schema)])
-        if reasoning_effort:
-            # Map "none" → low-ish: CLI may not accept "none"
-            effort = reasoning_effort
-            if effort == "none":
-                effort = "low"
-            args.extend(["--reasoning-effort", effort])
+        # One knob for every call: config.json reasoning_effort (default low).
+        args.extend(["--reasoning-effort", load_reasoning_effort()])
         # Only pass model when explicitly overridden via GROK_MODEL or a non-placeholder.
         grok_model = os.getenv("GROK_MODEL") or None
         if grok_model:
@@ -709,7 +704,7 @@ def chat_create(**kwargs) -> _CompatResponse:
     kwargs.pop("temperature", None)  # CLI has no temperature
     kwargs.pop("max_tokens", None)   # CLI has no max_tokens
     response_format = kwargs.pop("response_format", None)
-    reasoning_effort: Optional[str] = kwargs.pop("reasoning_effort", None)
+    kwargs.pop("reasoning_effort", None)  # config.json, not per call
     kwargs.pop("stream", None)
     # Discard remaining unknown kwargs
     kwargs.clear()
@@ -735,7 +730,6 @@ def chat_create(**kwargs) -> _CompatResponse:
     payload = run_grok_oneshot(
         prompt,
         json_schema=json_schema,
-        reasoning_effort=reasoning_effort,
         model=model,
         max_turns=1,
     )

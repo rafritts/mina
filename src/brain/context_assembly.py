@@ -53,7 +53,6 @@ def assemble_window_context(decoder_window: list[dict]) -> str:
                 {"role": "user",   "content": formatted},
             ],
             temperature=0.2,
-            reasoning_effort="none",
         )
         return resp.choices[0].message.content or ""
     except Exception:
@@ -79,7 +78,6 @@ def assemble_rag_context(sliding_result: str, experiences_result: str) -> str:
                 {"role": "user",   "content": combined},
             ],
             temperature=0.2,
-            reasoning_effort="none",
         )
         return resp.choices[0].message.content or ""
     except Exception:

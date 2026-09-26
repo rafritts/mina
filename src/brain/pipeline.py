@@ -441,7 +441,6 @@ async def run_turn(
             model=MODEL,
             messages=messages,
             max_tokens=1024,
-            reasoning_effort="none",
             mouth=True,  # voice + scene JSON every mouth call
         )
         if tools and photos_sent < photo_cap:

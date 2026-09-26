@@ -118,7 +118,6 @@ def run_pfc(
             ],
             temperature=0.4,
             response_format={"type": "json_object"},
-            reasoning_effort="low",
         )
         raw = resp.choices[0].message.content or ""
         result = _parse_strategy(raw)
