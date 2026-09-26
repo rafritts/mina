@@ -216,6 +216,8 @@ factory-reset)
     rm -f "$RUN_DIR/turns.jsonl"
     rm -rf "$RUN_DIR/chat-images"
     rm -rf "$REPO_DIR/memory/rag"
+    find "$REPO_DIR/memory/kag" -type f -delete
+    find "$REPO_DIR/memory/relationships" -type f -delete
     echo "Factory reset complete. Restarting service..."
     _svc restart
     ;;

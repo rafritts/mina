@@ -284,15 +284,68 @@ def sliding_rag_wipe() -> None:
 
 
 def rag_wipe() -> None:
+    """Drop episodic and sliding RAG, including the on-disk Chroma store."""
     import shutil
-    _reset_collection()
-    _reset_sliding_collection()
+    global _chroma_client, _collection, _sliding_collection
+    with _chroma_lock:
+        client = _chroma_client
+        _chroma_client = None
+        _collection = None
+        _sliding_collection = None
+        if client is not None:
+            for name in ("mina_sliding", "mina_experiences"):
+                try:
+                    client.delete_collection(name)
+                except Exception:
+                    pass
+            system = getattr(client, "_system", None)
+            stop = getattr(system, "stop", None)
+            if callable(stop):
+                try:
+                    stop()
+                except Exception:
+                    pass
     if os.path.exists(RAG_DIR):
-        shutil.rmtree(RAG_DIR)
+        shutil.rmtree(RAG_DIR, ignore_errors=True)
     try:
         os.remove(SLIDING_SEQ_FILE)
     except FileNotFoundError:
         pass
+
+
+def _wipe_files_under(root: str) -> list[str]:
+    """Delete every file under root. Keeps the directory itself."""
+    removed: list[str] = []
+    if not os.path.isdir(root):
+        return removed
+    for dirpath, dirnames, filenames in os.walk(root, topdown=False):
+        for name in filenames:
+            path = os.path.join(dirpath, name)
+            try:
+                os.remove(path)
+                removed.append(os.path.relpath(path, root))
+            except OSError as e:
+                log("MEMORY/ERASE", f"{path}: {e}")
+        if dirpath != root:
+            try:
+                os.rmdir(dirpath)
+            except OSError:
+                pass
+    return removed
+
+
+def wipe_accumulated_memory() -> list[str]:
+    """
+    Everything Mina learned: episodic RAG, the diary, knowledge notes,
+    and who the user is to her. Does not touch identity/MINA.md.
+    """
+    removed = ["rag"]
+    rag_wipe()
+    removed.extend(f"kag/{name}" for name in _wipe_files_under(KAG_DIR))
+    removed.extend(
+        f"relationship/{name}" for name in _wipe_files_under(RELATIONSHIP_DIR)
+    )
+    return removed
 
 
 def rag_add(text: str, metadata: Optional[dict] = None) -> None:
@@ -476,20 +529,6 @@ def sliding_rag_query(query: str, expand_radius: int = 3) -> str:
         if "does not exist" in str(e):
             _reset_sliding_collection()
         return ""
-
-
-def sliding_rag_wipe() -> None:
-    global _sliding_collection
-    if _chroma_client is not None:
-        try:
-            _chroma_client.delete_collection("mina_sliding")
-        except Exception:
-            pass
-    _reset_sliding_collection()
-    try:
-        os.remove(SLIDING_SEQ_FILE)
-    except FileNotFoundError:
-        pass
 
 
 # ── Conversation log reading ──────────────────────────────────────────────────

@@ -743,13 +743,14 @@ def erase_chat_history() -> dict:
     Wipe conversation-facing history so the next turn starts fresh.
 
     Clears: conversation logs, decoder window, turn/context dumps, prior
-    emotional state from chat, live scene, sliding (short-term) RAG, the
-    free-time session log the UI lists, and chat photos under run/chat-images.
+    emotional state from chat, live scene, free-time sessions, chat photos,
+    episodic and sliding RAG, the diary and knowledge notes, relationship
+    files, and the trace logs those memories were read back from.
 
-    Keeps: chemistry, episodic RAG, KAG, relationship files.
+    Keeps: current chemistry, identity/MINA.md, and config.json.
     """
     from pathlib import Path
-    from src.hippocampus.hippocampus import sliding_rag_wipe
+    from src.hippocampus.hippocampus import wipe_accumulated_memory
 
     removed: list[str] = []
     run = Path(RUN_DIR)
@@ -764,6 +765,12 @@ def erase_chat_history() -> dict:
         run / "freetime_log.jsonl",
         run / "last_freetime.json",
         run / "last_freetime.md",
+        run / "consolidation_state.json",
+        run / "stream.jsonl",
+        run / "events.jsonl",
+        run / "history.jsonl",
+        run / "obs.jsonl",
+        run / "token_stats.json",
     ]
     for path in targets:
         try:
@@ -781,10 +788,9 @@ def erase_chat_history() -> dict:
             log("PIPELINE/ERASE", f"{path.name}: {e}")
 
     try:
-        sliding_rag_wipe()
-        removed.append("sliding_rag")
+        removed.extend(wipe_accumulated_memory())
     except Exception as e:
-        log("PIPELINE/ERASE", f"sliding_rag: {e}")
+        log("PIPELINE/ERASE", f"memory: {e}")
 
     # Server-owned UI transcript (run/ui_chat.json messages)
     try:

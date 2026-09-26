@@ -446,11 +446,10 @@ async def reset_state():
 @app.post("/api/conversation/erase")
 async def erase_conversation():
     """
-    Erase chat history Mina can still see: conversation logs, rolling window,
-    turn dumps, prior affect stickiness, short-term sliding RAG, UI transcript,
-    free-time session log, and saved chat photos.
+    Erase everything historical: transcript, scene, diary, RAG, relationship
+    notes, free-time sessions, and the logs those were read from.
 
-    Does not touch chemistry, episodic RAG, KAG, or relationships.
+    Leaves current chemistry, identity/MINA.md, and config.json.
     """
     from src.application.infra.turn_job import is_running
     if is_running():
