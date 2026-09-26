@@ -232,47 +232,15 @@ def _subsection(section: str, *headings: str) -> str | None:
     return None
 
 
-_UNDRESSED = re.compile(r"\b(nude|naked|undressed|unclothed)\b", re.IGNORECASE)
-
-
-def _mina_clothing_undressed() -> bool:
-    """True when the stored live scene has Mina undressed."""
-    from src.brain.scene_context import load_scene
-
-    scene = load_scene()
-    for entry in scene.get("clothing") or []:
-        if not isinstance(entry, dict):
-            continue
-        name = str(entry.get("name") or "").strip().lower()
-        if name and name != "mina":
-            continue
-        clothing = str(entry.get("clothing") or "")
-        if _UNDRESSED.search(clothing):
-            return True
-    return False
-
-
-def scene_is_undressed(scene_prompt: str) -> bool:
-    """Photo brief or the stored scene says she is undressed."""
-    if _UNDRESSED.search(scene_prompt or ""):
-        return True
-    return _mina_clothing_undressed()
-
-
-def mina_look_block(undressed: bool = False) -> str:
+def mina_look_block() -> str:
     """
-    Appearance prose for Krea2. Clothed block unless this shot is undressed
-    and a "When nude" block is defined.
+    Fixed appearance prose for Krea2 prompts (clothed only).
 
     Third-person visual anchors from CUSTOMIZATION.md (preferred) or
     identity/MINA.md.
     """
     section = _appearance_section()
     if section:
-        if undressed:
-            nude = _subsection(section, "### When nude", "### Prose — when nude")
-            if nude:
-                return nude
         block = _subsection(
             section,
             "### Prose — clothed",
@@ -290,7 +258,7 @@ def build_photo_prompt(scene_prompt: str) -> str:
     Assemble a Krea2 prompt:
 
       1. Scene / framing / pose (natural prose from the model)
-      2. Matching appearance prose (clothed, or when-nude if that is the scene)
+      2. Fixed clothed appearance prose
       3. Quality suffix
 
     Krea has no negation — do not put "no X" / "without Y" in prompts.
@@ -300,5 +268,5 @@ def build_photo_prompt(scene_prompt: str) -> str:
     scene = (scene_prompt or "").strip()
     if not scene:
         scene = "Close selfie, looking into the lens, soft natural expression."
-    look = mina_look_block(scene_is_undressed(scene))
+    look = mina_look_block()
     return f"{scene}\n\n{look}\n\n{KREA_QUALITY_SUFFIX}"
