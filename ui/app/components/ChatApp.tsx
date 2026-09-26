@@ -51,6 +51,8 @@ interface ChatMessage {
   role: Role
   content: string
   images?: string[]
+  /** Photo is still rendering after the text landed. */
+  imagePending?: boolean
   /** Pillar thought process captured for this turn (assistant only). */
   mind?: TurnMind
 }
@@ -198,6 +200,15 @@ function ChatImage({
         />
       ) : null}
     </>
+  )
+}
+
+function PhotoPending() {
+  return (
+    <div className="chat-image-pending" role="status" aria-live="polite">
+      <span className="photo-spinner" aria-hidden />
+      Developing photo…
+    </div>
   )
 }
 
@@ -411,6 +422,7 @@ function toStored(msgs: ChatMessage[]): StoredChatMessage[] {
     role: m.role,
     content: m.content,
     ...(m.images?.length ? { images: m.images } : {}),
+    ...(m.imagePending ? { imagePending: true } : {}),
     ...(m.mind ? { mind: m.mind as StoredChatMessage['mind'] } : {}),
   }))
 }
@@ -421,6 +433,7 @@ function fromStored(msgs: StoredChatMessage[]): ChatMessage[] {
     role: m.role,
     content: m.content,
     ...(m.images?.length ? { images: m.images } : {}),
+    ...(m.imagePending ? { imagePending: true } : {}),
     ...(m.mind ? { mind: m.mind as TurnMind } : {}),
   }))
 }
@@ -587,6 +600,7 @@ export function ChatApp() {
         event.type === 'rag_hit' ||
         event.type === 'kag_selection' ||
         event.type === 'response_complete' ||
+        event.type === 'images_ready' ||
         event.type === 'encoder'
       ) {
         setMind((prev) => {
@@ -594,7 +608,7 @@ export function ChatApp() {
           mindRef.current = next
           return next
         })
-        if (event.type === 'response_complete') {
+        if (event.type === 'response_complete' || event.type === 'images_ready') {
           // Transcript is written server-side; pull it.
           void pullChatStore()
         }
@@ -1112,6 +1126,7 @@ export function ChatApp() {
                           <div className="msg msg-assistant">
                             <div className="msg-label">Mina</div>
                             {renderMessageBody(m.content, m.images)}
+                            {m.imagePending ? <PhotoPending /> : null}
                           </div>
                           {!sending && (
                             <div className="msg-actions">

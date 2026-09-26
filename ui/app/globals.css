@@ -692,6 +692,33 @@ body {
 .chat-image {
   margin: 0.65rem 0 0.35rem;
 }
+.chat-image-pending {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+  min-height: 9.5rem;
+  border-radius: 0.75rem;
+  border: 1px dashed var(--border);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+.photo-spinner {
+  width: 1.05rem;
+  height: 1.05rem;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent-bright);
+  border-radius: 999px;
+  animation: photo-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes photo-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 .chat-image-btn {
   position: relative;
   display: block;

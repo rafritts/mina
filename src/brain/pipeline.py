@@ -22,6 +22,7 @@ import asyncio
 import json
 import os
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from src.application.infra.client import chat_create
@@ -78,7 +79,6 @@ def _memory_excerpts(text: str, bucket: str, limit: int = 3) -> None:
 
 _DECODER_WINDOW_MAX = 20  # rolling window of raw messages for context assembly
 _MINA_WINDOW        = 8   # messages Mina receives directly
-_MAX_TOOL_ROUNDS    = 6
 
 
 def _load_decoder_window() -> list[dict]:
@@ -189,6 +189,8 @@ async def run_turn(
     *,
     image_count: str | int = "auto",
     image_aspect: str = "square",
+    on_voice: Callable[[str], str | None] | None = None,
+    on_photos: Callable[[str, str, list[str]], None] | None = None,
 ) -> dict:
     """
     Run the full per-turn pipeline.
@@ -430,82 +432,91 @@ async def run_turn(
         messages.append({"role": m["role"], "content": content})
 
     tools = CHAT_TOOLS if photo_cap > 0 else None
-    photo_units: list[str] = []
-    photos_sent = 0
     reply = ""
     final_mouth: dict | None = None
-    mouth_obj: dict | None = None
+    photo_calls: list[dict] = []
 
-    for round_num in range(_MAX_TOOL_ROUNDS):
-        create_kwargs: dict = dict(
-            model=MODEL,
-            messages=messages,
-            max_tokens=1024,
-            mouth=True,  # voice + scene JSON every mouth call
-        )
-        if tools and photos_sent < photo_cap:
-            create_kwargs["tools"] = tools
-            create_kwargs["tool_choice"] = "auto"
+    create_kwargs: dict = dict(
+        model=MODEL,
+        messages=messages,
+        max_tokens=1024,
+        mouth=True,
+    )
+    if tools:
+        create_kwargs["tools"] = tools
+        create_kwargs["tool_choice"] = "auto"
 
-        resp = await asyncio.to_thread(chat_create, **create_kwargs)
-        msg = resp.choices[0].message
-        content = msg.content or ""
-        tool_calls = getattr(msg, "tool_calls", None) or []
-        mouth_obj = getattr(msg, "mouth", None)
-
-        if not tool_calls:
-            reply = content
-            if isinstance(mouth_obj, dict):
-                final_mouth = mouth_obj
+    resp = await asyncio.to_thread(chat_create, **create_kwargs)
+    msg = resp.choices[0].message
+    reply = _strip_fake_images(msg.content or "")
+    mouth_obj = getattr(msg, "mouth", None)
+    if isinstance(mouth_obj, dict):
+        final_mouth = mouth_obj
+    for tc in getattr(msg, "tool_calls", None) or []:
+        if getattr(getattr(tc, "function", None), "name", "") != "send_photo":
+            continue
+        if len(photo_calls) >= photo_cap:
             break
+        photo_calls.append(parse_tool_args(tc.function.arguments))
 
-        messages.append({
-            "role": "assistant",
-            "content": content,
-            "tool_calls": [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {
-                        "name": tc.function.name,
-                        "arguments": tc.function.arguments,
-                    },
-                }
-                for tc in tool_calls
-            ],
+    # Voice is missing but a photo was requested — ask for the line before any render.
+    if not reply.strip() and photo_calls:
+        follow_messages = messages + [{
+            "role": "user",
+            "content": (
+                "Write the spoken reply now. Put it in content. "
+                "Set tool_calls to []. The photo brief is already recorded."
+            ),
+        }]
+        follow = await asyncio.to_thread(
+            chat_create,
+            model=MODEL,
+            messages=follow_messages,
+            max_tokens=1024,
+            mouth=True,
+        )
+        follow_msg = follow.choices[0].message
+        reply = _strip_fake_images(follow_msg.content or "")
+        follow_mouth = getattr(follow_msg, "mouth", None)
+        if isinstance(follow_mouth, dict) and not final_mouth:
+            final_mouth = follow_mouth
+
+    ui_message_id: str | None = None
+    image_urls: list[str] = []
+    voice_landed = False
+    if photo_calls:
+        # Land the text before Krea runs. The bubble stays pending until URLs exist.
+        if on_voice is not None:
+            ui_message_id = on_voice(reply)
+        voice_landed = True
+        stream_bus.emit("response_complete", {
+            "text": reply or "",
+            "token_count": 0,
+            "skipped": False,
+            "images": [],
+            "image_pending": True,
         })
-
-        for tc in tool_calls:
-            name = tc.function.name
-            args = parse_tool_args(tc.function.arguments)
-            if name == "send_photo" and photos_sent >= photo_cap:
-                result = f"[send_photo skipped: already sent {photo_cap} this turn]"
-            else:
-                log("PIPELINE", f"Tool {round_num+1}: {name}")
+        photo_units: list[str] = []
+        try:
+            for i, args in enumerate(photo_calls, start=1):
+                log("PIPELINE", f"Photo {i} after voice")
                 result = await asyncio.to_thread(
-                    call_chat_tool, name, args, image_aspect=aspect
+                    call_chat_tool, "send_photo", args, image_aspect=aspect
                 )
-                if name == "send_photo" and "/images/" in result:
-                    photos_sent += 1
+                if "/images/" in result:
                     photo_units.append(result)
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tc.id,
-                "content": result,
+        except Exception as e:
+            log("PIPELINE/PHOTO/ERR", str(e))
+        finally:
+            image_urls = _photo_urls(photo_units)
+            reply = _ensure_photos_in_reply(reply, photo_units, image_urls)
+            image_urls = _photo_urls(photo_units) or _photo_urls([reply])
+            if ui_message_id and on_photos is not None:
+                on_photos(ui_message_id, reply, image_urls)
+            stream_bus.emit("images_ready", {
+                "message_id": ui_message_id or "",
+                "images": image_urls,
             })
-    else:
-        # Exhausted tool rounds without a pure text finish
-        reply = content if content else ""
-        if isinstance(mouth_obj, dict):
-            final_mouth = mouth_obj
-
-    # Host photos are authoritative — strip fakes, then ensure every real URL is in reply
-    image_urls = _photo_urls(photo_units)
-    if photo_units or image_urls:
-        reply = _strip_fake_images(reply or "")
-        reply = _ensure_photos_in_reply(reply, photo_units, image_urls)
-        # Re-extract in case units carried multiple; keep order stable
-        image_urls = _photo_urls(photo_units) or _photo_urls([reply])
 
     # ── 11b. Persist agent-authored live scene ──────────────────────────────
     next_scene = prior_scene
@@ -538,12 +549,13 @@ async def run_turn(
     if image_urls:
         log("MINA", f"images={image_urls}")
 
-    stream_bus.emit("response_complete", {
-        "text": reply or "",
-        "token_count": 0,
-        "skipped": False,
-        "images": image_urls,
-    })
+    if not voice_landed:
+        stream_bus.emit("response_complete", {
+            "text": reply or "",
+            "token_count": 0,
+            "skipped": False,
+            "images": image_urls,
+        })
 
     # ── 12. Post-turn bookkeeping ───────────────────────────────────────────
     decoder_window.append({"role": "assistant", "content": reply, "ts": time.time()})
@@ -576,7 +588,7 @@ async def run_turn(
         scene=next_scene if scene_has_content(next_scene) else None,
     )
 
-    return {"reply": reply, "images": image_urls}
+    return {"reply": reply, "images": image_urls, "ui_message_id": ui_message_id}
 
 
 def _photo_urls(units: list[str]) -> list[str]:

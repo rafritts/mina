@@ -56,6 +56,8 @@ export type StoredChatMessage = {
   role: 'user' | 'assistant'
   content: string
   images?: string[]
+  /** True while a photo for this bubble is still rendering. */
+  imagePending?: boolean
   /** Pillar mind snapshot for this assistant turn (optional). */
   mind?: StoredMind
 }
@@ -146,11 +148,13 @@ function sanitizeMessage(raw: unknown): StoredChatMessage | null {
       )
     : undefined
   const mind = m.role === 'assistant' ? sanitizeMind(m.mind) : undefined
+  const imagePending = m.role === 'assistant' && m.imagePending === true
   return {
     id,
     role: m.role,
     content: m.content,
     ...(images && images.length ? { images } : {}),
+    ...(imagePending ? { imagePending: true } : {}),
     ...(mind ? { mind } : {}),
   }
 }

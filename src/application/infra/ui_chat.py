@@ -118,31 +118,81 @@ def append_user(content: str) -> dict[str, Any]:
         return _write_unlocked(store)
 
 
+def _host_image_urls(images: list[str] | None) -> list[str]:
+    if not images:
+        return []
+    return [
+        u
+        for u in images
+        if isinstance(u, str)
+        and (u.startswith("/images/") or u.startswith("/api/generate/"))
+    ]
+
+
 def append_assistant(
     content: str,
     *,
     images: list[str] | None = None,
     mind: dict[str, Any] | None = None,
+    image_pending: bool = False,
 ) -> dict[str, Any]:
     msg: dict[str, Any] = {
         "id": _new_id("a"),
         "role": "assistant",
         "content": content,
     }
-    if images:
-        msg["images"] = [
-            u
-            for u in images
-            if isinstance(u, str)
-            and (u.startswith("/images/") or u.startswith("/api/generate/"))
-        ]
-        if not msg["images"]:
-            del msg["images"]
+    urls = _host_image_urls(images)
+    if urls:
+        msg["images"] = urls
+    if image_pending:
+        msg["imagePending"] = True
     if mind:
         msg["mind"] = mind
     with _lock:
         store = _read_unlocked()
         store["messages"] = list(store.get("messages") or []) + [msg]
+        store["putRevision"] = int(store.get("putRevision") or 0) + 1
+        return _write_unlocked(store)
+
+
+def update_assistant(
+    message_id: str,
+    *,
+    content: str | None = None,
+    images: list[str] | None = None,
+    image_pending: bool | None = None,
+    mind: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Patch one assistant bubble already on screen (photo landing after the text)."""
+    if not message_id:
+        return None
+    with _lock:
+        store = _read_unlocked()
+        messages = list(store.get("messages") or [])
+        found = False
+        for msg in messages:
+            if not isinstance(msg, dict) or msg.get("id") != message_id:
+                continue
+            found = True
+            if content is not None:
+                msg["content"] = content
+            if images is not None:
+                urls = _host_image_urls(images)
+                if urls:
+                    msg["images"] = urls
+                else:
+                    msg.pop("images", None)
+            if image_pending is not None:
+                if image_pending:
+                    msg["imagePending"] = True
+                else:
+                    msg.pop("imagePending", None)
+            if mind is not None:
+                msg["mind"] = mind
+            break
+        if not found:
+            return None
+        store["messages"] = messages
         store["putRevision"] = int(store.get("putRevision") or 0) + 1
         return _write_unlocked(store)
 

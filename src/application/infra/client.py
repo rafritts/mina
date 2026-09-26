@@ -245,9 +245,10 @@ def _tools_section(tools: list[dict]) -> str:
         })
     return (
         "## Host tools\n"
-        "You cannot invoke Grok Build shell/file tools. To use a host tool, return "
-        "structured JSON with tool_calls (and content null or a short note). "
-        "When finished answering the user, return content with text and tool_calls [].\n\n"
+        "You cannot invoke Grok Build shell/file tools. Put the full reply the user "
+        "reads in content in the same object as any tool_calls. The host shows that "
+        "text immediately, then runs send_photo. Never leave content empty to wait "
+        "for a photo.\n\n"
         + json.dumps(specs, indent=2)
     )
 
@@ -286,8 +287,8 @@ _MOUTH_SCHEMA: dict[str, Any] = {
         "content": {
             "type": ["string", "null"],
             "description": (
-                "What the user reads (Mina's voice). Null/empty only when calling tools "
-                "this round. Alias: response_in_mina_voice."
+                "What the user reads (Mina's voice). Always the full reply, including "
+                "when tool_calls is non-empty. Alias: response_in_mina_voice."
             ),
         },
         "response_in_mina_voice": {
@@ -307,7 +308,10 @@ _MOUTH_SCHEMA: dict[str, Any] = {
                 },
                 "required": ["name", "arguments"],
             },
-            "description": "Host tools this round; empty array on final voice reply.",
+            "description": (
+                "send_photo briefs for this reply, in the same object as content. "
+                "Empty array when there is no photo."
+            ),
         },
         "scene_time": {
             "type": "string",

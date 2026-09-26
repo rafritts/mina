@@ -283,19 +283,45 @@ async def run_claimed(
     stream_bus.register(mind.handle)
     try:
         log("TURN", f"start {turn_id}: {user_message[:80]}")
+        published: dict[str, str | None] = {"id": None}
+
+        def on_voice(text: str) -> str | None:
+            store = ui_chat.append_assistant(
+                text,
+                image_pending=True,
+                mind=mind.snapshot(),
+            )
+            messages = store.get("messages") or []
+            mid = messages[-1]["id"] if messages else None
+            published["id"] = mid
+            return mid
+
+        def on_photos(message_id: str, text: str, images: list[str]) -> None:
+            ui_chat.update_assistant(
+                message_id,
+                content=text,
+                images=images,
+                image_pending=False,
+                mind=mind.snapshot(),
+            )
+
         result = await run_turn(
             user_message,
             username,
             sim,
             image_count=image_count,
             image_aspect=image_aspect,
+            on_voice=on_voice,
+            on_photos=on_photos,
         )
         if isinstance(result, dict):
             reply = (result.get("reply") or "").strip()
             images = result.get("images") or []
+            ui_message_id = result.get("ui_message_id") or published["id"]
         else:
             reply = (result or "").strip()
             images = []
+            ui_message_id = published["id"]
 
         if not reply:
             reply = "(empty reply)"
@@ -305,11 +331,20 @@ async def run_claimed(
             if isinstance(url, str) and url.startswith("/images/") and url not in reply:
                 reply = f"{reply}\n\n![photo]({url})"
 
-        ui_chat.append_assistant(
-            reply,
-            images=[u for u in images if isinstance(u, str)],
-            mind=mind.snapshot(),
-        )
+        if ui_message_id:
+            ui_chat.update_assistant(
+                ui_message_id,
+                content=reply,
+                images=[u for u in images if isinstance(u, str)],
+                image_pending=False,
+                mind=mind.snapshot(),
+            )
+        else:
+            ui_chat.append_assistant(
+                reply,
+                images=[u for u in images if isinstance(u, str)],
+                mind=mind.snapshot(),
+            )
         _finish_ok(turn_id)
         log("TURN", f"done {turn_id}")
     except Exception as e:

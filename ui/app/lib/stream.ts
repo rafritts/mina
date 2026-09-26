@@ -101,6 +101,14 @@ export interface ResponseCompleteEvent {
   }
 }
 
+export interface ImagesReadyEvent {
+  type: 'images_ready'
+  payload: {
+    message_id?: string
+    images?: string[]
+  }
+}
+
 export interface TurnStatusEvent {
   type: 'turn_status'
   payload: {
@@ -128,6 +136,7 @@ export type StreamEvent =
   | EmotionPillarEvent
   | ReasoningEvent
   | ResponseCompleteEvent
+  | ImagesReadyEvent
   | TurnStatusEvent
   | TickObsEvent
 
