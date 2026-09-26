@@ -240,8 +240,12 @@ async def run_turn(
     relationship_modifier = await asyncio.to_thread(get_relationship_modifier, username)
     log("PIPELINE", f"relationship_modifier({username})={relationship_modifier}")
 
+    turn_depth = len(decoder_window)
     chem_deltas = await asyncio.to_thread(
-        sim.apply_chemistry_from_encoder, encoder_output, relationship_modifier
+        sim.apply_chemistry_from_encoder,
+        encoder_output,
+        relationship_modifier,
+        turn_depth,
     )
     _emit_stage("chemistry", "Chemistry settling")
     # Appraisal + applied Class-1 deltas for mind stream (after chemistry runs)

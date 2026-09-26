@@ -25,6 +25,66 @@ from .params import (
 
 _SALIENCE_FLOOR = 2  # axis values ≤ this are ignored
 
+# Register-shift impulse in normalized units, added after EVENT_GAIN.
+# A full stake (magnitude 10, axis 10, probability 1) is sized so PFC and
+# feedback still leave epinephrine around gap +4 to +5 — a felt rush, not a
+# tenth of a nanomole. Cold opens stay small because probability stays low.
+_REGISTER_IMPULSE = {
+    "epinephrine": 8.0,
+    "norepinephrine": 5.5,
+}
+_STAKE_AXES = ("threat", "social_threat", "loss", "arousal", "romance", "bonding")
+
+
+def stake_probability(relationship_modifier: float, turn_depth: int) -> float:
+    """
+    How likely this event is to matter.
+
+    The relationship file is one prior (empty file → stranger, 0.1). A live
+    exchange is the other: a dozen turns in, a breakup is not a cold open
+    even when memory/relationships/ has not been written yet.
+    """
+    try:
+        prior = float(relationship_modifier)
+    except (TypeError, ValueError):
+        prior = 0.1
+    prior = max(0.1, min(1.0, prior))
+    exchanges = max(0, int(turn_depth) - 1)
+    density = min(1.0, exchanges / 12.0)
+    live = 0.1 + 0.75 * density
+    return round(max(prior, live), 3)
+
+
+def _axis(encoder_output: dict, name: str) -> float:
+    try:
+        return max(0.0, min(10.0, float(encoder_output.get(name, 0) or 0)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _register_impulse(
+    chemical: str,
+    encoder_output: dict,
+    relationship_modifier: float,
+    turn_depth: int,
+) -> float:
+    """Normalized-unit adrenaline/alertness burst for a real register shift."""
+    full = _REGISTER_IMPULSE.get(chemical)
+    if not full:
+        return 0.0
+    if not encoder_output.get("register_shift"):
+        return 0.0
+    if not encoder_output.get("directed_at_mina", False):
+        return 0.0
+    magnitude = _axis(encoder_output, "expected_magnitude") / 10.0
+    if magnitude < 0.3:
+        return 0.0
+    stake = max(_axis(encoder_output, axis) for axis in _STAKE_AXES) / 10.0
+    if stake < 0.4:
+        return 0.0
+    probability = stake_probability(relationship_modifier, turn_depth)
+    return full * magnitude * stake * probability
+
 
 def _get_normalized(state: ChemicalState, chemical: str) -> float:
     """Current 0-10 normalized value for a chemical."""
@@ -41,6 +101,7 @@ def apply_chemistry(
     state: ChemicalState,
     big5: dict[str, float],
     relationship_modifier: float = 1.0,
+    turn_depth: int = 0,
 ) -> dict[str, float]:
     """
     Apply encoder axis activations as Class 1 phasic deltas.
@@ -58,6 +119,8 @@ def apply_chemistry(
     }
     big5: {"neuroticism": 65, "extraversion": 48, ...}
     relationship_modifier: multiplier from relationship state (bonding dimension)
+    turn_depth: messages in the live window, including this one. Raises stake
+    probability so an in-progress conversation is not treated as a stranger.
     """
     applied: dict[str, float] = {}
 
@@ -79,15 +142,21 @@ def apply_chemistry(
                 axis_val = 0  # floor for positive-weight axes
             raw_delta += axis_val * weight
 
-        if abs(raw_delta) < 0.01:
+        impulse = _register_impulse(
+            chem, encoder_output, relationship_modifier, turn_depth
+        )
+        if abs(raw_delta) < 0.01 and impulse <= 0:
             continue
 
         # Scale by salience and relationship modifier
         salience_scale = encoder_output.get("salience", 5) / 5.0
         raw_delta *= salience_scale * relationship_modifier
 
-        # Global event gain — keeps chatbot-scale inputs sub-physiological
+        # Global event gain — keeps chatbot-scale inputs sub-physiological.
+        # The register-shift impulse is added after, so a breakup is not
+        # shrunk by the same gain that keeps small talk small.
         raw_delta *= EVENT_GAIN
+        raw_delta += impulse
 
         # PFC frontend regulation
         neuroticism = big5.get("neuroticism", 50.0)

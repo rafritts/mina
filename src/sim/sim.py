@@ -91,6 +91,7 @@ class Sim:
         self,
         encoder_output: dict,
         relationship_modifier: float = 1.0,
+        turn_depth: int = 0,
     ) -> dict[str, float]:
         """Run the chemistry function against encoder output, applying Class 1 deltas.
 
@@ -99,7 +100,11 @@ class Sim:
         from .chemistry import apply_chemistry
         with self._lock:
             return apply_chemistry(
-                encoder_output, self._state, self._big5, relationship_modifier
+                encoder_output,
+                self._state,
+                self._big5,
+                relationship_modifier,
+                turn_depth,
             )
 
     def snapshot(self) -> dict[str, dict[str, int]]:
