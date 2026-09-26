@@ -119,9 +119,7 @@ mina/
 ├── docs/
 │   ├── architecture.md     # Authoritative v2 design (read this)
 │   ├── chemical_fidelity_tiers.md
-│   ├── neurochemistry/     # Reference notes
-│   └── archive/v1/         # Historical specs (not current code map)
-├── archive/v1/             # Old Discord-era codebase (do not treat as live)
+│   └── neurochemistry/     # Reference notes
 └── tests/                  # Sim stability, etc.
 ```
 
@@ -258,10 +256,10 @@ Mina is not an assistant persona. She is a character with chemistry, memory, and
 |------|--------|
 | Discord bot | Removed in v2 |
 | Nori SDK / agentic tool harness for turns | Explicitly out of scope |
-| v1 6-tier arcade sim | Archived under `archive/v1/` and `docs/archive/v1/` |
+| v1 6-tier arcade sim and its specs | Removed. `docs/SPEC-60-V1-TOMBSTONE.md` records the cut |
 | Root README claims of “Discord DM companion” | Superseded by this document |
 
-v1 specs are historical. For current design decisions, trust **`docs/architecture.md`** + the code under `src/`.
+For current design decisions, trust **`docs/architecture.md`** + the code under `src/`.
 
 ---
 

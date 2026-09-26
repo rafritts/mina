@@ -1,13 +1,14 @@
 # SPEC-60 — V1 Tombstone
 
 **Status:** Complete  
-**Date:** 2026-05-02
+**Date:** 2026-05-02  
+**Update:** 2026-09-26 — `archive/v1/` and `docs/archive/v1/` were deleted from the repo. This file is the remaining record.
 
 ---
 
 ## Overview
 
-The v1 biological simulation — 6-tier neurotransmitter engine, 85 modules, 60 specs, Next.js dashboard — is archived. What remains is the minimal Discord + xAI shell needed to build on top of.
+The v1 biological simulation — 6-tier neurotransmitter engine, 85 modules, 60 specs, Next.js dashboard — was archived, then removed from the tree. What remained at the time of the cut was the minimal Discord + xAI shell needed to build on top of.
 
 The rule: **does this code have value without the simulation?** If yes, keep it. If it exists only to serve the sim, archive it.
 
@@ -49,9 +50,11 @@ Kept but sim-specific content removed.
 
 ---
 
-## Archive
+## Removed from the repo
 
-**`./archive/v1/`** — all archived code (mirroring original paths):
+These trees lived under `archive/v1/` and `docs/archive/v1/` until 2026-09-26. They are gone.
+
+**Code** (mirrored original paths):
 - `src/brain/` — cortex, amygdala, hippocampus, subconscious, brainstem
 - `src/engine/` — state tick engine, all biological tier modules
 - `src/application/tools/` — bio_report, sim_baseline
@@ -64,7 +67,7 @@ Kept but sim-specific content removed.
 - `scripts/chat_sim.py`, `sim_decay_test.py`, `validate.py`, `factory_reset.py`, `convos/`
 - `main.py`, `docker-compose.yml`, `toolbox/`
 
-**`./docs/archive/v1/`** — all prior specs (SPEC-00 through SPEC-59, SPEC-MANIFEST.md, legacy spec-* files).
+**Specs** that were under `docs/archive/v1/`: SPEC-00 through SPEC-59, SPEC-MANIFEST.md, and the legacy spec-* files.
 
 ---
 
