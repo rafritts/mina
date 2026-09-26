@@ -739,8 +739,8 @@ def erase_chat_history() -> dict:
     Wipe conversation-facing history so the next turn starts fresh.
 
     Clears: conversation logs, decoder window, turn/context dumps, prior
-    emotional state from chat, live scene, sliding (short-term) RAG, and
-    the free-time session log the UI lists.
+    emotional state from chat, live scene, sliding (short-term) RAG, the
+    free-time session log the UI lists, and chat photos under run/chat-images.
 
     Keeps: chemistry, episodic RAG, KAG, relationship files.
     """

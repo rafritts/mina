@@ -214,6 +214,7 @@ factory-reset)
     rm -f "$RUN_DIR/last_freetime.md"
     rm -f "$RUN_DIR/freetime_log.jsonl"
     rm -f "$RUN_DIR/turns.jsonl"
+    rm -rf "$RUN_DIR/chat-images"
     rm -rf "$REPO_DIR/memory/rag"
     echo "Factory reset complete. Restarting service..."
     _svc restart

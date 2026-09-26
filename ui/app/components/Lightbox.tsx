@@ -10,6 +10,7 @@ import {
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useCachedImage } from '../lib/image-cache'
 
 type Props = {
   urls: string[]
@@ -19,8 +20,10 @@ type Props = {
 }
 
 export function Lightbox({ urls, index, onClose, onIndex }: Props) {
-  const url = urls[index]
+  const url = urls[index] ?? ''
+  const cached = useCachedImage(url)
   const hasMany = urls.length > 1
+  const filename = url.split('/').pop() || 'photo'
 
   const prev = useCallback(() => {
     onIndex((index - 1 + urls.length) % urls.length)
@@ -67,7 +70,7 @@ export function Lightbox({ urls, index, onClose, onIndex }: Props) {
         </span>
         <div className="lightbox-actions">
           <a
-            href={url}
+            href={cached.src ?? url}
             target="_blank"
             rel="noreferrer"
             className="lightbox-icon-btn"
@@ -76,8 +79,8 @@ export function Lightbox({ urls, index, onClose, onIndex }: Props) {
             <ExternalLink className="h-5 w-5" />
           </a>
           <a
-            href={url}
-            download
+            href={cached.src ?? url}
+            download={filename}
             className="lightbox-icon-btn"
             title="Download"
           >
@@ -126,12 +129,15 @@ export function Lightbox({ urls, index, onClose, onIndex }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          key={url}
-          src={url}
-          alt=""
-          className="lightbox-img"
-        />
+        {cached.src ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            key={cached.src}
+            src={cached.src}
+            alt=""
+            className="lightbox-img"
+          />
+        ) : null}
       </div>
 
       {hasMany ? (

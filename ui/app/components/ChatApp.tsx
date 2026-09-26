@@ -39,6 +39,7 @@ import { ThoughtStream } from './ThoughtStream'
 import { ControlPane } from './ControlPane'
 import { ChatContextModal } from './ChatContextModal'
 import { Lightbox } from './Lightbox'
+import { retainImageCache, useCachedImage } from '../lib/image-cache'
 import { useStatePoller } from '../lib/hooks/useStatePoller'
 import { AppRoot } from './shell/AppRoot'
 import { AppHeader } from './shell/AppHeader'
@@ -154,10 +155,10 @@ function ChatImage({
   urls: string[]
   index: number
 }) {
-  const [failed, setFailed] = useState(false)
+  const cached = useCachedImage(src)
   const [lightbox, setLightbox] = useState<number | null>(null)
 
-  if (failed) {
+  if (cached.failed) {
     return (
       <div className="alert alert-error my-2 text-[11px] mono">
         Image failed to load
@@ -171,18 +172,20 @@ function ChatImage({
         <button
           type="button"
           className="chat-image-btn"
-          onClick={() => setLightbox(index)}
+          onClick={() => cached.src && setLightbox(index)}
           aria-label={caption ? `View image: ${caption}` : 'View image larger'}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={src}
-            alt={alt}
-            className="max-w-full rounded-xl border border-[var(--border)]"
-            style={{ maxHeight: '26rem' }}
-            loading="lazy"
-            onError={() => setFailed(true)}
-          />
+          {cached.src ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={cached.src}
+              alt={alt}
+              className="max-w-full rounded-xl border border-[var(--border)]"
+              style={{ maxHeight: '26rem' }}
+            />
+          ) : (
+            <span className="chat-image-loading" aria-hidden />
+          )}
           <span className="chat-image-open-hint" aria-hidden>
             Open
           </span>
@@ -841,6 +844,15 @@ export function ChatApp() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, sending, mind])
+
+  // Drop cached photos that are no longer in the transcript (Clear / erase).
+  useEffect(() => {
+    if (!hydrated) return
+    const urls = messages.flatMap((m) =>
+      m.role === 'assistant' ? extractImageUrls(m.content, m.images) : [],
+    )
+    void retainImageCache(urls)
+  }, [hydrated, messages])
 
   useEffect(() => {
     const onErase = () => {

@@ -7,6 +7,7 @@ Saves durable files under run/chat-images/ served by the Next UI at /images/*.
 from __future__ import annotations
 
 import os
+import re
 import time
 import uuid
 from pathlib import Path
@@ -18,12 +19,51 @@ from src.config.config import RUN_DIR
 
 COMFY_FE_URL = os.getenv("COMFY_FE_URL", "http://127.0.0.1:8886").rstrip("/")
 CHAT_IMAGES_DIR = Path(RUN_DIR) / "chat-images"
+_IMAGE_NAME = re.compile(r"/images/([A-Za-z0-9._-]+)")
 
 ASPECT_KREA = {
     "landscape": "16:9 (Widescreen)",
     "square": "1:1 (Square)",
     "portrait": "2:3 (Portrait Photo)",
 }
+
+
+def referenced_image_names(messages: list) -> set[str]:
+    """Filenames under /images/ still cited by the UI transcript."""
+    names: set[str] = set()
+    for msg in messages:
+        if not isinstance(msg, dict):
+            continue
+        blobs: list[str] = [str(msg.get("content") or "")]
+        images = msg.get("images")
+        if isinstance(images, list):
+            blobs.extend(str(u) for u in images)
+        for blob in blobs:
+            names.update(_IMAGE_NAME.findall(blob))
+    return names
+
+
+def gc_chat_images(keep_names: set[str]) -> list[str]:
+    """Delete run/chat-images files the transcript no longer references."""
+    if not CHAT_IMAGES_DIR.is_dir():
+        return []
+    removed: list[str] = []
+    root = CHAT_IMAGES_DIR.resolve()
+    for path in CHAT_IMAGES_DIR.iterdir():
+        if not path.is_file():
+            continue
+        if path.name in keep_names:
+            continue
+        try:
+            if path.resolve().parent != root:
+                continue
+            path.unlink()
+            removed.append(path.name)
+        except OSError as e:
+            log("COMFY", f"image gc {path.name}: {e}")
+    if removed:
+        log("COMFY", f"dropped {len(removed)} chat image(s)")
+    return removed
 
 
 def krea_aspect(aspect: str | None) -> str:

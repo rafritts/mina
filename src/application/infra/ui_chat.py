@@ -88,6 +88,14 @@ def _write_unlocked(store: dict[str, Any]) -> dict[str, Any]:
         f.write(json.dumps(next_store, indent=2, ensure_ascii=False))
         f.write("\n")
     os.replace(tmp, UI_CHAT_PATH)
+    try:
+        from src.application.infra.comfy import gc_chat_images, referenced_image_names
+
+        gc_chat_images(referenced_image_names(next_store["messages"]))
+    except Exception as e:
+        from src.application.infra.log import log
+
+        log("UI_CHAT", f"image gc: {e}")
     return next_store
 
 

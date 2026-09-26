@@ -8,7 +8,7 @@
  * primarily GETs; PUTs are for image prefs (and explicit Clear).
  */
 
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { isImageAspect, type ImageAspect } from './image-aspect'
 import {
@@ -242,5 +242,66 @@ export async function writeChatStoreUnlocked(
   const tmp = `${file}.${process.pid}.${Date.now()}.tmp`
   await writeFile(tmp, `${JSON.stringify(next, null, 2)}\n`, 'utf8')
   await rename(tmp, file)
+  await gcChatImages(next.messages)
   return next
+}
+
+/** Chat photos sit beside the Python process: run/chat-images. */
+export function chatImagesDir(): string {
+  return path.resolve(
+    /* turbopackIgnore: true */ process.cwd(),
+    '..',
+    'run',
+    'chat-images',
+  )
+}
+
+function referencedImageNames(
+  messages: { content?: string; images?: string[] }[],
+): Set<string> {
+  const names = new Set<string>()
+  for (const message of messages) {
+    const blobs = [message.content ?? '', ...(message.images ?? [])]
+    for (const blob of blobs) {
+      for (const match of blob.matchAll(/\/images\/([A-Za-z0-9._-]+)/g)) {
+        names.add(match[1])
+      }
+    }
+  }
+  return names
+}
+
+/** Drop photo files the saved transcript no longer cites. */
+export async function gcChatImages(
+  messages: { content?: string; images?: string[] }[],
+): Promise<string[]> {
+  const keep = referencedImageNames(messages)
+  const dir = chatImagesDir()
+  let entries: string[]
+  try {
+    entries = await readdir(dir)
+  } catch (e) {
+    const err = e as NodeJS.ErrnoException
+    if (err.code === 'ENOENT') return []
+    console.error('[chat-store] image gc failed', err)
+    return []
+  }
+  const root = path.resolve(dir)
+  const removed: string[] = []
+  for (const name of entries) {
+    if (!/^[A-Za-z0-9._-]+$/.test(name) || keep.has(name)) continue
+    const file = path.resolve(root, name)
+    if (!file.startsWith(root + path.sep)) continue
+    try {
+      await unlink(file)
+      removed.push(name)
+    } catch (e) {
+      const err = e as NodeJS.ErrnoException
+      if (err.code !== 'ENOENT') console.error('[chat-store] image gc', name, err)
+    }
+  }
+  if (removed.length) {
+    console.log(`[chat-store] dropped ${removed.length} chat image(s)`)
+  }
+  return removed
 }

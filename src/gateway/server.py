@@ -448,7 +448,7 @@ async def erase_conversation():
     """
     Erase chat history Mina can still see: conversation logs, rolling window,
     turn dumps, prior affect stickiness, short-term sliding RAG, UI transcript,
-    and the free-time session log.
+    free-time session log, and saved chat photos.
 
     Does not touch chemistry, episodic RAG, KAG, or relationships.
     """

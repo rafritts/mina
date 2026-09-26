@@ -744,6 +744,14 @@ body {
 .chat-image img {
   display: block;
 }
+.chat-image-loading {
+  display: block;
+  width: min(100%, 18rem);
+  height: 12rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--border) 35%, transparent);
+}
 .chat-image-open-hint {
   position: absolute;
   bottom: 0.5rem;
