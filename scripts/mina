@@ -67,6 +67,162 @@ _svc() {
   fi
 }
 
+# Ollama serves RAG embeddings (:11434). This CLI starts and stops it.
+# It is not its own Keep-managed service and not a Keep directory entry.
+_brew_bin() {
+  local c
+  for c in /opt/homebrew/bin/brew /home/linuxbrew/.linuxbrew/bin/brew /usr/local/bin/brew; do
+    if [[ -x "$c" ]]; then
+      printf '%s\n' "$c"
+      return 0
+    fi
+  done
+  if command -v brew >/dev/null 2>&1; then
+    command -v brew
+    return 0
+  fi
+  return 1
+}
+
+_ollama_brew_formula() {
+  local brew
+  brew="$(_brew_bin)" || return 1
+  "$brew" list --formula ollama &>/dev/null
+}
+
+_ollama_bin() {
+  local c brew prefix
+  if brew="$(_brew_bin 2>/dev/null || true)"; [[ -n "${brew:-}" ]]; then
+    prefix="$("$brew" --prefix 2>/dev/null || true)"
+    if [[ -n "$prefix" && -x "$prefix/bin/ollama" ]]; then
+      printf '%s\n' "$prefix/bin/ollama"
+      return 0
+    fi
+  fi
+  for c in \
+    "$(command -v ollama 2>/dev/null || true)" \
+    /opt/homebrew/bin/ollama \
+    /usr/local/bin/ollama \
+    /usr/bin/ollama \
+    "$HOME/.local/bin/ollama"
+  do
+    [[ -n "$c" && -x "$c" ]] || continue
+    printf '%s\n' "$c"
+    return 0
+  done
+  return 1
+}
+
+_ollama_systemd_user() {
+  command -v systemctl >/dev/null 2>&1 || return 1
+  systemctl --user cat ollama.service &>/dev/null
+}
+
+_ollama_systemd_system() {
+  command -v systemctl >/dev/null 2>&1 || return 1
+  systemctl cat ollama.service &>/dev/null
+}
+
+_ollama_listening() {
+  curl -sf --max-time 2 "http://127.0.0.1:11434/api/tags" >/dev/null 2>&1
+}
+
+_ollama_wait() {
+  local i
+  for i in $(seq 1 20); do
+    if _ollama_listening; then
+      return 0
+    fi
+    echo -n "."
+    sleep 1
+  done
+  return 1
+}
+
+# Warn and continue when Ollama is missing or will not come up. Chat still runs;
+# embeddings stay empty until :11434 answers.
+_ollama_start() {
+  local brew bin
+  if _ollama_listening; then
+    echo "Ollama already listening on :11434"
+    return 0
+  fi
+
+  if _ollama_brew_formula; then
+    brew="$(_brew_bin)"
+    echo "Starting Ollama (brew services)..."
+    if ! "$brew" services start ollama; then
+      echo "WARNING: brew services start ollama failed. Embeddings may be empty." >&2
+      return 0
+    fi
+  elif _ollama_systemd_user; then
+    echo "Starting Ollama (systemd --user)..."
+    if ! systemctl --user start ollama; then
+      echo "WARNING: systemctl --user start ollama failed. Embeddings may be empty." >&2
+      return 0
+    fi
+  elif _ollama_systemd_system; then
+    echo "Starting Ollama (systemd)..."
+    if ! systemctl start ollama; then
+      echo "WARNING: systemctl start ollama failed. Embeddings may be empty." >&2
+      return 0
+    fi
+  elif bin="$(_ollama_bin)"; [[ -n "${bin:-}" ]]; then
+    echo "Starting Ollama (ollama serve)..."
+    mkdir -p "$CONFIG_DIR"
+    nohup "$bin" serve >>"$CONFIG_DIR/ollama.log" 2>&1 &
+    echo $! > "$CONFIG_DIR/ollama.pid"
+  else
+    echo "WARNING: Ollama is not installed. RAG embeddings stay empty until it is (http://127.0.0.1:11434)." >&2
+    return 0
+  fi
+
+  echo -n "Waiting for Ollama"
+  if _ollama_wait; then
+    echo " ready."
+    return 0
+  fi
+  echo " not answering."
+  echo "WARNING: Ollama did not answer on :11434. Continuing; embeddings may be empty." >&2
+  return 0
+}
+
+_ollama_stop() {
+  local brew pid
+  if _ollama_brew_formula; then
+    brew="$(_brew_bin)"
+    echo "Stopping Ollama (brew services)..."
+    if ! "$brew" services stop ollama; then
+      echo "WARNING: brew services stop ollama failed." >&2
+    fi
+    return 0
+  fi
+  if _ollama_systemd_user; then
+    echo "Stopping Ollama (systemd --user)..."
+    if ! systemctl --user stop ollama; then
+      echo "WARNING: systemctl --user stop ollama failed." >&2
+    fi
+    return 0
+  fi
+  if _ollama_systemd_system; then
+    echo "Stopping Ollama (systemd)..."
+    if ! systemctl stop ollama; then
+      echo "WARNING: systemctl stop ollama failed." >&2
+    fi
+    return 0
+  fi
+  if [[ -f "$CONFIG_DIR/ollama.pid" ]]; then
+    pid="$(cat "$CONFIG_DIR/ollama.pid" 2>/dev/null || true)"
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      echo "Stopping Ollama (pid ${pid})..."
+      kill "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+    fi
+    rm -f "$CONFIG_DIR/ollama.pid"
+  fi
+  return 0
+}
+
 # Build with the same absolute npm install.sh recorded. Empty if there is no UI.
 _build() {
   local npm="${APP_NPM_BIN:-}"
@@ -123,6 +279,7 @@ case "$cmd" in
       [[ "$confirm" =~ ^[Yy]$ ]] || exit 0
     fi
     _svc stop || true
+    _ollama_stop || true
     _svc disable || true
     if [[ "$OS" == "Darwin" ]]; then
       rm -f "$PLIST"
@@ -138,6 +295,7 @@ case "$cmd" in
     bash "$REPO_DIR/scripts/install.sh" --setup-only
     ;;
   start)
+    _ollama_start
     _svc start
     echo -n "Starting"
     _wait_ready
@@ -145,10 +303,12 @@ case "$cmd" in
     echo "Backend: http://127.0.0.1:${BACKEND_PORT}"
     ;;
   stop)
-    _svc stop
+    _svc stop || true
+    _ollama_stop
     ;;
   restart)
     _build
+    _ollama_start
     echo "Restarting..."
     _svc restart
     echo -n "Waiting"
@@ -160,6 +320,11 @@ case "$cmd" in
     echo ""
     echo "URL: http://127.0.0.1:${APP_PORT}"
     echo "Backend: http://127.0.0.1:${BACKEND_PORT}"
+    if _ollama_listening; then
+      echo "Ollama:  http://127.0.0.1:11434"
+    else
+      echo "Ollama:  not running"
+    fi
     _print_build_id || true
     ;;
   enable)
@@ -196,6 +361,7 @@ case "$cmd" in
     ;;
   rebuild)
     _build
+    _ollama_start
     echo "Restarting..."
     _svc restart
     echo -n "Waiting"
@@ -214,6 +380,7 @@ case "$cmd" in
       (cd "$REPO_DIR" && "$APP_NPM_BIN" install)
     fi
     _build
+    _ollama_start
     echo "Restarting..."
     _svc restart
     echo -n "Waiting"
@@ -259,6 +426,7 @@ case "$cmd" in
     find "$REPO_DIR/memory/kag" -type f -delete
     find "$REPO_DIR/memory/relationships" -type f -delete
     echo "Factory reset complete. Restarting service..."
+    _ollama_start
     _svc restart
     ;;
   help|--help|-h)
@@ -271,9 +439,9 @@ Setup:
   setup              Rewrite the service file and tools.env
 
 Service:
-  start              Start and wait until ready
-  stop               Stop (macOS: bootout, so KeepAlive cannot relaunch it)
-  restart            Build, restart, print the build id
+  start              Start Ollama if installed, then mina, and wait until ready
+  stop               Stop mina and Ollama (macOS mina: bootout)
+  restart            Build, ensure Ollama is up, restart, print the build id
   status             Status and build id
   enable             Autostart at login
   disable            No autostart at login
@@ -288,6 +456,9 @@ Maintenance:
 
 UI:      http://127.0.0.1:${APP_PORT}
 Backend: http://127.0.0.1:${BACKEND_PORT}
+Ollama embeddings (:11434) start and stop with mina. If Ollama is not
+installed, start warns and mina still comes up.
+On macOS with Homebrew ollama: brew services start/stop ollama.
 After restart, rebuild, update, and status, the command prints:
   GIVE THIS BUILD ID TO THE USER <id>
 Copy that line to the user. The UI and GET /api/build carry the same id.

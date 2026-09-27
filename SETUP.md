@@ -179,7 +179,7 @@ The service does not read the shell rc. `PATH` is whatever install wrote. Re-run
 
 ```bash
 mina help
-mina start | stop | restart | status
+mina start | stop | restart | status   # start/stop also start/stop Ollama (:11434)
 mina enable | disable         # login autostart only; does not start or stop
 mina logs [-f] [-n 200]       # journalctl on Linux; ~/Library/Logs/mina.log on macOS
 mina rebuild                  # npm build + restart; prints build id
@@ -231,10 +231,11 @@ Hippocampus expects:
 - Base URL: `http://localhost:11434`
 - Model: `embeddinggemma:latest`
 
+`mina start` starts Ollama before the backend and UI. `mina stop` stops it. `restart`, `rebuild`, and `update` make sure it is up before mina comes back. It is not a separate service entry. On macOS, Homebrew `ollama` is `brew services start ollama` / `brew services stop ollama`. On Linux, a systemd `ollama` unit is used when present, otherwise `ollama serve`. If Ollama is not installed, start warns and mina still comes up; embeddings stay empty.
+
 ```bash
-# Example — adjust to your Ollama install
 ollama pull embeddinggemma:latest
-curl -sf http://localhost:11434/api/tags
+curl -sf http://127.0.0.1:11434/api/tags
 ```
 
 Without embeddings, consolidation/retrieval may error or return empty; the rest of the pipeline can still answer with thinner context.

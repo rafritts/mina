@@ -15,6 +15,41 @@ read -r -p "Type 'yes' to continue: " confirm
 
 echo "Uninstalling mina..."
 
+# Same lifecycle as `mina stop`: Ollama is not a separate Keep service.
+_stop_ollama() {
+  local brew="" c pid
+  for c in /opt/homebrew/bin/brew /home/linuxbrew/.linuxbrew/bin/brew /usr/local/bin/brew; do
+    if [[ -x "$c" ]]; then
+      brew="$c"
+      break
+    fi
+  done
+  if [[ -z "$brew" ]] && command -v brew >/dev/null 2>&1; then
+    brew="$(command -v brew)"
+  fi
+  if [[ -n "$brew" ]] && "$brew" list --formula ollama &>/dev/null; then
+    echo "Stopping Ollama (brew services)..."
+    "$brew" services stop ollama || echo "WARNING: brew services stop ollama failed." >&2
+    return 0
+  fi
+  if command -v systemctl >/dev/null 2>&1; then
+    if systemctl --user cat ollama.service &>/dev/null; then
+      systemctl --user stop ollama || echo "WARNING: systemctl --user stop ollama failed." >&2
+      return 0
+    fi
+    if systemctl cat ollama.service &>/dev/null; then
+      systemctl stop ollama || echo "WARNING: systemctl stop ollama failed." >&2
+      return 0
+    fi
+  fi
+  if [[ -f "$CONFIG_DIR/ollama.pid" ]]; then
+    pid="$(cat "$CONFIG_DIR/ollama.pid" 2>/dev/null || true)"
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      echo "Stopping Ollama (pid ${pid})..."
+      kill "$pid" 2>/dev/null || true
+    fi
+  fi
+}
 if [[ "$OS" == "Darwin" ]]; then
   launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
   launchctl disable "gui/$(id -u)/$LABEL" 2>/dev/null || true
@@ -30,6 +65,8 @@ else
     echo "Removed: $unit"
   fi
 fi
+
+_stop_ollama || true
 
 rm -f "$BIN_DIR/$APP_NAME"
 rm -rf "$CONFIG_DIR"
