@@ -1,109 +1,143 @@
 #!/usr/bin/env bash
-# Install Mina as a systemd user service (sim backend + Next UI) and CLI.
+# Install mina as a user service and a ~/.local/bin command.
+# Linux: systemd --user. macOS: launchd LaunchAgent. Same command either way.
+#
+# Dual process (scripts/run.sh): UI on APP_PORT / MINA_UI_PORT 2050,
+# Python backend on MINA_BACKEND_PORT 5100. Both names are written into the
+# unit or plist and into ~/.config/mina/tools.env.
 set -euo pipefail
+
+APP_NAME="mina"
+LABEL="com.rafritts.mina"
+DEFAULT_PORT="2050"
+BACKEND_PORT="5100"
+COMFY_FE_URL_DEFAULT="http://127.0.0.1:8886"
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SETUP_ONLY="${1:-}"
+OS="$(uname -s)"
 
-# ---------------------------------------------------------------------------
-# Find uv
-# ---------------------------------------------------------------------------
-UV_BIN=""
-for candidate in \
-    "$HOME/.local/bin/uv" \
-    "$HOME/.cargo/bin/uv" \
-    "/home/linuxbrew/.linuxbrew/bin/uv" \
-    "$(command -v uv 2>/dev/null || true)"
-do
-    [[ -x "$candidate" ]] || continue
-    UV_BIN="$candidate"
-    break
-done
+# Directory that should lead PATH for this executable.
+# Walk symlinks. Stop at the first directory that contains `node`.
+# dirname(symlink) is the symlink's folder. realpath lands in a Cellar keg.
+# Neither of those is the right prefix when `node` sits one hop earlier.
+bin_dir_for_path() {
+  local bin="$1" dir next
+  [[ -e "$bin" || -L "$bin" ]] || return 1
+  while [[ -L "$bin" ]]; do
+    dir="$(cd "$(dirname "$bin")" && pwd -P)"
+    if [[ -x "$dir/node" ]]; then
+      printf '%s\n' "$dir"
+      return 0
+    fi
+    next="$(readlink "$bin")"
+    if [[ "$next" != /* ]]; then
+      next="$dir/$next"
+    fi
+    bin="$(cd "$(dirname "$next")" && pwd -P)/$(basename "$next")"
+  done
+  dir="$(cd "$(dirname "$bin")" && pwd -P)"
+  printf '%s\n' "$dir"
+}
 
-if [[ -z "$UV_BIN" ]]; then
-    echo "Error: uv not found. Install it from https://github.com/astral-sh/uv" >&2
-    exit 1
-fi
+add_path() {
+  local dir="$1"
+  [[ -n "$dir" && -d "$dir" ]] || return 0
+  case ":${SERVICE_PATH:-}:" in
+    *":$dir:"*) ;;
+    *) SERVICE_PATH="${SERVICE_PATH:+$SERVICE_PATH:}$dir" ;;
+  esac
+}
 
-# ---------------------------------------------------------------------------
-# Find npm / Node
-# ---------------------------------------------------------------------------
-NODE_BIN_DIR=""
-for candidate in \
-    "$(command -v npm 2>/dev/null || true)" \
-    "$HOME/.nvm/versions/node/"*/bin/npm \
-    "/home/linuxbrew/.linuxbrew/bin/npm" \
-    "/usr/local/bin/npm" \
-    "/usr/bin/npm"
-do
-    [[ -x "$candidate" ]] || continue
-    NODE_BIN_DIR="$(cd "$(dirname "$candidate")" && pwd)"
-    break
-done
+brew_prefix() {
+  local c
+  for c in /opt/homebrew/bin/brew /home/linuxbrew/.linuxbrew/bin/brew /usr/local/bin/brew; do
+    if [[ -x "$c" ]]; then
+      "$c" --prefix
+      return 0
+    fi
+  done
+  if command -v brew >/dev/null 2>&1; then
+    brew --prefix
+    return 0
+  fi
+  return 1
+}
 
-if [[ -z "$NODE_BIN_DIR" ]]; then
-    echo "Error: npm/node not found. Install Node.js 20+ first." >&2
-    exit 1
-fi
+latest_nvm_npm() {
+  python3 -c '
+import pathlib
+root = pathlib.Path.home() / ".nvm" / "versions" / "node"
+if not root.is_dir():
+    raise SystemExit(0)
+def key(p):
+    nums = []
+    for piece in p.parent.parent.name.lstrip("v").split("."):
+        nums.append(int(piece) if piece.isdigit() else 0)
+    return nums
+bins = [p for p in root.glob("*/bin/npm") if p.exists()]
+if not bins:
+    raise SystemExit(0)
+print(sorted(bins, key=key)[-1])
+'
+}
 
-NPM_BIN="$NODE_BIN_DIR/npm"
-export PATH="$NODE_BIN_DIR:$PATH"
+first_executable() {
+  local c
+  for c in "$@"; do
+    [[ -n "$c" && -x "$c" ]] || continue
+    printf '%s\n' "$c"
+    return 0
+  done
+  return 1
+}
 
-echo "Using uv:  $UV_BIN"
-echo "Using npm: $NPM_BIN"
-echo "Repo:      $REPO_DIR"
+xml_escape() {
+  python3 -c 'import sys
+s = sys.argv[1]
+for a, b in (("&", "&amp;"), ("<", "&lt;"), (">", "&gt;"), ("\"", "&quot;")):
+    s = s.replace(a, b)
+sys.stdout.write(s)' "$1"
+}
 
-# ---------------------------------------------------------------------------
-# Dependencies + UI build
-# ---------------------------------------------------------------------------
-if [[ "$SETUP_ONLY" != "--setup-only" ]]; then
-    echo "Installing Python dependencies..."
-    (cd "$REPO_DIR" && "$UV_BIN" sync)
+write_tools_env() {
+  mkdir -p "$HOME/.config/$APP_NAME"
+  cat > "$HOME/.config/$APP_NAME/tools.env" <<EOF
+APP_UV_BIN=${UV_BIN:-}
+APP_NPM_BIN=${NPM_BIN:-}
+APP_PORT=${DEFAULT_PORT}
+MINA_UV_BIN=${UV_BIN:-}
+MINA_NPM_BIN=${NPM_BIN:-}
+MINA_BACKEND_PORT=${BACKEND_PORT}
+MINA_UI_PORT=${DEFAULT_PORT}
+PATH=${SERVICE_PATH}
+EOF
+  printf '%s\n' "$REPO_DIR" > "$HOME/.config/$APP_NAME/dir"
+}
 
-    echo "Installing UI dependencies..."
-    (cd "$REPO_DIR/ui" && "$NPM_BIN" install)
-
-    echo "Building UI..."
-    (cd "$REPO_DIR/ui" && "$NPM_BIN" run build)
-fi
-
-# ---------------------------------------------------------------------------
-# Config dir + CLI symlink
-# ---------------------------------------------------------------------------
-mkdir -p "$HOME/.config/mina" "$HOME/.local/bin"
-echo "$REPO_DIR" > "$HOME/.config/mina/dir"
-ln -sf "$REPO_DIR/scripts/mina" "$HOME/.local/bin/mina"
-chmod +x "$REPO_DIR/scripts/mina" "$REPO_DIR/scripts/run.sh" "$REPO_DIR/scripts/install.sh"
-echo "CLI installed: ~/.local/bin/mina"
-
-# ---------------------------------------------------------------------------
-# Systemd user unit
-# ---------------------------------------------------------------------------
-SERVICE_DIR="$HOME/.config/systemd/user"
-SERVICE_FILE="$SERVICE_DIR/mina.service"
-mkdir -p "$SERVICE_DIR"
-
-# PATH must include node + uv for the run script.
-SERVICE_PATH="$NODE_BIN_DIR:$(dirname "$UV_BIN"):$HOME/.local/bin:/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/bin"
-
-cat > "$SERVICE_FILE" <<EOF
+write_systemd_unit() {
+  local unit_dir="$HOME/.config/systemd/user"
+  mkdir -p "$unit_dir"
+  cat > "$unit_dir/$APP_NAME.service" <<EOF
 [Unit]
-Description=Mina chat + neurosim (Next UI + Python backend)
+Description=${APP_NAME}
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-WorkingDirectory=$REPO_DIR
-EnvironmentFile=-$REPO_DIR/.env
-Environment=HOME=$HOME
-Environment=PATH=$SERVICE_PATH
+WorkingDirectory=${REPO_DIR}
+Environment=HOME=${HOME}
+Environment=PATH=${SERVICE_PATH}
+Environment=APP_UV_BIN=${UV_BIN:-}
+Environment=APP_NPM_BIN=${NPM_BIN:-}
+Environment=APP_PORT=${DEFAULT_PORT}
+Environment=MINA_UV_BIN=${UV_BIN:-}
+Environment=MINA_NPM_BIN=${NPM_BIN:-}
+Environment=MINA_BACKEND_PORT=${BACKEND_PORT}
+Environment=MINA_UI_PORT=${DEFAULT_PORT}
+Environment=COMFY_FE_URL=${COMFY_FE_URL_DEFAULT}
 Environment=NODE_ENV=production
-Environment=MINA_UV_BIN=$UV_BIN
-Environment=MINA_NPM_BIN=$NPM_BIN
-Environment=MINA_BACKEND_PORT=5100
-Environment=MINA_UI_PORT=2050
-Environment=COMFY_FE_URL=http://127.0.0.1:8886
-ExecStart=$REPO_DIR/scripts/run.sh
+ExecStart=${REPO_DIR}/scripts/run.sh
 Restart=on-failure
 RestartSec=5
 KillMode=control-group
@@ -111,60 +145,175 @@ KillMode=control-group
 [Install]
 WantedBy=default.target
 EOF
+  systemctl --user daemon-reload
+  echo "Service file written: $unit_dir/$APP_NAME.service"
+}
 
-echo "Service file written: $SERVICE_FILE"
-systemctl --user daemon-reload
+write_launch_agent() {
+  local agent_dir="$HOME/Library/LaunchAgents"
+  local log_dir="$HOME/Library/Logs"
+  local plist="$agent_dir/$LABEL.plist"
+  mkdir -p "$agent_dir" "$log_dir"
+  cat > "$plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>$(xml_escape "$LABEL")</string>
+  <key>WorkingDirectory</key>
+  <string>$(xml_escape "$REPO_DIR")</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>$(xml_escape "$REPO_DIR/scripts/run.sh")</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>$(xml_escape "$HOME")</string>
+    <key>PATH</key>
+    <string>$(xml_escape "$SERVICE_PATH")</string>
+    <key>APP_UV_BIN</key>
+    <string>$(xml_escape "${UV_BIN:-}")</string>
+    <key>APP_NPM_BIN</key>
+    <string>$(xml_escape "${NPM_BIN:-}")</string>
+    <key>APP_PORT</key>
+    <string>${DEFAULT_PORT}</string>
+    <key>MINA_UV_BIN</key>
+    <string>$(xml_escape "${UV_BIN:-}")</string>
+    <key>MINA_NPM_BIN</key>
+    <string>$(xml_escape "${NPM_BIN:-}")</string>
+    <key>MINA_BACKEND_PORT</key>
+    <string>${BACKEND_PORT}</string>
+    <key>MINA_UI_PORT</key>
+    <string>${DEFAULT_PORT}</string>
+    <key>COMFY_FE_URL</key>
+    <string>$(xml_escape "$COMFY_FE_URL_DEFAULT")</string>
+    <key>NODE_ENV</key>
+    <string>production</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>AbandonProcessGroup</key>
+  <false/>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>StandardOutPath</key>
+  <string>$(xml_escape "$log_dir/$APP_NAME.log")</string>
+  <key>StandardErrorPath</key>
+  <string>$(xml_escape "$log_dir/$APP_NAME.log")</string>
+</dict>
+</plist>
+EOF
+  echo "LaunchAgent written: $plist"
+  echo "A loaded agent keeps its old plist until: mina restart"
+}
 
-# ---------------------------------------------------------------------------
-# Enable and start
-# ---------------------------------------------------------------------------
-if [[ "$SETUP_ONLY" != "--setup-only" ]]; then
-    systemctl --user enable mina
-    echo "Autostart enabled."
+install_cli() {
+  mkdir -p "$HOME/.local/bin" "$REPO_DIR/run"
+  chmod +x "$REPO_DIR/scripts/$APP_NAME" "$REPO_DIR/scripts/run.sh" "$REPO_DIR/scripts/install.sh"
+  ln -sfn "$REPO_DIR/scripts/$APP_NAME" "$HOME/.local/bin/$APP_NAME"
+  echo "CLI installed: ~/.local/bin/$APP_NAME"
+  case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *)
+      echo "Add ~/.local/bin to PATH in the shell rc:"
+      echo '  export PATH="$HOME/.local/bin:$PATH"'
+      ;;
+  esac
+}
 
-    if ! command -v grok >/dev/null 2>&1 && [[ ! -x "$HOME/.grok/bin/grok" ]]; then
-        echo ""
-        echo "WARNING: Grok Build CLI not found (expected grok on PATH or ~/.grok/bin/grok)."
-        echo "Install/login with Grok Build, then: mina start"
-        echo ""
+main() {
+  local prefix="" nvm_npm=""
+  prefix="$(brew_prefix || true)"
+  nvm_npm="$(latest_nvm_npm || true)"
+
+  UV_BIN="$(first_executable \
+    "$HOME/.local/bin/uv" \
+    "$HOME/.cargo/bin/uv" \
+    "${prefix:+$prefix/bin/uv}" \
+    "$(command -v uv 2>/dev/null || true)" \
+    || true)"
+
+  NPM_BIN="$(first_executable \
+    "$(command -v npm 2>/dev/null || true)" \
+    "$nvm_npm" \
+    "${prefix:+$prefix/bin/npm}" \
+    /usr/local/bin/npm \
+    /usr/bin/npm \
+    || true)"
+
+  NODE_DIR=""
+  if [[ -n "${NPM_BIN:-}" ]]; then
+    NODE_DIR="$(bin_dir_for_path "$NPM_BIN")"
+  fi
+
+  # Create this before PATH assembly so a fresh home still records it.
+  # add_path skips directories that do not exist yet.
+  mkdir -p "$HOME/.local/bin"
+
+  SERVICE_PATH=""
+  add_path "$NODE_DIR"
+  add_path "${prefix:+$prefix/bin}"
+  add_path "$HOME/.local/bin"
+  add_path /usr/local/bin
+  add_path /usr/bin
+  add_path /bin
+  if [[ "$OS" == "Darwin" ]]; then
+    add_path /usr/sbin
+    add_path /sbin
+  fi
+
+  echo "Repo:  $REPO_DIR"
+  echo "uv:    ${UV_BIN:-<none>}"
+  echo "npm:   ${NPM_BIN:-<none>}"
+  echo "PATH:  $SERVICE_PATH"
+  echo "UI:    ${DEFAULT_PORT}    Backend: ${BACKEND_PORT}"
+
+  if [[ "$SETUP_ONLY" != "--setup-only" ]]; then
+    if [[ -n "${UV_BIN:-}" && -f "$REPO_DIR/pyproject.toml" ]]; then
+      (cd "$REPO_DIR" && "$UV_BIN" sync)
     fi
+    if [[ -n "${NPM_BIN:-}" && -f "$REPO_DIR/ui/package.json" ]]; then
+      (cd "$REPO_DIR/ui" && "$NPM_BIN" install && "$NPM_BIN" run build)
+    elif [[ -n "${NPM_BIN:-}" && -f "$REPO_DIR/package.json" ]]; then
+      (cd "$REPO_DIR" && "$NPM_BIN" install && "$NPM_BIN" run build)
+    fi
+  fi
+
+  install_cli
+  write_tools_env
+  if [[ "$OS" == "Darwin" ]]; then
+    write_launch_agent
+  else
+    write_systemd_unit
+  fi
+
+  if [[ "$SETUP_ONLY" != "--setup-only" ]]; then
     if [[ ! -f "$REPO_DIR/.env" ]]; then
-        echo ""
-        echo "Note: $REPO_DIR/.env not found (optional)."
-        echo "Chat uses headless grok CLI auth — no XAI_API_KEY required for turns."
-        echo "Optional: XAI_API_KEY only if FREETIME web/x search should use the API."
-        echo ""
-        echo "Then run: mina start"
-    else
-        systemctl --user restart mina
-        echo -n "Starting"
-        for _ in $(seq 1 90); do
-            sleep 1
-            echo -n "."
-            if [[ -f "$REPO_DIR/run/ready" ]] || curl -sf http://localhost:2050/ &>/dev/null; then
-                echo " ready."
-                break
-            fi
-        done
-        echo ""
-        echo "UI:      http://localhost:2050"
-        echo "Backend: http://localhost:5100"
-        if curl -sf http://localhost:2050/api/build &>/dev/null; then
-            echo -n "Build:   "
-            curl -s http://localhost:2050/api/build
-            echo ""
-        fi
+      echo "Note: $REPO_DIR/.env not found (optional)."
+      echo "Chat uses headless grok CLI auth — no XAI_API_KEY required for turns."
     fi
-fi
+    if ! command -v grok >/dev/null 2>&1 && [[ ! -x "$HOME/.grok/bin/grok" ]]; then
+      echo "WARNING: Grok Build CLI not found (expected grok on PATH or ~/.grok/bin/grok)."
+      echo "Install/login with Grok Build before chatting."
+    fi
+    if [[ "$OS" == "Darwin" ]]; then
+      launchctl enable "gui/$(id -u)/$LABEL" || true
+    else
+      systemctl --user enable "$APP_NAME"
+    fi
+    echo "Autostart enabled."
+    "$HOME/.local/bin/$APP_NAME" start
+  fi
 
-# ---------------------------------------------------------------------------
-# PATH reminder
-# ---------------------------------------------------------------------------
-if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
-    echo ""
-    echo "NOTE: ~/.local/bin is not in your PATH."
-    echo "Add to ~/.zshrc or ~/.bashrc:"
-    echo '  export PATH="$HOME/.local/bin:$PATH"'
-fi
+  echo "Done. Run '$APP_NAME help' for usage."
+}
 
-echo "Done. Run 'mina help' for usage."
+main "$@"
