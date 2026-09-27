@@ -22,7 +22,7 @@ You are done when all of the following hold:
 
 | Dependency | Version / notes |
 |------------|-----------------|
-| OS | Linux assumed (systemd user units in install scripts) |
+| OS | Linux (systemd user unit) or macOS (LaunchAgent `com.rafritts.mina`) |
 | Python | **≥ 3.13** (see `.python-version`) |
 | [uv](https://github.com/astral-sh/uv) | On `PATH` or common install paths (`~/.local/bin`, `~/.cargo/bin`) |
 | Node.js + npm | **20+** |
@@ -88,7 +88,7 @@ Do **not** set process-wide `GROK_HOME` to Mina’s isolation path for interacti
 # Optional — FREETIME web/x search only (not main chat pipeline)
 # XAI_API_KEY=...
 
-# Ports (also set by systemd unit)
+# Ports (also set by the user service: UI 2050, backend 5100)
 # MINA_BACKEND_PORT=5100
 # MINA_UI_PORT=2050
 # MINA_BACKEND_HOST=127.0.0.1
@@ -150,7 +150,7 @@ npm run build    # production
 
 ---
 
-## 6. Install service + CLI (recommended on Linux)
+## 6. Install service + CLI
 
 From repo root:
 
@@ -160,36 +160,44 @@ From repo root:
 
 This:
 
-1. `uv sync` + `ui` npm install/build  
-2. Writes `~/.config/mina/dir` → repo path  
-3. Symlinks `~/.local/bin/mina` → `scripts/mina`  
-4. Installs systemd **user** unit `mina.service` (backend 5100 + UI 2050)  
-5. Enables/starts unless you only regenerate the unit:
+1. `uv sync` + `ui` npm install/build
+2. Writes `~/.config/mina/dir` (repo path) and `~/.config/mina/tools.env` (absolute `uv` / `npm`, service `PATH`, ports)
+3. Symlinks `~/.local/bin/mina` → `scripts/mina`
+4. Installs a **user** service that runs `scripts/run.sh` (backend **5100** + UI **2050**):
+   - Linux: `~/.config/systemd/user/mina.service` (`systemctl --user`)
+   - macOS: `~/Library/LaunchAgents/com.rafritts.mina.plist` (`launchctl`). `KeepAlive` is `SuccessfulExit=false` (not blanket true). Logs: `~/Library/Logs/mina.log`. `mina stop` is `launchctl bootout`.
+5. Enables login autostart and starts, unless you only rewrite the service file:
 
 ```bash
-./scripts/install.sh --setup-only   # unit + CLI path only
+./scripts/install.sh --setup-only   # service file + tools.env only
+mina setup                          # same
 ```
 
-Ensure `~/.local/bin` is on `PATH`.
+The service does not read the shell rc. `PATH` is whatever install wrote. Re-run `mina setup` when Node, npm, or uv moves, then restart. `~/.local/bin` must be on the interactive `PATH` so the `mina` command resolves.
 
 ### CLI cheatsheet
 
 ```bash
 mina help
-mina start | stop | restart | status
-mina logs [-f] [-n 200]
-mina rebuild              # npm build + restart; prints build id
-mina update               # git pull + uv sync + rebuild + restart
-mina reset [--yes]        # chemistry baseline via API (keeps memory)
-mina factory-reset [--yes]  # wipe run chat/sim/RAG state; restart
+mina start | stop | restart | status   # start/stop also start/stop Ollama (:11434)
+mina enable | disable         # login autostart only; does not start or stop
+mina logs [-f] [-n 200]       # journalctl on Linux; ~/Library/Logs/mina.log on macOS
+mina rebuild                  # npm build + restart; prints build id
+mina update                   # git pull + uv sync + npm install + build + restart
+mina reset [--yes]            # chemistry baseline via API (keeps memory)
+mina factory-reset [--yes]    # wipe run chat/sim/RAG state; restart
 ```
 
-After `restart` / `rebuild` / `update` / `status`, the CLI prints  
-`GIVE THIS BUILD ID TO THE USER <id>` — agents should surface that id to the operator so the header chip and live UI match.
+`start` waits until ready and does **not** print the build id. After `restart` / `rebuild` / `update` / `status`, the CLI prints two lines. Copy the first unchanged:
+
+```text
+GIVE THIS BUILD ID TO THE USER <id>
+Build: {"id":"<id>","git":"<short>","builtAt":"<iso>"}
+```
 
 ---
 
-## 7. Run without systemd (dev)
+## 7. Run without the user service (dev)
 
 Terminal A:
 
@@ -207,7 +215,7 @@ npm run dev
 # UI: http://0.0.0.0:2050
 ```
 
-Production-style without systemd:
+Production-style without the user service:
 
 ```bash
 ./scripts/run.sh
@@ -223,10 +231,11 @@ Hippocampus expects:
 - Base URL: `http://localhost:11434`
 - Model: `embeddinggemma:latest`
 
+`mina start` starts Ollama before the backend and UI. `mina stop` stops it. `restart`, `rebuild`, and `update` make sure it is up before mina comes back. It is not a separate service entry. On macOS, Homebrew `ollama` is `brew services start ollama` / `brew services stop ollama`. On Linux, a systemd `ollama` unit is used when present, otherwise `ollama serve`. If Ollama is not installed, start warns and mina still comes up; embeddings stay empty.
+
 ```bash
-# Example — adjust to your Ollama install
 ollama pull embeddinggemma:latest
-curl -sf http://localhost:11434/api/tags
+curl -sf http://127.0.0.1:11434/api/tags
 ```
 
 Without embeddings, consolidation/retrieval may error or return empty; the rest of the pipeline can still answer with thinner context.

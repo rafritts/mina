@@ -1,204 +1,417 @@
 #!/usr/bin/env bash
-# mina — management CLI for Mina (chat UI + neurosim)
-# Installed at ~/.local/bin/mina → scripts/mina
-
+# mina — user-service command. Symlinked to ~/.local/bin/mina.
+# Linux: systemctl --user. macOS: launchctl LaunchAgent com.rafritts.mina.
 set -euo pipefail
 
-REPO_DIR="$(cat ~/.config/mina/dir 2>/dev/null || echo "")"
+APP_NAME="mina"
+LABEL="com.rafritts.mina"
+DEFAULT_PORT="2050"
+# Absolute: Keep's PATH on macOS is /usr/bin:/bin and does not include Homebrew.
+LAUNCHCTL="/bin/launchctl"
+
+CONFIG_DIR="$HOME/.config/$APP_NAME"
+REPO_DIR="$(cat "$CONFIG_DIR/dir" 2>/dev/null || true)"
 if [[ -z "$REPO_DIR" ]]; then
-    echo "Error: mina not installed. Run scripts/install.sh first." >&2
-    exit 1
+  echo "Error: $APP_NAME is not installed. Run scripts/install.sh first." >&2
+  exit 1
 fi
 
-SERVICE="mina"
-RUN_DIR="$REPO_DIR/run"
-UI_PORT="${MINA_UI_PORT:-2050}"
+if [[ -f "$CONFIG_DIR/tools.env" ]]; then
+  # shellcheck disable=SC1090
+  source "$CONFIG_DIR/tools.env"
+fi
+# After tools.env, so that file cannot force the Linux backend.
+OS="$(uname -s)"
+APP_PORT="${APP_PORT:-${MINA_UI_PORT:-$DEFAULT_PORT}}"
 BACKEND_PORT="${MINA_BACKEND_PORT:-5100}"
+RUN_DIR="$REPO_DIR/run"
+PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+LOG_FILE="$HOME/Library/Logs/$APP_NAME.log"
 
-_svc() { systemctl --user "$@" "$SERVICE"; }
+_mac_domain() { printf 'gui/%s' "$(id -u)"; }
+_mac_target() { printf 'gui/%s/%s' "$(id -u)" "$LABEL"; }
+_mac_loaded() { "$LAUNCHCTL" print "$(_mac_target)" &>/dev/null; }
 
-_build_ui() {
-    echo "Building UI..."
-    (cd "$REPO_DIR/ui" && npm install --silent && npm run build)
+# macOS has no systemd. start/stop/status/restart go through launchctl only.
+_svc() {
+  local verb="$1"
+  if [[ "$OS" == "Darwin" ]]; then
+    case "$verb" in
+      start)
+        if ! _mac_loaded; then
+          "$LAUNCHCTL" bootstrap "$(_mac_domain)" "$PLIST"
+        fi
+        ;;
+      stop)
+        "$LAUNCHCTL" bootout "$(_mac_target)" 2>/dev/null || true
+        ;;
+      restart)
+        if _mac_loaded; then
+          "$LAUNCHCTL" kickstart -k "$(_mac_target)"
+        else
+          "$LAUNCHCTL" bootstrap "$(_mac_domain)" "$PLIST"
+        fi
+        ;;
+      enable)
+        "$LAUNCHCTL" enable "$(_mac_target)"
+        ;;
+      disable)
+        "$LAUNCHCTL" disable "$(_mac_target)"
+        ;;
+      status)
+        "$LAUNCHCTL" print "$(_mac_target)" || echo "$APP_NAME is not loaded"
+        ;;
+      *)
+        echo "Unknown service verb: $verb" >&2
+        return 1
+        ;;
+    esac
+    return 0
+  fi
+  systemctl --user "$verb" "$APP_NAME"
 }
 
-# Print the live UI build id in a form agents must surface to the user.
+# Ollama serves RAG embeddings (:11434). This CLI starts and stops it.
+# It is not its own Keep-managed service and not a Keep directory entry.
+_brew_bin() {
+  local c
+  for c in /opt/homebrew/bin/brew /home/linuxbrew/.linuxbrew/bin/brew /usr/local/bin/brew; do
+    if [[ -x "$c" ]]; then
+      printf '%s\n' "$c"
+      return 0
+    fi
+  done
+  if command -v brew >/dev/null 2>&1; then
+    command -v brew
+    return 0
+  fi
+  return 1
+}
+
+_ollama_brew_formula() {
+  local brew
+  brew="$(_brew_bin)" || return 1
+  "$brew" list --formula ollama &>/dev/null
+}
+
+_ollama_bin() {
+  local c brew prefix
+  if brew="$(_brew_bin 2>/dev/null || true)"; [[ -n "${brew:-}" ]]; then
+    prefix="$("$brew" --prefix 2>/dev/null || true)"
+    if [[ -n "$prefix" && -x "$prefix/bin/ollama" ]]; then
+      printf '%s\n' "$prefix/bin/ollama"
+      return 0
+    fi
+  fi
+  for c in \
+    "$(command -v ollama 2>/dev/null || true)" \
+    /opt/homebrew/bin/ollama \
+    /usr/local/bin/ollama \
+    /usr/bin/ollama \
+    "$HOME/.local/bin/ollama"
+  do
+    [[ -n "$c" && -x "$c" ]] || continue
+    printf '%s\n' "$c"
+    return 0
+  done
+  return 1
+}
+
+_ollama_systemd_user() {
+  [[ "$OS" == "Darwin" ]] && return 1
+  command -v systemctl >/dev/null 2>&1 || return 1
+  systemctl --user cat ollama.service &>/dev/null
+}
+
+_ollama_systemd_system() {
+  [[ "$OS" == "Darwin" ]] && return 1
+  command -v systemctl >/dev/null 2>&1 || return 1
+  systemctl cat ollama.service &>/dev/null
+}
+
+_ollama_listening() {
+  curl -sf --max-time 2 "http://127.0.0.1:11434/api/tags" >/dev/null 2>&1
+}
+
+_ollama_wait() {
+  local i
+  for ((i=1; i<=20; i++)); do
+    if _ollama_listening; then
+      return 0
+    fi
+    echo -n "."
+    sleep 1
+  done
+  return 1
+}
+
+# Warn and continue when Ollama is missing or will not come up. Chat still runs;
+# embeddings stay empty until :11434 answers.
+_ollama_start() {
+  local brew bin
+  if _ollama_listening; then
+    echo "Ollama already listening on :11434"
+    return 0
+  fi
+
+  if _ollama_brew_formula; then
+    brew="$(_brew_bin)"
+    echo "Starting Ollama (brew services)..."
+    if ! "$brew" services start ollama; then
+      echo "WARNING: brew services start ollama failed. Embeddings may be empty." >&2
+      return 0
+    fi
+  elif _ollama_systemd_user; then
+    echo "Starting Ollama (systemd --user)..."
+    if ! systemctl --user start ollama; then
+      echo "WARNING: systemctl --user start ollama failed. Embeddings may be empty." >&2
+      return 0
+    fi
+  elif _ollama_systemd_system; then
+    echo "Starting Ollama (systemd)..."
+    if ! systemctl start ollama; then
+      echo "WARNING: systemctl start ollama failed. Embeddings may be empty." >&2
+      return 0
+    fi
+  elif bin="$(_ollama_bin)"; [[ -n "${bin:-}" ]]; then
+    echo "Starting Ollama (ollama serve)..."
+    mkdir -p "$CONFIG_DIR"
+    nohup "$bin" serve >>"$CONFIG_DIR/ollama.log" 2>&1 &
+    echo $! > "$CONFIG_DIR/ollama.pid"
+  else
+    echo "WARNING: Ollama is not installed. RAG embeddings stay empty until it is (http://127.0.0.1:11434)." >&2
+    return 0
+  fi
+
+  echo -n "Waiting for Ollama"
+  if _ollama_wait; then
+    echo " ready."
+    return 0
+  fi
+  echo " not answering."
+  echo "WARNING: Ollama did not answer on :11434. Continuing; embeddings may be empty." >&2
+  return 0
+}
+
+_ollama_stop() {
+  local brew pid
+  if _ollama_brew_formula; then
+    brew="$(_brew_bin)"
+    echo "Stopping Ollama (brew services)..."
+    if ! "$brew" services stop ollama; then
+      echo "WARNING: brew services stop ollama failed." >&2
+    fi
+    return 0
+  fi
+  if _ollama_systemd_user; then
+    echo "Stopping Ollama (systemd --user)..."
+    if ! systemctl --user stop ollama; then
+      echo "WARNING: systemctl --user stop ollama failed." >&2
+    fi
+    return 0
+  fi
+  if _ollama_systemd_system; then
+    echo "Stopping Ollama (systemd)..."
+    if ! systemctl stop ollama; then
+      echo "WARNING: systemctl stop ollama failed." >&2
+    fi
+    return 0
+  fi
+  if [[ -f "$CONFIG_DIR/ollama.pid" ]]; then
+    pid="$(cat "$CONFIG_DIR/ollama.pid" 2>/dev/null || true)"
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      echo "Stopping Ollama (pid ${pid})..."
+      kill "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+    fi
+    rm -f "$CONFIG_DIR/ollama.pid"
+  fi
+  return 0
+}
+
+# Build with the same absolute npm install.sh recorded. Empty if there is no UI.
+_build() {
+  local npm="${APP_NPM_BIN:-}"
+  if [[ -z "$npm" || ! -x "$npm" ]]; then
+    return 0
+  fi
+  if [[ -f "$REPO_DIR/ui/package.json" ]]; then
+    (cd "$REPO_DIR/ui" && "$npm" run build)
+  elif [[ -f "$REPO_DIR/package.json" ]]; then
+    (cd "$REPO_DIR" && "$npm" run build)
+  fi
+}
+
+_wait_ready() {
+  local i
+  for ((i=1; i<=90; i++)); do
+    sleep 1
+    echo -n "."
+    if [[ -f "$RUN_DIR/ready" ]] || curl -sf "http://127.0.0.1:${APP_PORT}/" >/dev/null 2>&1; then
+      echo " ready."
+      return 0
+    fi
+  done
+  echo " timed out."
+  return 1
+}
+
+# Agents copy the first line to the user unchanged.
 _print_build_id() {
-    local raw id
-    raw="$(curl -sf "http://localhost:${UI_PORT}/api/build" 2>/dev/null || true)"
-    if [[ -z "$raw" ]]; then
-        echo "Build id: (unavailable — UI not answering /api/build)" >&2
-        return 1
-    fi
-    id="$(printf '%s' "$raw" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || true)"
-    if [[ -z "$id" ]]; then
-        # Fallback: whole body if not JSON
-        id="$raw"
-    fi
-    echo "GIVE THIS BUILD ID TO THE USER ${id}"
-    echo "Build: ${raw}"
+  local raw id
+  raw="$(curl -sf "http://127.0.0.1:${APP_PORT}/api/build" 2>/dev/null || true)"
+  if [[ -z "$raw" ]]; then
+    echo "Build id: (unavailable — UI not answering /api/build)" >&2
+    return 1
+  fi
+  id="$(printf '%s' "$raw" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)"
+  if [[ -z "$id" ]]; then
+    id="$raw"
+  fi
+  echo "GIVE THIS BUILD ID TO THE USER ${id}"
+  echo "Build: ${raw}"
 }
 
 cmd="${1:-help}"
 shift || true
 
 case "$cmd" in
-
-install)
+  install)
     bash "$REPO_DIR/scripts/install.sh"
     ;;
-
-uninstall)
-    read -rp "Uninstall mina? This removes the service and CLI symlink. [y/N] " confirm
-    [[ "$confirm" =~ ^[Yy]$ ]] || exit 0
-    _svc stop 2>/dev/null || true
-    _svc disable 2>/dev/null || true
-    rm -f ~/.config/systemd/user/mina.service
-    systemctl --user daemon-reload
-    rm -f ~/.local/bin/mina
-    rm -rf ~/.config/mina
+  uninstall)
+    if [[ "${1:-}" != "--yes" ]]; then
+      read -rp "Uninstall $APP_NAME? This removes the service and the CLI symlink. [y/N] " confirm
+      [[ "$confirm" =~ ^[Yy]$ ]] || exit 0
+    fi
+    _svc stop || true
+    _ollama_stop || true
+    _svc disable || true
+    if [[ "$OS" == "Darwin" ]]; then
+      rm -f "$PLIST"
+    else
+      rm -f "$HOME/.config/systemd/user/$APP_NAME.service"
+      systemctl --user daemon-reload
+    fi
+    rm -f "$HOME/.local/bin/$APP_NAME"
+    rm -rf "$CONFIG_DIR"
     echo "Uninstalled."
     ;;
-
-setup)
-    # Regenerate the systemd unit file (e.g. after repo moves)
+  setup)
     bash "$REPO_DIR/scripts/install.sh" --setup-only
     ;;
-
-start)
+  start)
+    _ollama_start
     _svc start
     echo -n "Starting"
-    for _ in $(seq 1 90); do
-        sleep 1
-        echo -n "."
-        if [[ -f "$RUN_DIR/ready" ]] || curl -sf "http://localhost:${UI_PORT}/" &>/dev/null; then
-            echo " ready."
-            echo "UI: http://localhost:${UI_PORT}"
-            exit 0
-        fi
-    done
-    echo " timed out waiting for ready signal."
-    exit 1
+    _wait_ready
+    echo "URL: http://127.0.0.1:${APP_PORT}"
+    echo "Backend: http://127.0.0.1:${BACKEND_PORT}"
     ;;
-
-stop)
-    _svc stop
+  stop)
+    _svc stop || true
+    _ollama_stop
     ;;
-
-restart)
-    # Rebuild then restart — same idea as kairu restart after deploy.
-    _build_ui
+  restart)
+    _build
+    _ollama_start
     echo "Restarting..."
     _svc restart
     echo -n "Waiting"
-    for _ in $(seq 1 90); do
-        sleep 1
-        echo -n "."
-        if [[ -f "$RUN_DIR/ready" ]] || curl -sf "http://localhost:${UI_PORT}/" &>/dev/null; then
-            echo " ready."
-            _print_build_id || true
-            exit 0
-        fi
-    done
-    echo " timed out."
-    exit 1
-    ;;
-
-status)
-    _svc status
-    echo ""
-    echo "UI:      http://localhost:${UI_PORT}"
-    echo "Backend: http://localhost:${BACKEND_PORT}/health"
+    _wait_ready
     _print_build_id || true
     ;;
-
-enable)
+  status)
+    _svc status || true
+    echo ""
+    echo "URL: http://127.0.0.1:${APP_PORT}"
+    echo "Backend: http://127.0.0.1:${BACKEND_PORT}"
+    if _ollama_listening; then
+      echo "Ollama:  http://127.0.0.1:11434"
+    else
+      echo "Ollama:  not running"
+    fi
+    _print_build_id || true
+    ;;
+  enable)
     _svc enable
     echo "Autostart enabled."
     ;;
-
-disable)
+  disable)
     _svc disable
     echo "Autostart disabled."
     ;;
-
-logs)
+  logs)
     n=100
     follow=false
     while [[ $# -gt 0 ]]; do
-        case "$1" in
-            -f) follow=true; shift ;;
-            -n) n="$2"; shift 2 ;;
-            *) shift ;;
-        esac
+      case "$1" in
+        -f) follow=true; shift ;;
+        -n) n="$2"; shift 2 ;;
+        *) shift ;;
+      esac
     done
-    if $follow; then
-        journalctl --user -u "$SERVICE" -n "$n" -f
+    if [[ "$OS" == "Darwin" ]]; then
+      if $follow; then
+        tail -n "$n" -f "$LOG_FILE"
+      else
+        tail -n "$n" "$LOG_FILE"
+      fi
     else
-        journalctl --user -u "$SERVICE" -n "$n" --no-pager
+      if $follow; then
+        journalctl --user -u "$APP_NAME" -n "$n" -f
+      else
+        journalctl --user -u "$APP_NAME" -n "$n" --no-pager
+      fi
     fi
     ;;
-
-rebuild)
-    _build_ui
+  rebuild)
+    _build
+    _ollama_start
     echo "Restarting..."
     _svc restart
     echo -n "Waiting"
-    for _ in $(seq 1 90); do
-        sleep 1
-        echo -n "."
-        if [[ -f "$RUN_DIR/ready" ]] || curl -sf "http://localhost:${UI_PORT}/" &>/dev/null; then
-            echo " ready."
-            _print_build_id || true
-            exit 0
-        fi
-    done
-    echo " timed out."
-    exit 1
+    _wait_ready
+    _print_build_id || true
     ;;
-
-update)
+  update)
     echo "Pulling latest..."
     git -C "$REPO_DIR" pull
-    echo "Syncing Python dependencies..."
-    (cd "$REPO_DIR" && uv sync)
-    _build_ui
+    if [[ -n "${APP_UV_BIN:-}" && -x "$APP_UV_BIN" && -f "$REPO_DIR/pyproject.toml" ]]; then
+      (cd "$REPO_DIR" && "$APP_UV_BIN" sync)
+    fi
+    if [[ -n "${APP_NPM_BIN:-}" && -x "$APP_NPM_BIN" && -f "$REPO_DIR/ui/package.json" ]]; then
+      (cd "$REPO_DIR/ui" && "$APP_NPM_BIN" install)
+    elif [[ -n "${APP_NPM_BIN:-}" && -x "$APP_NPM_BIN" && -f "$REPO_DIR/package.json" ]]; then
+      (cd "$REPO_DIR" && "$APP_NPM_BIN" install)
+    fi
+    _build
+    _ollama_start
     echo "Restarting..."
     _svc restart
     echo -n "Waiting"
-    for _ in $(seq 1 90); do
-        sleep 1
-        echo -n "."
-        if [[ -f "$RUN_DIR/ready" ]] || curl -sf "http://localhost:${UI_PORT}/" &>/dev/null; then
-            echo " ready."
-            _print_build_id || true
-            exit 0
-        fi
-    done
-    echo " timed out."
-    exit 1
+    _wait_ready
+    _print_build_id || true
     ;;
-
-reset)
+  reset)
     # Chemistry-only baseline reset (live process via API).
-    if ! curl -sf "http://localhost:${BACKEND_PORT}/health" &>/dev/null; then
-        echo "Backend not up on :${BACKEND_PORT}. Is mina running?" >&2
-        exit 1
+    if ! curl -sf "http://127.0.0.1:${BACKEND_PORT}/health" &>/dev/null; then
+      echo "Backend not up on :${BACKEND_PORT}. Is mina running?" >&2
+      exit 1
     fi
     if [[ "${1:-}" != "--yes" ]]; then
-        read -rp "Reset chemistry to baseline (keeps chat/memory)? [y/N] " ans
-        [[ "$ans" =~ ^[Yy]$ ]] || exit 0
+      read -rp "Reset chemistry to baseline (keeps chat/memory)? [y/N] " ans
+      [[ "$ans" =~ ^[Yy]$ ]] || exit 0
     fi
-    curl -sf -X POST "http://localhost:${BACKEND_PORT}/api/state/reset" | python3 -m json.tool
+    curl -sf -X POST "http://127.0.0.1:${BACKEND_PORT}/api/state/reset" | python3 -m json.tool
     echo "Reset complete."
     ;;
-
-factory-reset)
+  factory-reset)
     confirm=false
     [[ "${1:-}" == "--yes" ]] && confirm=true
     if ! $confirm; then
-        read -rp "Factory reset: clear all runtime state, events, history, and memory? [y/N] " ans
-        [[ "$ans" =~ ^[Yy]$ ]] || exit 0
+      read -rp "Factory reset: clear all runtime state, events, history, and memory? [y/N] " ans
+      [[ "$ans" =~ ^[Yy]$ ]] || exit 0
     fi
     rm -f "$RUN_DIR/sim_state.json"
     rm -f "$RUN_DIR/conversation-"*.jsonl
@@ -219,41 +432,46 @@ factory-reset)
     find "$REPO_DIR/memory/kag" -type f -delete
     find "$REPO_DIR/memory/relationships" -type f -delete
     echo "Factory reset complete. Restarting service..."
+    _ollama_start
     _svc restart
     ;;
-
-help|--help|-h)
+  help|--help|-h)
     cat <<EOF
-mina — Mina chat + neurosim management
+$APP_NAME — user service command
 
 Setup:
-  install          Full setup: deps, build UI, service, autostart, start
-  uninstall        Remove service and CLI symlink
-  setup            Regenerate systemd unit file only
+  install            Dependencies, build, service, autostart
+  uninstall [--yes]  Remove the service and the CLI symlink
+  setup              Rewrite the service file and tools.env
 
 Service:
-  start            Start the service (backend :${BACKEND_PORT}, UI :${UI_PORT})
-  stop             Stop the service
-  restart          Rebuild UI + restart (fresh build id)
-  status           Service status + build id
-  enable           Enable autostart on boot
-  disable          Disable autostart on boot
-  logs [-f] [-n N] journalctl for the unit (default 100 lines; -f to follow)
+  start              Start Ollama if installed, then mina, and wait until ready
+  stop               Stop mina and Ollama (macOS mina: bootout)
+  restart            Build, ensure Ollama is up, restart, print the build id
+  status             Status and build id
+  enable             Autostart at login
+  disable            No autostart at login
+  logs [-f] [-n N]   Journal on Linux, ~/Library/Logs/$APP_NAME.log on macOS
 
 Maintenance:
-  rebuild          npm build + restart (no git pull)
-  update           git pull + uv sync + npm build + restart
-  reset [--yes]    Chemistry only → Big-5 baselines (wake, clear adenosine)
-  factory-reset [--yes]  Clear runtime state / events / history / RAG
+  rebuild            Build and restart
+  update             git pull, sync deps, build, restart
+  reset [--yes]      Chemistry only → Big-5 baselines (wake, clear adenosine)
+  factory-reset [--yes]
+                     Clear runtime state, events, history, and memory
 
-Open http://localhost:${UI_PORT}
-After restart/rebuild/update/status, prints: GIVE THIS BUILD ID TO THE USER <id>
-(header chip and GET /api/build must match — stale shell if not).
+UI:      http://127.0.0.1:${APP_PORT}
+Backend: http://127.0.0.1:${BACKEND_PORT}
+Ollama embeddings (:11434) start and stop with mina. If Ollama is not
+installed, start warns and mina still comes up.
+On macOS with Homebrew ollama: brew services start/stop ollama.
+After restart, rebuild, update, and status, the command prints:
+  GIVE THIS BUILD ID TO THE USER <id>
+Copy that line to the user. The UI and GET /api/build carry the same id.
 EOF
     ;;
-
-*)
-    echo "Unknown command: $cmd. Run 'mina help' for usage." >&2
+  *)
+    echo "Unknown command: $cmd. Run '$APP_NAME help' for usage." >&2
     exit 1
     ;;
 esac

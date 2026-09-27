@@ -221,17 +221,20 @@ Chat posts to backend via app routes; mind stream consumes SSE. Build id: `GET /
 ## Process management
 
 ```bash
-./scripts/install.sh     # uv sync, npm install/build, systemd user unit, CLI
-mina start|stop|restart|status|logs
-mina rebuild             # npm build + restart
-mina update              # git pull + uv sync + rebuild + restart
+./scripts/install.sh     # uv sync, npm install/build, user service, CLI
+mina start|stop|restart|status|logs|enable|disable
+mina setup               # rewrite service file + ~/.config/mina/tools.env
+mina rebuild             # npm build + restart; prints build id
+mina update              # git pull + uv sync + npm install + build + restart
 mina reset [--yes]       # chemistry baseline via API
 mina factory-reset       # wipe run/* chat/sim/RAG (keeps identity)
 ```
 
-`scripts/run.sh` (systemd ExecStart): backend `uv run python main.py` + `npm run start` on the UI.
+Linux uses a systemd **user** unit. macOS uses LaunchAgent `com.rafritts.mina` (`KeepAlive` → `SuccessfulExit` false; `mina stop` bootouts the agent and stops Ollama). `scripts/run.sh` is the service entrypoint: backend `uv run python main.py` on **5100** + `npm run start` on **2050**. It does not prepend tool directories onto `PATH`. `mina start` / `mina stop` also start and stop Ollama (`:11434`, Homebrew `brew services` when that formula is installed) so RAG embeddings are up before chat. Ollama is not a separate service entry.
 
-Dev without systemd:
+`restart`, `rebuild`, `update`, and `status` print `GIVE THIS BUILD ID TO THE USER <id>`. `start` does not.
+
+Dev without the user service:
 
 ```bash
 uv run python main.py          # :5100
