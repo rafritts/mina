@@ -305,7 +305,7 @@ main() {
       echo "Install/login with Grok Build before chatting."
     fi
     if [[ "$OS" == "Darwin" ]]; then
-      launchctl enable "gui/$(id -u)/$LABEL" || true
+      /bin/launchctl enable "gui/$(id -u)/$LABEL" || true
     else
       systemctl --user enable "$APP_NAME"
     fi

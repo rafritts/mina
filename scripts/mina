@@ -6,7 +6,8 @@ set -euo pipefail
 APP_NAME="mina"
 LABEL="com.rafritts.mina"
 DEFAULT_PORT="2050"
-OS="$(uname -s)"
+# Absolute: Keep's PATH on macOS is /usr/bin:/bin and does not include Homebrew.
+LAUNCHCTL="/bin/launchctl"
 
 CONFIG_DIR="$HOME/.config/$APP_NAME"
 REPO_DIR="$(cat "$CONFIG_DIR/dir" 2>/dev/null || true)"
@@ -19,6 +20,8 @@ if [[ -f "$CONFIG_DIR/tools.env" ]]; then
   # shellcheck disable=SC1090
   source "$CONFIG_DIR/tools.env"
 fi
+# After tools.env, so that file cannot force the Linux backend.
+OS="$(uname -s)"
 APP_PORT="${APP_PORT:-${MINA_UI_PORT:-$DEFAULT_PORT}}"
 BACKEND_PORT="${MINA_BACKEND_PORT:-5100}"
 RUN_DIR="$REPO_DIR/run"
@@ -27,44 +30,45 @@ LOG_FILE="$HOME/Library/Logs/$APP_NAME.log"
 
 _mac_domain() { printf 'gui/%s' "$(id -u)"; }
 _mac_target() { printf 'gui/%s/%s' "$(id -u)" "$LABEL"; }
-_mac_loaded() { launchctl print "$(_mac_target)" &>/dev/null; }
+_mac_loaded() { "$LAUNCHCTL" print "$(_mac_target)" &>/dev/null; }
 
+# macOS has no systemd. start/stop/status/restart go through launchctl only.
 _svc() {
   local verb="$1"
   if [[ "$OS" == "Darwin" ]]; then
     case "$verb" in
       start)
         if ! _mac_loaded; then
-          launchctl bootstrap "$(_mac_domain)" "$PLIST"
+          "$LAUNCHCTL" bootstrap "$(_mac_domain)" "$PLIST"
         fi
         ;;
       stop)
-        launchctl bootout "$(_mac_target)" 2>/dev/null || true
+        "$LAUNCHCTL" bootout "$(_mac_target)" 2>/dev/null || true
         ;;
       restart)
         if _mac_loaded; then
-          launchctl kickstart -k "$(_mac_target)"
+          "$LAUNCHCTL" kickstart -k "$(_mac_target)"
         else
-          launchctl bootstrap "$(_mac_domain)" "$PLIST"
+          "$LAUNCHCTL" bootstrap "$(_mac_domain)" "$PLIST"
         fi
         ;;
       enable)
-        launchctl enable "$(_mac_target)"
+        "$LAUNCHCTL" enable "$(_mac_target)"
         ;;
       disable)
-        launchctl disable "$(_mac_target)"
+        "$LAUNCHCTL" disable "$(_mac_target)"
         ;;
       status)
-        launchctl print "$(_mac_target)" || echo "$APP_NAME is not loaded"
+        "$LAUNCHCTL" print "$(_mac_target)" || echo "$APP_NAME is not loaded"
         ;;
       *)
         echo "Unknown service verb: $verb" >&2
         return 1
         ;;
     esac
-  else
-    systemctl --user "$verb" "$APP_NAME"
+    return 0
   fi
+  systemctl --user "$verb" "$APP_NAME"
 }
 
 # Ollama serves RAG embeddings (:11434). This CLI starts and stops it.
@@ -114,11 +118,13 @@ _ollama_bin() {
 }
 
 _ollama_systemd_user() {
+  [[ "$OS" == "Darwin" ]] && return 1
   command -v systemctl >/dev/null 2>&1 || return 1
   systemctl --user cat ollama.service &>/dev/null
 }
 
 _ollama_systemd_system() {
+  [[ "$OS" == "Darwin" ]] && return 1
   command -v systemctl >/dev/null 2>&1 || return 1
   systemctl cat ollama.service &>/dev/null
 }
@@ -129,7 +135,7 @@ _ollama_listening() {
 
 _ollama_wait() {
   local i
-  for i in $(seq 1 20); do
+  for ((i=1; i<=20; i++)); do
     if _ollama_listening; then
       return 0
     fi
@@ -238,7 +244,7 @@ _build() {
 
 _wait_ready() {
   local i
-  for i in $(seq 1 90); do
+  for ((i=1; i<=90; i++)); do
     sleep 1
     echo -n "."
     if [[ -f "$RUN_DIR/ready" ]] || curl -sf "http://127.0.0.1:${APP_PORT}/" >/dev/null 2>&1; then

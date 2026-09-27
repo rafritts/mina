@@ -126,7 +126,7 @@ echo "run.sh: starting backend on :${MINA_BACKEND_PORT}" >&2
 BACKEND_PID=$!
 
 # Wait until health is up (or backend dies).
-for _ in $(seq 1 60); do
+for ((_i=1; _i<=60; _i++)); do
   if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
     echo "run.sh: backend exited early" >&2
     exit 1
@@ -151,7 +151,7 @@ echo "run.sh: starting UI on :${APP_PORT}" >&2
 ) &
 UI_PID=$!
 
-for _ in $(seq 1 90); do
+for ((_i=1; _i<=90; _i++)); do
   if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
     echo "run.sh: backend died while waiting for UI" >&2
     exit 1

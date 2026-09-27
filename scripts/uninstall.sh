@@ -32,7 +32,7 @@ _stop_ollama() {
     "$brew" services stop ollama || echo "WARNING: brew services stop ollama failed." >&2
     return 0
   fi
-  if command -v systemctl >/dev/null 2>&1; then
+  if [[ "$OS" != "Darwin" ]] && command -v systemctl >/dev/null 2>&1; then
     if systemctl --user cat ollama.service &>/dev/null; then
       systemctl --user stop ollama || echo "WARNING: systemctl --user stop ollama failed." >&2
       return 0
