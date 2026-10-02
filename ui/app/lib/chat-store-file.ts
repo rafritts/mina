@@ -11,6 +11,7 @@
 import { mkdir, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { isImageAspect, type ImageAspect } from './image-aspect'
+import { isImageBackend, type ImageBackend } from './image-backend'
 import {
   isImageCount,
   normalizeImageCount,
@@ -74,6 +75,8 @@ export type ChatStore = {
   imageAspect?: ImageAspect
   /** Global UI pref: pic count (auto | 0–5). Synced across devices. */
   imageCount?: ImageCount
+  /** Where chat photos are rendered. Default mint when absent. */
+  imageBackend?: ImageBackend
 }
 
 const EMPTY: ChatStore = {
@@ -194,12 +197,16 @@ export async function readChatStore(): Promise<ChatStore> {
     const imageCount = isImageCount(parsed.imageCount)
       ? normalizeImageCount(parsed.imageCount)
       : undefined
+    const imageBackend = isImageBackend(parsed.imageBackend)
+      ? parsed.imageBackend
+      : undefined
     return {
       updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : 0,
       putRevision: normalizePutRevision(parsed.putRevision),
       messages: sanitizeMessages(parsed.messages),
       ...(imageAspect ? { imageAspect } : {}),
       ...(imageCount !== undefined ? { imageCount } : {}),
+      ...(imageBackend ? { imageBackend } : {}),
     }
   } catch (e) {
     const err = e as NodeJS.ErrnoException
@@ -230,6 +237,9 @@ export async function writeChatStoreUnlocked(
   const imageCount = isImageCount(store.imageCount)
     ? normalizeImageCount(store.imageCount)
     : undefined
+  const imageBackend = isImageBackend(store.imageBackend)
+    ? store.imageBackend
+    : undefined
 
   const next: ChatStore = {
     updatedAt: Date.now(),
@@ -237,6 +247,7 @@ export async function writeChatStoreUnlocked(
     messages: sanitizeMessages(store.messages ?? []),
     ...(imageAspect ? { imageAspect } : {}),
     ...(imageCount !== undefined ? { imageCount } : {}),
+    ...(imageBackend ? { imageBackend } : {}),
   }
 
   const tmp = `${file}.${process.pid}.${Date.now()}.tmp`

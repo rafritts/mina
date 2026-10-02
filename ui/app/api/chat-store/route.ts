@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { isImageAspect } from '../../lib/image-aspect'
+import { isImageBackend } from '../../lib/image-backend'
 import {
   isImageCount,
   normalizeImageCount,
@@ -71,6 +72,10 @@ export async function PUT(req: Request) {
     if (imageCount === undefined) {
       imageCount = existing.imageCount
     }
+    let imageBackend = isImageBackend(b.imageBackend) ? b.imageBackend : undefined
+    if (imageBackend === undefined) {
+      imageBackend = existing.imageBackend
+    }
 
     const messages = sanitizeMessages(b.messages)
 
@@ -80,6 +85,7 @@ export async function PUT(req: Request) {
       messages,
       ...(imageAspect ? { imageAspect } : {}),
       ...(imageCount !== undefined ? { imageCount } : {}),
+      ...(imageBackend ? { imageBackend } : {}),
     })
 
     return NextResponse.json(saved, {

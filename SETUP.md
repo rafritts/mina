@@ -28,7 +28,7 @@ You are done when all of the following hold:
 | Node.js + npm | **20+** |
 | [Grok Build CLI](https://grok.x.ai) | Binary `grok` on `PATH` **or** `~/.grok/bin/grok` |
 | Ollama (recommended) | `http://localhost:11434`, model `embeddinggemma:latest` for Chroma embeddings |
-| Comfy / comfy-fe (optional) | Photo tool; default `COMFY_FE_URL=http://127.0.0.1:8886` |
+| Comfy / comfy-fe (optional) | Mint photos. Krea frontend default `COMFY_FE_URL=http://127.0.0.1:8886`. GPU is `MINT_COMFY_URL=http://restless-mint:8188` — point the frontend's `COMFY_BASE_URL` there |
 
 Package manager rules for this monorepo:
 
@@ -93,7 +93,9 @@ Do **not** set process-wide `GROK_HOME` to Mina’s isolation path for interacti
 # MINA_UI_PORT=2050
 # MINA_BACKEND_HOST=127.0.0.1
 
-# Photo generation frontend
+# Photo generation. Mint health is the GPU, not the Krea frontend port.
+# MINT_COMFY_URL=http://restless-mint:8188
+# COMFY_BASE_URL=http://restless-mint:8188
 # COMFY_FE_URL=http://127.0.0.1:8886
 
 # Labels only (CLI uses logged-in default model)
@@ -309,7 +311,7 @@ ls -la ~/.mina/grok/sessions 2>/dev/null || true
 | Port in use | Stale process | `mina stop`; `scripts/run.sh` frees ports; or `fuser -k 5100/tcp 2050/tcp` |
 | UI stale after code change | Production serves last `npm run build` | `mina rebuild` or `mina restart` |
 | Empty memory / embed errors | Ollama down / wrong model | Start Ollama, pull `embeddinggemma:latest` |
-| Photos never send | comfy-fe down or `image_count: 0` | Start comfy-fe; set photo count in UI |
+| Photos never send | Mint down, comfy-fe down, image source off, or `image_count: 0` | Tools → Photos. Mint must answer `http://restless-mint:8188`. Krea frontend (`:8886`) must be running with `COMFY_BASE_URL` pointed at Mint. Or switch the source to Grok |
 | Chemistry death spiral | Old state / bad params | `mina reset`; inspect `src/sim/params.py` EVENT_GAIN / sleep thresholds |
 | Sessions filling `~/.grok` | Pre-isolation build or wrong GROK_HOME | Use current client.py; do not set child env to interactive home |
 

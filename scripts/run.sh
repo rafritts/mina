@@ -72,6 +72,11 @@ export MINA_NPM_BIN="$NPM_BIN"
 export NODE_ENV="${NODE_ENV:-production}"
 export MINA_BACKEND_HOST="${MINA_BACKEND_HOST:-127.0.0.1}"
 export COMFY_FE_URL="${COMFY_FE_URL:-http://127.0.0.1:8886}"
+# ComfyUI on restless-mint. "Mint up" is an HTTP probe of this URL.
+# COMFY_FE_URL is the Krea frontend on the Mini (often nothing on :8886).
+# Point that frontend's Comfy upstream here — not at a local GPU.
+export MINT_COMFY_URL="${MINT_COMFY_URL:-http://restless-mint:8188}"
+export COMFY_BASE_URL="${COMFY_BASE_URL:-$MINT_COMFY_URL}"
 
 mkdir -p "$REPO_DIR/run" "$REPO_DIR/logs"
 rm -f "$REPO_DIR/run/ready"

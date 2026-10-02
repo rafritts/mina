@@ -69,6 +69,9 @@ def _read_unlocked() -> dict[str, Any]:
         isinstance(ic, str) and ic.isdigit() and 0 <= int(ic) <= 5
     ):
         out["imageCount"] = ic if ic == "auto" else (int(ic) if not isinstance(ic, int) else ic)
+    backend = image_backend_value(data.get("imageBackend"))
+    if backend:
+        out["imageBackend"] = backend
     return out
 
 
@@ -83,6 +86,9 @@ def _write_unlocked(store: dict[str, Any]) -> dict[str, Any]:
         next_store["imageAspect"] = store["imageAspect"]
     if "imageCount" in store:
         next_store["imageCount"] = store["imageCount"]
+    backend = image_backend_value(store.get("imageBackend"))
+    if backend:
+        next_store["imageBackend"] = backend
     tmp = f"{UI_CHAT_PATH}.{os.getpid()}.{time.time_ns()}.tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(json.dumps(next_store, indent=2, ensure_ascii=False))
@@ -99,9 +105,28 @@ def _write_unlocked(store: dict[str, Any]) -> dict[str, Any]:
     return next_store
 
 
+def image_backend_value(raw: Any) -> str | None:
+    """mint | grok | off, or None when the field is missing or junk."""
+    if isinstance(raw, str) and raw.strip().lower() in ("mint", "grok", "off"):
+        return raw.strip().lower()
+    return None
+
+
 def read_store() -> dict[str, Any]:
     with _lock:
         return _read_unlocked()
+
+
+def set_image_backend(backend: str) -> dict[str, Any]:
+    """Persist image source only. Transcript, aspect, and count stay."""
+    value = image_backend_value(backend)
+    if value is None:
+        raise ValueError("backend must be mint, grok, or off")
+    with _lock:
+        store = _read_unlocked()
+        store["imageBackend"] = value
+        store["putRevision"] = int(store.get("putRevision") or 0) + 1
+        return _write_unlocked(store)
 
 
 def clear_messages() -> dict[str, Any]:

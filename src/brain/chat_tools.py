@@ -1,11 +1,20 @@
 """
-Chat-turn tools (photos via comfy-fe). Separate from FREETIME tools.
+Chat-turn tools (photos). Separate from FREETIME tools.
+
+image_backend mint uses the Krea frontend (Comfy on restless-mint).
+grok uses `grok -p` Imagine. off blocks send_photo entirely.
 """
 from __future__ import annotations
 
 import json
 
 from src.application.infra.comfy import build_photo_prompt, generate_and_save
+from src.application.infra.grok_imagine import generate_with_grok
+from src.application.infra.image_backend import (
+    mint_comfy_url,
+    parse_image_backend,
+    probe_mint,
+)
 from src.application.infra.log import log
 
 CHAT_TOOLS = [
@@ -63,8 +72,25 @@ def max_photos(image_count) -> int:
     return 1
 
 
-def photo_turn_context(image_count, image_aspect: str) -> str:
+def normalize_image_backend(raw) -> str:
+    return parse_image_backend(raw) or "mint"
+
+
+def photos_allowed(image_count, image_backend) -> bool:
+    """Count cap still applies for mint and grok. off blocks every photo."""
+    if normalize_image_backend(image_backend) == "off":
+        return False
+    return max_photos(image_count) > 0
+
+
+def photo_turn_context(image_count, image_aspect: str, image_backend: str = "mint") -> str:
     """Injected into system prompt for this turn."""
+    if normalize_image_backend(image_backend) == "off":
+        return (
+            "[Photo settings]\n"
+            "No photos this reply — image generation is off. Do not call send_photo."
+        )
+
     aspect = image_aspect if image_aspect in ("landscape", "square", "portrait") else "square"
     aspect_hint = {
         "landscape": "16:9 widescreen",
@@ -107,20 +133,36 @@ def photo_turn_context(image_count, image_aspect: str) -> str:
     )
 
 
-def handle_send_photo(args: dict, *, image_aspect: str = "square") -> str:
-    """Generate via comfy and return markdown the UI can render."""
+def handle_send_photo(
+    args: dict,
+    *,
+    image_aspect: str = "square",
+    image_backend: str = "mint",
+) -> str:
+    """Generate a photo and return markdown the UI can render."""
     scene = (args.get("prompt") or "").strip()
     caption = (args.get("caption") or "").strip()
     if not scene:
         return "[send_photo: empty prompt]"
 
+    backend = normalize_image_backend(image_backend)
+    if backend == "off":
+        log("CHAT_TOOL/PHOTO", "blocked: image generation is off")
+        return "[send_photo failed: image generation is off]"
+
     full_prompt = build_photo_prompt(scene)
     try:
-        result = generate_and_save(
-            full_prompt,
-            aspect=image_aspect,
-            filename_prefix="mina",
-        )
+        if backend == "grok":
+            result = generate_with_grok(full_prompt, aspect=image_aspect)
+        else:
+            mint_url = mint_comfy_url()
+            if not probe_mint():
+                raise RuntimeError(f"Mint is down ({mint_url})")
+            result = generate_and_save(
+                full_prompt,
+                aspect=image_aspect,
+                filename_prefix="mina",
+            )
     except Exception as e:
         log("CHAT_TOOL/PHOTO/ERR", str(e))
         return f"[send_photo failed: {e}]"
@@ -131,9 +173,19 @@ def handle_send_photo(args: dict, *, image_aspect: str = "square") -> str:
     return f"![{alt}]({result['url']})"
 
 
-def call_chat_tool(name: str, args: dict, *, image_aspect: str = "square") -> str:
+def call_chat_tool(
+    name: str,
+    args: dict,
+    *,
+    image_aspect: str = "square",
+    image_backend: str = "mint",
+) -> str:
     if name == "send_photo":
-        return handle_send_photo(args, image_aspect=image_aspect)
+        return handle_send_photo(
+            args,
+            image_aspect=image_aspect,
+            image_backend=image_backend,
+        )
     return f"[Unknown chat tool: {name}]"
 
 

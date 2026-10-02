@@ -7,6 +7,7 @@ import {
   isImageAspect,
   type ImageAspect,
 } from './image-aspect'
+import { isImageBackend, type ImageBackend } from './image-backend'
 import {
   IMAGE_COUNT_DEFAULT,
   isImageCount,
@@ -28,6 +29,7 @@ function normalizeRemote(data: ChatStore): RemoteChatStore {
   const imageCount = isImageCount(data.imageCount)
     ? normalizeImageCount(data.imageCount)
     : undefined
+  const imageBackend = isImageBackend(data.imageBackend) ? data.imageBackend : undefined
   return {
     updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : 0,
     putRevision:
@@ -37,6 +39,7 @@ function normalizeRemote(data: ChatStore): RemoteChatStore {
     messages: Array.isArray(data.messages) ? data.messages : [],
     ...(imageAspect ? { imageAspect } : {}),
     ...(imageCount !== undefined ? { imageCount } : {}),
+    ...(imageBackend ? { imageBackend } : {}),
   }
 }
 
@@ -56,7 +59,7 @@ export async function pushRemoteChatStore(
   messages: StoredChatMessage[],
   imageAspect: ImageAspect,
   imageCount: ImageCount,
-  opts: { baseRevision: number },
+  opts: { baseRevision: number; imageBackend?: ImageBackend },
 ): Promise<PushChatStoreResult> {
   try {
     const aspect = isImageAspect(imageAspect) ? imageAspect : IMAGE_ASPECT_DEFAULT
@@ -76,6 +79,7 @@ export async function pushRemoteChatStore(
         baseRevision,
         imageAspect: aspect,
         imageCount: count,
+        ...(isImageBackend(opts.imageBackend) ? { imageBackend: opts.imageBackend } : {}),
       }),
     })
 
