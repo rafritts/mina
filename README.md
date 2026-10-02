@@ -118,6 +118,7 @@ mina/
 ├── scripts/                # install.sh, run.sh, mina CLI
 ├── docs/
 │   ├── architecture.md     # Authoritative v2 design (read this)
+│   ├── adr/0001-unified-workspace-ia.md  # Chat + Lab IA (Option C)
 │   ├── chemical_fidelity_tiers.md
 │   └── neurochemistry/     # Reference notes
 └── tests/                  # Sim stability, etc.
@@ -214,6 +215,8 @@ Next.js 16 + React 19 + Tailwind. Production port **2050**.
 | `/` | Chat + thought stream + control (presence, chemistry peeks, presets, photo prefs) |
 | `/admin/*` | Lab: overview, neuro editors, context, history, events, system |
 
+Target information architecture (Option C, not built yet): [docs/adr/0001-unified-workspace-ia.md](docs/adr/0001-unified-workspace-ia.md). One workspace; Chat stays home; Lab routes stay inside the same shell.
+
 Chat posts to backend via app routes; mind stream consumes SSE. Build id: `GET /api/build` (also printed by `mina status` / restart). After UI changes: `mina rebuild` or `mina restart` so production `next start` serves a fresh build.
 
 ---
@@ -275,7 +278,7 @@ If you are an LLM agent ramping on this repo:
 3. **`SETUP.md`** — how to install, auth, verify, common failure modes.
 4. Entry points: `main.py` → `src/gateway/server.py` → `src/brain/pipeline.py` → `src/sim/sim.py`.
 5. LLM I/O: `src/application/infra/client.py`.
-6. UI: `ui/app/page.tsx`, `ui/app/components/ChatApp.tsx`, `ui/app/lib/api.ts`.
+6. UI: `ui/app/page.tsx`, `ui/app/components/ChatApp.tsx`, `ui/app/lib/api.ts`. Workspace IA: `docs/adr/0001-unified-workspace-ia.md`.
 
 When changing behavior:
 
