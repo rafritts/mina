@@ -49,8 +49,7 @@ export default function NeuroPage() {
     <div className="page">
       <h1 className="page-title">Chemistry</h1>
       <p className="page-desc">
-        Direct tonic overrides. Same values as Chat → Control → Chemistry, with full groups and
-        receptor readouts.
+        Direct tonic overrides, with full groups, the secretion queue, and receptor sensitivities.
       </p>
 
       {GROUPS.map(({ label, chemicals }) => (

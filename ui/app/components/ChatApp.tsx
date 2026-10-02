@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -36,13 +37,9 @@ import {
 import { AspectRatioSlider } from './AspectRatioSlider'
 import { ImageCountSelector } from './ImageCountSelector'
 import { ThoughtStream } from './ThoughtStream'
-import { ControlPane } from './ControlPane'
-import { ChatContextModal } from './ChatContextModal'
 import { Lightbox } from './Lightbox'
 import { retainImageCache, useCachedImage } from '../lib/image-cache'
-import { useStatePoller } from '../lib/hooks/useStatePoller'
-import { AppRoot } from './shell/AppRoot'
-import { AppHeader } from './shell/AppHeader'
+import { useWorkspaceChrome } from './shell/workspace-chrome'
 import { MinaMark } from './MinaMark'
 
 type Role = 'user' | 'assistant'
@@ -61,7 +58,6 @@ interface ChatMessage {
 /** Legacy browser-only keys — migrated once into the shared server store. */
 const LEGACY_STORAGE_KEY = 'mina-chat-messages'
 const LEGACY_PREFS_KEY = 'mina-chat-prefs'
-const CONTROL_PREF_KEY = 'mina-control-open'
 
 const SAVE_DEBOUNCE_MS = 400
 const POLL_MS = 4000
@@ -450,9 +446,6 @@ export function ChatApp() {
   const [hydrated, setHydrated] = useState(false)
   const [imageCount, setImageCount] = useState<ImageCount>(IMAGE_COUNT_DEFAULT)
   const [imageAspect, setImageAspect] = useState<ImageAspect>(IMAGE_ASPECT_DEFAULT)
-  /** Layout-only — device-local (phone drawer vs desktop pane). */
-  const [controlOpen, setControlOpen] = useState(true)
-  const [contextOpen, setContextOpen] = useState(false)
   const [mind, setMind] = useState<TurnMind>(EMPTY_TURN_MIND)
 
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -621,7 +614,7 @@ export function ChatApp() {
   )
 
   const { connected } = useStream(onStreamEvent)
-  const { state: simState } = useStatePoller(3000)
+  const chrome = useWorkspaceChrome()
 
   // Observe server turn status (survives mobile background / reconnect).
   useEffect(() => {
@@ -684,18 +677,6 @@ export function ChatApp() {
       try {
         const remote = await fetchRemoteChatStore()
         if (cancelled) return
-
-        // Device-local control drawer preference
-        try {
-          const raw = localStorage.getItem(CONTROL_PREF_KEY)
-          if (raw === '0') setControlOpen(false)
-          else if (raw === '1') setControlOpen(true)
-        } catch {
-          /* ignore */
-        }
-        if (typeof window !== 'undefined' && window.innerWidth < 960) {
-          setControlOpen(false)
-        }
 
         if (remote && (remote.messages.length > 0 || remote.putRevision > 0)) {
           applyRemote({
@@ -831,16 +812,6 @@ export function ChatApp() {
     }
   }, [hydrated, pullChatStore])
 
-  // Device-local control pane preference only.
-  useEffect(() => {
-    if (!hydrated) return
-    try {
-      localStorage.setItem(CONTROL_PREF_KEY, controlOpen ? '1' : '0')
-    } catch {
-      /* ignore */
-    }
-  }, [controlOpen, hydrated])
-
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, sending, mind])
@@ -855,7 +826,8 @@ export function ChatApp() {
   }, [hydrated, messages])
 
   useEffect(() => {
-    const onErase = () => {
+    const onErase = (e: Event) => {
+      if (e.cancelable) e.preventDefault()
       setMessages([])
       messagesRef.current = []
       setMind(EMPTY_TURN_MIND)
@@ -1010,8 +982,8 @@ export function ChatApp() {
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`
   }
 
-  const clearView = () => {
-    if (sending) return
+  const clearView = useCallback(() => {
+    if (sendingRef.current) return
     setMessages([])
     messagesRef.current = []
     setError(null)
@@ -1020,16 +992,29 @@ export function ChatApp() {
     dirtyRef.current = true
     changeSeqRef.current += 1
     void flushRemoteStore([])
-  }
+  }, [flushRemoteStore])
 
-  const sleeping = Boolean(simState?.sleeping)
-  const status = sending
-    ? 'busy'
-    : !connected
-      ? 'off'
-      : sleeping
-        ? 'sleep'
-        : 'live'
+  const clearViewRef = useRef(clearView)
+  useLayoutEffect(() => {
+    clearViewRef.current = clearView
+  }, [clearView])
+
+  useLayoutEffect(() => {
+    if (!chrome) return
+    chrome.setClearHandler(() => clearViewRef.current())
+    return () => chrome.setClearHandler(null)
+  }, [chrome])
+
+  useLayoutEffect(() => {
+    if (!chrome) return
+    chrome.setClearDisabled(sending || messages.length === 0)
+  }, [chrome, sending, messages.length])
+
+  useLayoutEffect(() => {
+    if (!chrome) return
+    chrome.setStatusOverride(sending ? 'thinking' : !connected ? 'offline' : null)
+    return () => chrome.setStatusOverride(null)
+  }, [chrome, sending, connected])
 
   // Newest archived mind is open; all older ones stay collapsed.
   // While a turn is in flight, the live stream is the open mind — collapse archives.
@@ -1041,60 +1026,9 @@ export function ChatApp() {
     .reverse()
     .find((m) => m.role === 'user')?.id
 
-  const headerActions = (
-    <>
-      <button
-        type="button"
-        className="btn btn-ghost btn-sm"
-        onClick={() => setContextOpen(true)}
-      >
-        Context
-      </button>
-      <button
-        type="button"
-        className="btn btn-ghost btn-sm"
-        onClick={clearView}
-        disabled={sending || messages.length === 0}
-      >
-        Clear
-      </button>
-      <button
-        type="button"
-        className="btn btn-soft btn-sm"
-        onClick={() => setControlOpen((o) => !o)}
-        style={
-          controlOpen
-            ? {
-                background: 'var(--accent-dim)',
-                borderColor: 'var(--accent-border)',
-                color: 'var(--accent-bright)',
-              }
-            : undefined
-        }
-      >
-        Control
-      </button>
-    </>
-  )
-
   return (
-    <AppRoot>
-      <AppHeader
-        status={status}
-        statusLabel={
-          sending
-            ? 'Thinking'
-            : !connected
-              ? 'Offline'
-              : sleeping
-                ? 'Sleeping'
-                : 'Live'
-        }
-        actions={headerActions}
-      />
-
-      <div className="app-body">
-        <section className="flex flex-1 min-w-0 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <section className="flex flex-1 min-h-0 min-w-0 flex-col">
           <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-5">
             <div className="mx-auto max-w-2xl space-y-5">
               {!hydrated ? null : messages.length === 0 && !sending ? (
@@ -1241,34 +1175,6 @@ export function ChatApp() {
             </div>
           </div>
         </section>
-
-        {controlOpen && (
-          <div className="hidden lg:flex h-full shrink-0">
-            <ControlPane streamConnected={connected} />
-          </div>
-        )}
-      </div>
-
-      {controlOpen && (
-        <div className="lg:hidden control-drawer-backdrop">
-          <button
-            type="button"
-            className="flex-1 border-0 bg-transparent cursor-default"
-            aria-label="Close control"
-            onClick={() => setControlOpen(false)}
-          />
-          <ControlPane
-            streamConnected={connected}
-            onClose={() => setControlOpen(false)}
-            className="w-[min(100%,22.5rem)] shadow-2xl"
-          />
-        </div>
-      )}
-
-      <ChatContextModal
-        open={contextOpen}
-        onClose={() => setContextOpen(false)}
-      />
-    </AppRoot>
+    </div>
   )
 }

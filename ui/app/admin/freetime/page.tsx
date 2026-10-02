@@ -642,8 +642,8 @@ export default function FreetimePage() {
 
           {!loading && !detail && recent.length === 0 && (
             <p className="text-xs mono text-muted m-0">
-              Free time runs ~every 30 min while she is awake. Trigger one from Chat → Control →
-              Tools → Run freetime heartbeat.
+              Free time runs ~every 30 min while she is awake. Trigger one from Tools → Run
+              freetime heartbeat.
             </p>
           )}
         </div>

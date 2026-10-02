@@ -114,11 +114,8 @@ export function ChatContextModal({ open, onClose }: Props) {
       }
     }
     window.addEventListener('keydown', onKey)
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
     return () => {
       window.removeEventListener('keydown', onKey)
-      document.body.style.overflow = prev
     }
   }, [open, onClose, load])
 
@@ -179,7 +176,7 @@ export function ChatContextModal({ open, onClose }: Props) {
                     id={titleId}
                     className="text-[15px] font-semibold tracking-tight text-[var(--text)] m-0"
                   >
-                    Chat context
+                    Scene
                   </h2>
                   <p className="text-[11px] text-[var(--text-muted)] m-0 mt-0.5">
                     Live scene · timeline · plans — short-term coherence
@@ -209,7 +206,7 @@ export function ChatContextModal({ open, onClose }: Props) {
 
           <nav
             className="mt-3 flex flex-wrap gap-1"
-            aria-label="Context sections"
+            aria-label="Scene sections"
           >
             {SECTIONS.map((s) => (
               <button

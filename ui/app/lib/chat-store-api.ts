@@ -104,3 +104,15 @@ export function defaultImageAspect(): ImageAspect {
 export function defaultImageCount(): ImageCount {
   return IMAGE_COUNT_DEFAULT
 }
+
+/** Empty the shared transcript view. Does not call `/api/conversation/erase`. */
+export async function clearRemoteTranscript(): Promise<boolean> {
+  const remote = await fetchRemoteChatStore()
+  const result = await pushRemoteChatStore(
+    [],
+    remote?.imageAspect ?? defaultImageAspect(),
+    remote?.imageCount ?? defaultImageCount(),
+    { baseRevision: remote?.putRevision ?? 0 },
+  )
+  return result.ok || Boolean(result.conflict && result.store)
+}

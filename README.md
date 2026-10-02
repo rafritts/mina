@@ -212,10 +212,10 @@ Next.js 16 + React 19 + Tailwind. Production port **2050**.
 
 | Route | Content |
 |-------|---------|
-| `/` | Chat + thought stream + control (presence, chemistry peeks, presets, photo prefs) |
-| `/admin/*` | Lab: overview, neuro editors, context, history, events, system |
+| `/` | Chat home: transcript, mind stream, composer. Scene, Clear, and Tools in the header |
+| `/admin/*` | Instrumentation inside the same shell: overview, chemistry, free time, turn trace, history, events, system |
 
-Target information architecture (Option C, not built yet): [docs/adr/0001-unified-workspace-ia.md](docs/adr/0001-unified-workspace-ia.md). One workspace; Chat stays home; Lab routes stay inside the same shell.
+Information architecture: [docs/adr/0001-unified-workspace-ia.md](docs/adr/0001-unified-workspace-ia.md). One workspace; Chat is home; `/admin/*` stays inside the same shell.
 
 Chat posts to backend via app routes; mind stream consumes SSE. Build id: `GET /api/build` (also printed by `mina status` / restart). After UI changes: `mina rebuild` or `mina restart` so production `next start` serves a fresh build.
 

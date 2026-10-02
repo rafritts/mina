@@ -80,8 +80,8 @@ export default function OverviewPage() {
     <div className="page">
       <h1 className="page-title">{presenceLabel(state)}</h1>
       <p className="page-desc">
-        Live overview of felt state and recent activity. Adjust chemistry from Chat → Control,
-        or open the Chemistry lab page for full editors.
+        Live overview of felt state and recent activity. Chemistry editors live on the Chemistry
+        page.
       </p>
 
       <section className="section">
