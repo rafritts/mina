@@ -1,6 +1,8 @@
 'use client'
 
 import { useCallback, useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { apiFetch } from '../../lib/api'
 import { clearRemoteTranscript } from '../../lib/chat-store-api'
 import { PRESETS } from '../../lib/presets'
@@ -122,9 +124,9 @@ export function ToolsSheet({ open, onClose }: { open: boolean; onClose: () => vo
           <section>
             <div className="label section-head">Time</div>
             <div className="flex items-center gap-2">
-              <input
+              <Input
                 type="number"
-                className="field w-20 mono text-sm"
+                className="field-narrow mono text-sm"
                 value={advanceHours}
                 onChange={(e) => setAdvanceHours(e.target.value)}
                 min={0.25}
@@ -133,43 +135,48 @@ export function ToolsSheet({ open, onClose }: { open: boolean; onClose: () => vo
                 aria-label="Hours to advance"
               />
               <span className="text-[11.5px] text-muted">hours</span>
-              <button
+              <Button
                 type="button"
-                className="btn btn-soft btn-sm ml-auto"
+                variant="outline"
+                size="sm"
+                className="ml-auto"
                 onClick={() => void advance()}
                 disabled={busy === 'advance'}
               >
                 {busy === 'advance' ? '…' : 'Advance'}
-              </button>
+              </Button>
             </div>
           </section>
 
           <section className="space-y-2">
             <div className="label section-head">Actions</div>
-            <button
+            <Button
               type="button"
-              className="btn btn-soft btn-block"
+              variant="outline"
+              className="btn-block"
               onClick={() => void runHeartbeat()}
               disabled={busy === 'heartbeat'}
             >
               {busy === 'heartbeat' ? 'Running freetime…' : 'Run freetime heartbeat'}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="btn btn-danger btn-block"
+              variant="destructive"
+              className="btn-block"
               onClick={() => void resetBaseline()}
               disabled={busy === 'reset'}
             >
               {busy === 'reset' ? 'Resetting…' : 'Reset chemistry to baseline'}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="btn btn-danger btn-block"
+              variant="destructive"
+              className="btn-block"
               onClick={() => void eraseHistory()}
               disabled={busy === 'erase'}
             >
               {busy === 'erase' ? 'Erasing…' : 'Erase conversation history'}
-            </button>
+            </Button>
           </section>
         </div>
       </Sheet>

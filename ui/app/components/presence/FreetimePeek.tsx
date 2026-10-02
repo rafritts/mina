@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { fetchFreetime, type FreetimeSession } from '../../lib/api'
+import { Chip } from '../Chip'
+import { StateNotice } from '../StateNotice'
 import {
   formatClockTs,
   formatRelativeTs,
@@ -56,12 +58,12 @@ export function FreetimePeek({ onNavigate }: { onNavigate?: () => void }) {
           <>
             <div className="flex items-center justify-between gap-2">
               <div className="flex flex-wrap gap-1 min-w-0">
-                {freetimeChipLabels(latest)
+                  {freetimeChipLabels(latest)
                   .slice(0, CHIP_LIMIT)
                   .map((label) => (
-                    <span key={label} className="chip chip-info max-w-[7rem] truncate">
+                    <Chip key={label} tone="info" className="max-w-[7rem]">
                       {label}
-                    </span>
+                    </Chip>
                   ))}
               </div>
               <span
@@ -76,7 +78,12 @@ export function FreetimePeek({ onNavigate }: { onNavigate?: () => void }) {
             </p>
           </>
         ) : (
-          <p className="text-[11px] mono text-faint m-0">No free-time sessions yet.</p>
+          <StateNotice
+            bare
+            compact
+            title="No free-time sessions yet"
+            detail="They show up here after a heartbeat, and in full on Free time."
+          />
         )}
       </div>
     </section>

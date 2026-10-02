@@ -3,6 +3,7 @@
 import { useEffect, useId, useState } from 'react'
 import type { TurnMind, PillarStageId } from '../lib/stream'
 import { cn } from '@/lib/utils'
+import { Chip } from './Chip'
 
 const STAGES: { id: PillarStageId; label: string }[] = [
   { id: 'sense', label: 'Sense' },
@@ -79,10 +80,6 @@ function Typewriter({
   )
 }
 
-function Chip({ children }: { children: React.ReactNode }) {
-  return <span className="chip">{children}</span>
-}
-
 type SectionTone = 'sense' | 'chemistry' | 'feel' | 'memory' | 'situate' | 'decide'
 
 function Section({
@@ -96,7 +93,7 @@ function Section({
 }) {
   return (
     <div className="mind-section" data-tone={tone}>
-      <div className="label mb-1.5" style={{ color: 'inherit', opacity: 0.75 }}>
+      <div className="label mb-1.5">
         {title}
       </div>
       <div className="text-[13px] leading-relaxed text-secondary">{children}</div>
@@ -346,7 +343,7 @@ function MindBody({ mind, live }: { mind: TurnMind; live: boolean }) {
               </p>
             )}
             {mind.context.notable && (
-              <p className="m-0 mt-2 text-[12px]" style={{ color: 'var(--accent-bright)' }}>
+              <p className="m-0 mt-2 text-[12px] text-accent">
                 notable · {mind.context.notable}
               </p>
             )}
@@ -356,10 +353,7 @@ function MindBody({ mind, live }: { mind: TurnMind; live: boolean }) {
         {mind.reasoning && (
           <Section title="PFC · internal monologue" tone="decide">
             {mind.reasoning.internal_reaction && (
-              <p
-                className="m-0 mb-2 font-medium italic"
-                style={{ color: 'var(--accent-bright)' }}
-              >
+              <p className="m-0 mb-2 font-medium italic text-accent">
                 “
                 <Typewriter
                   enabled={live}

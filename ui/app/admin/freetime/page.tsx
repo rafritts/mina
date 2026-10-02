@@ -14,6 +14,8 @@ import {
   freetimeBody,
   freetimeChipLabels,
 } from '../../lib/presence'
+import { Chip } from '../../components/Chip'
+import { StateNotice, offlineDetail } from '../../components/StateNotice'
 import { cn } from '@/lib/utils'
 
 type SectionKey =
@@ -28,17 +30,17 @@ type SectionKey =
   | 'pfc'
   | 'system'
 
-const SECTION_META: { key: SectionKey; label: string; accent: string }[] = [
-  { key: 'message', label: 'Synthetic input', accent: 'rgba(96,165,250,0.75)' },
-  { key: 'tools', label: 'Tools & diary', accent: 'rgba(251,146,60,0.75)' },
-  { key: 'reply', label: 'Reply / note', accent: 'rgba(52,211,153,0.65)' },
-  { key: 'encoder', label: 'Encoder (amygdala)', accent: 'rgba(251,146,60,0.75)' },
-  { key: 'decoder', label: 'Decoder (chemistry)', accent: 'rgba(52,211,153,0.75)' },
-  { key: 'assembly', label: 'Context assembly', accent: 'rgba(167,139,250,0.75)' },
-  { key: 'insula', label: 'Insula (emotion)', accent: 'rgba(251,113,133,0.75)' },
-  { key: 'hippocampus', label: 'Hippocampus (situation)', accent: 'rgba(196,181,253,0.75)' },
-  { key: 'pfc', label: 'PFC (strategy)', accent: 'rgba(248,200,79,0.75)' },
-  { key: 'system', label: 'System prompt (Mina sees)', accent: 'rgba(232,228,221,0.55)' },
+const SECTION_META: { key: SectionKey; label: string; tone: string }[] = [
+  { key: 'message', label: 'Synthetic input', tone: 'sense' },
+  { key: 'tools', label: 'Tools & diary', tone: 'tools' },
+  { key: 'reply', label: 'Reply / note', tone: 'reply' },
+  { key: 'encoder', label: 'Encoder (amygdala)', tone: 'tools' },
+  { key: 'decoder', label: 'Decoder (chemistry)', tone: 'chem' },
+  { key: 'assembly', label: 'Context assembly', tone: 'assembly' },
+  { key: 'insula', label: 'Insula (emotion)', tone: 'feel' },
+  { key: 'hippocampus', label: 'Hippocampus (situation)', tone: 'situate' },
+  { key: 'pfc', label: 'PFC (strategy)', tone: 'decide' },
+  { key: 'system', label: 'System prompt (Mina sees)', tone: 'system' },
 ]
 
 function fmtVal(v: unknown): string {
@@ -79,14 +81,14 @@ function Prose({ text }: { text: string | undefined }) {
 
 function Section({
   label,
-  accent,
+  tone,
   open,
   onToggle,
   children,
   badge,
 }: {
   label: string
-  accent: string
+  tone: string
   open: boolean
   onToggle: () => void
   children: ReactNode
@@ -100,15 +102,10 @@ function Section({
         className="w-full flex items-center justify-between px-4 py-3 text-left border-0 bg-transparent cursor-pointer hover:bg-[var(--surface-hover)] transition-colors"
       >
         <span className="flex items-center gap-2 min-w-0">
-          <span
-            className="text-[11px] uppercase tracking-[0.14em] font-medium"
-            style={{ color: accent }}
-          >
+          <span className="section-accent" data-tone={tone}>
             {label}
           </span>
-          {badge && (
-            <span className="chip text-[9px] normal-case tracking-normal">{badge}</span>
-          )}
+          {badge && <Chip>{badge}</Chip>}
         </span>
         <span className="text-xs mono text-faint shrink-0">{open ? '−' : '+'}</span>
       </button>
@@ -132,12 +129,9 @@ function ToolBlock({ tools }: { tools: FreetimeSession['tools'] }) {
         const isDiary = t.name === 'record_diary'
         const entry = typeof args.entry === 'string' ? args.entry : ''
         return (
-          <div
-            key={`${t.name}-${i}`}
-            className="rounded-lg border border-[var(--border-subtle)] p-3 space-y-2"
-          >
+          <div key={`${t.name}-${i}`} className="inset space-y-2">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="chip chip-info">{t.label || t.name}</span>
+              <Chip tone="info">{t.label || t.name}</Chip>
               <span className="mono text-[10px] text-faint">{t.name}</span>
             </div>
             {isDiary && entry ? (
@@ -171,7 +165,7 @@ function DecoderTable({
     <div className="overflow-x-auto">
       <table className="w-full text-xs value-mono">
         <thead>
-          <tr style={{ color: 'rgba(232,228,221,0.35)' }}>
+          <tr className="text-faint">
             <th className="text-left font-normal py-1 pr-3">chemical</th>
             <th className="text-right font-normal py-1 px-2">norm</th>
             <th className="text-right font-normal py-1 px-2">set</th>
@@ -183,7 +177,7 @@ function DecoderTable({
           {Object.entries(snap)
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([name, vals]) => (
-              <tr key={name} style={{ color: 'rgba(232,228,221,0.75)' }}>
+              <tr key={name} className="text-secondary">
                 <td className="py-0.5 pr-3">{name}</td>
                 <td className="text-right px-2">{vals?.normalized ?? '—'}</td>
                 <td className="text-right px-2">{vals?.setpoint ?? '—'}</td>
@@ -318,7 +312,7 @@ export default function FreetimePage() {
 
   return (
     <div className="page space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="page-head">
         <div>
           <h1 className="page-title">Free time</h1>
           <p className="page-desc mb-0">
@@ -330,16 +324,8 @@ export default function FreetimePage() {
           <button
             type="button"
             onClick={() => setAutoRefresh((v) => !v)}
-            className="btn btn-sm mono"
-            style={
-              autoRefresh
-                ? {
-                    border: '1px solid var(--success-border)',
-                    color: 'var(--success)',
-                    background: 'var(--success-dim)',
-                  }
-                : { border: '1px solid var(--border)' }
-            }
+            className="btn btn-soft btn-sm mono"
+            data-tone={autoRefresh ? 'live' : undefined}
           >
             {autoRefresh ? 'live' : 'paused'}
           </button>
@@ -374,9 +360,12 @@ export default function FreetimePage() {
           </div>
           <div className="overflow-y-auto flex-1 divide-y divide-[var(--border-subtle)]">
             {recent.length === 0 && (
-              <p className="px-3 py-4 text-xs mono text-faint m-0">
-                No free-time sessions yet.
-              </p>
+              <StateNotice
+                bare
+                compact
+                title="No free-time sessions yet"
+                detail="Run a heartbeat from Tools to write the first one."
+              />
             )}
             {recent.map((s) => {
               const active = selectedTs != null && Math.abs(s.ts - selectedTs) < 1.5
@@ -406,9 +395,9 @@ export default function FreetimePage() {
                   {chips.length > 0 && (
                     <div className="flex flex-wrap gap-0.5 mb-1">
                       {chips.slice(0, 3).map((l) => (
-                        <span key={l} className="chip max-w-[5.5rem] truncate">
+                        <Chip key={l} className="max-w-[5.5rem]">
                           {l}
-                        </span>
+                        </Chip>
                       ))}
                     </div>
                   )}
@@ -424,9 +413,18 @@ export default function FreetimePage() {
         {/* Detail */}
         <div className="min-w-0 space-y-3">
           {loading && !detail && (
-            <p className="text-xs mono text-muted m-0">Loading…</p>
+            <StateNotice tone="loading" title="Loading session" detail="Fetching the latest free-time record." />
           )}
-          {error && !detail && <div className="alert alert-info">{error}</div>}
+          {error && !detail && (
+            <StateNotice
+              tone="info"
+              title="Free time unavailable"
+              detail={offlineDetail(
+                error,
+                'Sessions appear after a heartbeat. Run one from the Tools sheet.',
+              )}
+            />
+          )}
 
           {detail && (
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mono text-muted px-0.5">
@@ -439,7 +437,7 @@ export default function FreetimePage() {
                 {(detail.labels ?? []).join(', ') || 'no tools'}
               </span>
               {detail.has_context ? (
-                <span style={{ color: 'var(--success)' }}>pillars</span>
+                <span className="text-success">pillars</span>
               ) : (
                 <span className="text-faint">no pillar dump</span>
               )}
@@ -459,7 +457,7 @@ export default function FreetimePage() {
             <div className="space-y-2">
               <Section
                 label={SECTION_META[0].label}
-                accent={SECTION_META[0].accent}
+                tone={SECTION_META[0].tone}
                 open={open.message}
                 onToggle={() => toggle('message')}
               >
@@ -468,7 +466,7 @@ export default function FreetimePage() {
 
               <Section
                 label={SECTION_META[1].label}
-                accent={SECTION_META[1].accent}
+                tone={SECTION_META[1].tone}
                 open={open.tools}
                 onToggle={() => toggle('tools')}
                 badge={
@@ -482,7 +480,7 @@ export default function FreetimePage() {
 
               <Section
                 label={SECTION_META[2].label}
-                accent={SECTION_META[2].accent}
+                tone={SECTION_META[2].tone}
                 open={open.reply}
                 onToggle={() => toggle('reply')}
               >
@@ -491,7 +489,7 @@ export default function FreetimePage() {
 
               <Section
                 label={SECTION_META[3].label}
-                accent={SECTION_META[3].accent}
+                tone={SECTION_META[3].tone}
                 open={open.encoder}
                 onToggle={() => toggle('encoder')}
               >
@@ -514,17 +512,14 @@ export default function FreetimePage() {
 
               <Section
                 label={SECTION_META[4].label}
-                accent={SECTION_META[4].accent}
+                tone={SECTION_META[4].tone}
                 open={open.decoder}
                 onToggle={() => toggle('decoder')}
               >
                 <DecoderTable snap={ctx?.sim_snapshot} />
                 {ctx?.big5 && Object.keys(ctx.big5).length > 0 && (
                   <div className="mt-4">
-                    <div
-                      className="text-[10px] uppercase tracking-widest mb-2"
-                      style={{ color: 'rgba(232,228,221,0.32)' }}
-                    >
+                    <div className="label mb-2">
                       Big 5
                     </div>
                     <KvList data={ctx.big5 as Record<string, unknown>} />
@@ -534,45 +529,33 @@ export default function FreetimePage() {
 
               <Section
                 label={SECTION_META[5].label}
-                accent={SECTION_META[5].accent}
+                tone={SECTION_META[5].tone}
                 open={open.assembly}
                 onToggle={() => toggle('assembly')}
               >
                 {a ? (
                   <div className="space-y-4">
                     <div>
-                      <div
-                        className="text-[10px] uppercase tracking-widest mb-1.5"
-                        style={{ color: 'rgba(232,228,221,0.32)' }}
-                      >
+                      <div className="label mb-1.5">
                         Window synthesis
                       </div>
                       <Prose text={a.window_context} />
                     </div>
                     <div>
-                      <div
-                        className="text-[10px] uppercase tracking-widest mb-1.5"
-                        style={{ color: 'rgba(232,228,221,0.32)' }}
-                      >
+                      <div className="label mb-1.5">
                         RAG synthesis
                       </div>
                       <Prose text={a.rag_context} />
                     </div>
                     <div>
-                      <div
-                        className="text-[10px] uppercase tracking-widest mb-1.5"
-                        style={{ color: 'rgba(232,228,221,0.32)' }}
-                      >
+                      <div className="label mb-1.5">
                         KAG
                       </div>
                       <Prose text={a.kag_context} />
                     </div>
                     {(a.sliding_raw || a.experiences_raw) && (
                       <details className="text-xs">
-                        <summary
-                          className="cursor-pointer uppercase tracking-widest text-[10px]"
-                          style={{ color: 'rgba(232,228,221,0.35)' }}
-                        >
+                        <summary className="label cursor-pointer">
                           Raw retrieval
                         </summary>
                         <div className="mt-3 space-y-3">
@@ -599,7 +582,7 @@ export default function FreetimePage() {
 
               <Section
                 label={SECTION_META[6].label}
-                accent={SECTION_META[6].accent}
+                tone={SECTION_META[6].tone}
                 open={open.insula}
                 onToggle={() => toggle('insula')}
               >
@@ -608,7 +591,7 @@ export default function FreetimePage() {
 
               <Section
                 label={SECTION_META[7].label}
-                accent={SECTION_META[7].accent}
+                tone={SECTION_META[7].tone}
                 open={open.hippocampus}
                 onToggle={() => toggle('hippocampus')}
               >
@@ -617,7 +600,7 @@ export default function FreetimePage() {
 
               <Section
                 label={SECTION_META[8].label}
-                accent={SECTION_META[8].accent}
+                tone={SECTION_META[8].tone}
                 open={open.pfc}
                 onToggle={() => toggle('pfc')}
               >
@@ -626,13 +609,12 @@ export default function FreetimePage() {
 
               <Section
                 label={SECTION_META[9].label}
-                accent={SECTION_META[9].accent}
+                tone={SECTION_META[9].tone}
                 open={open.system}
                 onToggle={() => toggle('system')}
               >
                 <pre
-                  className="text-xs leading-relaxed whitespace-pre-wrap break-words value-mono max-h-[28rem] overflow-y-auto m-0"
-                  style={{ color: 'rgba(232,228,221,0.72)' }}
+                  className="text-xs leading-relaxed whitespace-pre-wrap break-words value-mono text-secondary max-h-[28rem] overflow-y-auto m-0"
                 >
                   {(ctx?.system_prompt || '').trim() || '(none)'}
                 </pre>

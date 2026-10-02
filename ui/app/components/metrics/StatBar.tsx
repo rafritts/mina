@@ -1,18 +1,10 @@
-import { getChemLabel, COLOR_CLASSES, DISPLAY_RANGES } from '../../lib/labels'
+import { Chip, chipTone } from '../Chip'
+import { getChemLabel, DISPLAY_RANGES } from '../../lib/labels'
 import type { ChemicalEntry } from '../../lib/api'
-import { cn } from '@/lib/utils'
 
 interface Props {
   field: string
   entry: ChemicalEntry
-}
-
-function chipClass(color?: string): string {
-  if (color === 'success') return 'chip chip-success'
-  if (color === 'warning') return 'chip chip-warning'
-  if (color === 'error') return 'chip chip-error'
-  if (color === 'info') return 'chip chip-info'
-  return 'chip'
 }
 
 function formatValue(value: number): string {
@@ -28,7 +20,6 @@ export function StatBar({ field, entry }: Props) {
   const max = entry.norm_max ?? range?.max ?? Math.max(entry.value * 3, 1)
   const min = range?.min ?? 0
   const pct = Math.min(100, Math.max(0, ((entry.value - min) / (max - min || 1)) * 100))
-  const barColor = labelEntry ? COLOR_CLASSES[labelEntry.color]?.bar : undefined
   const gap = entry.gap
   const gapStr =
     gap === undefined
@@ -45,7 +36,7 @@ export function StatBar({ field, entry }: Props) {
         </span>
         <div className="flex items-center gap-2">
           {labelEntry && (
-            <span className={chipClass(labelEntry.color)}>{labelEntry.name}</span>
+            <Chip tone={chipTone(labelEntry.color)}>{labelEntry.name}</Chip>
           )}
           <span className="text-xs mono">
             {formatValue(entry.value)}{' '}
@@ -55,7 +46,8 @@ export function StatBar({ field, entry }: Props) {
       </div>
       <div className="metric-track">
         <div
-          className={cn('metric-fill', barColor)}
+          className="metric-fill"
+          data-tone={labelEntry?.color ?? 'neutral'}
           style={{ width: `${pct}%` }}
         />
       </div>

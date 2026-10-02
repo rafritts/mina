@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { StateNotice } from '../../components/StateNotice'
 import { apiFetch, type TokenStats } from '../../lib/api'
 import { BUILD_INFO } from '../../lib/build-info'
 
@@ -89,7 +90,12 @@ export default function SystemPage() {
               </div>
             </>
           ) : (
-            <p className="text-xs mono text-faint m-0">No billing data</p>
+            <StateNotice
+              bare
+              compact
+              title="No billing data"
+              detail="The cap and spend appear when the sim exposes /api/billing."
+            />
           )}
         </div>
       </section>

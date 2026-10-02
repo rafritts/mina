@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Menu } from 'lucide-react'
 import { usePathname } from 'next/navigation'
+import { Button } from '@/components/ui/button'
 import { clearRemoteTranscript, fetchRemoteChatStore } from '../../lib/chat-store-api'
 import { useStatePoller } from '../../lib/hooks/useStatePoller'
 import { presenceLabel } from '../../lib/presence'
@@ -117,25 +118,32 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
 
   const actions = (
     <>
-      <button type="button" className="btn btn-ghost btn-sm" onClick={() => {
-        setNavPath(null)
-        setPresenceOpen(false)
-        setToolsOpen(false)
-        setSceneOpen(true)
-      }}>
-        Scene
-      </button>
-      <button
+      <Button
         type="button"
-        className="btn btn-ghost btn-sm"
+        variant="ghost"
+        size="sm"
+        onClick={() => {
+          setNavPath(null)
+          setPresenceOpen(false)
+          setToolsOpen(false)
+          setSceneOpen(true)
+        }}
+      >
+        Scene
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
         onClick={onClear}
         disabled={clearIsDisabled}
       >
         Clear
-      </button>
-      <button
+      </Button>
+      <Button
         type="button"
-        className="btn btn-soft btn-sm"
+        variant="outline"
+        size="sm"
         aria-haspopup="dialog"
         aria-expanded={toolsOpen}
         onClick={() => {
@@ -146,7 +154,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
         }}
       >
         Tools
-      </button>
+      </Button>
     </>
   )
 
@@ -164,9 +172,11 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
             setPresenceOpen(true)
           }}
           menu={
-            <button
+            <Button
               type="button"
-              className="btn btn-ghost btn-sm nav-menu-btn"
+              variant="ghost"
+              size="sm"
+              className="nav-menu-btn"
               aria-label="Open menu"
               aria-expanded={navOpen}
               aria-haspopup="dialog"
@@ -178,7 +188,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
               }}
             >
               <Menu className="h-4 w-4" aria-hidden />
-            </button>
+            </Button>
           }
           actions={actions}
         />
@@ -197,14 +207,15 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
             <div className="nav-drawer" role="dialog" aria-modal="true" aria-label="Primary">
               <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] px-3 py-3">
                 <span className="label">Menu</span>
-                <button
+                <Button
                   type="button"
-                  className="btn btn-ghost btn-sm"
+                  variant="ghost"
+                  size="sm"
                   aria-label="Close menu"
                   onClick={() => setNavPath(null)}
                 >
                   ✕
-                </button>
+                </Button>
               </div>
               <nav className="flex-1 overflow-y-auto p-2 space-y-0.5" aria-label="Primary">
                 <PrimaryNav onNavigate={() => setNavPath(null)} />
