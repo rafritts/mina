@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 
-/** Control lives in Chat → Control panel. Keep URL for old bookmarks. */
+/** Retired control URL. Bookmarks land on Chat; tools live in the header sheet. */
 export default function ControlRedirect() {
   redirect('/')
 }
