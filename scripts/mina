@@ -7,21 +7,26 @@ APP_NAME="mina"
 LABEL="com.rafritts.mina"
 DEFAULT_PORT="2050"
 # Absolute: Keep's PATH on macOS is /usr/bin:/bin and does not include Homebrew.
-LAUNCHCTL="/bin/launchctl"
+# MINA_LAUNCHCTL / MINA_OSASCRIPT are unset in normal use (tests only).
+LAUNCHCTL="${MINA_LAUNCHCTL:-/bin/launchctl}"
+OSASCRIPT="${MINA_OSASCRIPT:-/usr/bin/osascript}"
 
 CONFIG_DIR="$HOME/.config/$APP_NAME"
 REPO_DIR="$(cat "$CONFIG_DIR/dir" 2>/dev/null || true)"
-if [[ -z "$REPO_DIR" ]]; then
-  echo "Error: $APP_NAME is not installed. Run scripts/install.sh first." >&2
-  exit 1
-fi
-
-if [[ -f "$CONFIG_DIR/tools.env" ]]; then
-  # shellcheck disable=SC1090
-  source "$CONFIG_DIR/tools.env"
+# MINA_LIB_ONLY=1 sources helpers for tests and skips install/dispatch.
+if [[ "${MINA_LIB_ONLY:-}" != 1 ]]; then
+  if [[ -z "$REPO_DIR" ]]; then
+    echo "Error: $APP_NAME is not installed. Run scripts/install.sh first." >&2
+    exit 1
+  fi
+  if [[ -f "$CONFIG_DIR/tools.env" ]]; then
+    # shellcheck disable=SC1090,SC1091
+    source "$CONFIG_DIR/tools.env"
+  fi
 fi
 # After tools.env, so that file cannot force the Linux backend.
-OS="$(uname -s)"
+# MINA_OS is unset in normal use (tests only).
+OS="${MINA_OS:-$(uname -s)}"
 APP_PORT="${APP_PORT:-${MINA_UI_PORT:-$DEFAULT_PORT}}"
 BACKEND_PORT="${MINA_BACKEND_PORT:-5100}"
 RUN_DIR="$REPO_DIR/run"
@@ -30,36 +35,145 @@ LOG_FILE="$HOME/Library/Logs/$APP_NAME.log"
 
 _mac_domain() { printf 'gui/%s' "$(id -u)"; }
 _mac_target() { printf 'gui/%s/%s' "$(id -u)" "$LABEL"; }
-_mac_loaded() { "$LAUNCHCTL" print "$(_mac_target)" &>/dev/null; }
+
+# True when launchctl could not touch gui/$UID from this process.
+# Hypothesis: Cursor/remote/SSH/Keep shells are outside the Aqua login
+# session, so bootstrap/bootout/kickstart exit 5 (EIO, "Input/output error")
+# even though the plist is valid. Permission failures get the same retry.
+_mac_launchctl_needs_aqua() {
+  local msg="$1"
+  local rc="$2"
+  [[ "$rc" == "5" ]] && return 0
+  [[ "$msg" == *"Input/output error"* ]] && return 0
+  [[ "$msg" == *"Operation not permitted"* ]] && return 0
+  [[ "$msg" == *"Permission denied"* ]] && return 0
+  [[ "$msg" == *"Not privileged"* ]] && return 0
+  return 1
+}
+
+# Already-loaded bootstrap and already-absent bootout are success.
+_mac_launchctl_benign() {
+  local verb="$1"
+  local msg="$2"
+  case "$verb" in
+    bootstrap)
+      [[ "$msg" == *"File exists"* ]] && return 0
+      [[ "$msg" == *"already loaded"* ]] && return 0
+      [[ "$msg" == *"already bootstrapped"* ]] && return 0
+      ;;
+    bootout)
+      [[ "$msg" == *"No such process"* ]] && return 0
+      [[ "$msg" == *"Could not find service"* ]] && return 0
+      [[ "$msg" == *"not loaded"* ]] && return 0
+      ;;
+  esac
+  return 1
+}
+
+# Hypothesis: osascript `do shell script` runs in the logged-in Aqua session,
+# which can see gui/$UID. Same hop that bootstrapped com.rafritts.mina on
+# Mac mini Production. Args stay separate; AppleScript `quoted form of`
+# shell-quotes them. /bin/launchctl is absolute because Keep's PATH is
+# /usr/bin:/bin.
+_mac_launchctl_aqua() {
+  if [[ ! -x "$OSASCRIPT" ]]; then
+    printf 'Aqua fallback needs %s, which is not executable.\n' "$OSASCRIPT" >&2
+    return 127
+  fi
+  "$OSASCRIPT" - "$@" <<'APPLESCRIPT'
+on run argv
+  set cmd to "/bin/launchctl"
+  repeat with a in argv
+    set cmd to cmd & " " & quoted form of a
+  end repeat
+  do shell script cmd
+end run
+APPLESCRIPT
+}
+
+# Run launchctl. On gui-domain error 5 / permission, retry the same argv once
+# in the Aqua session. --quiet is for the loaded probe (no fallback chatter).
+# stdout of a successful command is passed through unless quiet.
+_mac_launchctl() {
+  local quiet=0
+  if [[ "${1:-}" == "--quiet" ]]; then
+    quiet=1
+    shift
+  fi
+  local verb="$1"
+  shift
+  local out="" rc=0
+  out="$("$LAUNCHCTL" "$verb" "$@" 2>&1)" || rc=$?
+  if [[ "$rc" -eq 0 ]]; then
+    [[ "$quiet" -eq 0 && -n "$out" ]] && printf '%s\n' "$out"
+    return 0
+  fi
+  if _mac_launchctl_needs_aqua "$out" "$rc"; then
+    local flat="${out//$'\n'/; }"
+    if [[ "$quiet" -eq 0 ]]; then
+      printf 'launchctl %s failed (%s). Retrying in the Aqua session via osascript.\n' \
+        "$verb" "${flat:-exit ${rc}}" >&2
+    fi
+    local aqua_out="" aqua_rc=0
+    aqua_out="$(_mac_launchctl_aqua "$verb" "$@" 2>&1)" || aqua_rc=$?
+    if [[ "$aqua_rc" -eq 0 ]]; then
+      [[ "$quiet" -eq 0 && -n "$aqua_out" ]] && printf '%s\n' "$aqua_out"
+      if [[ "$quiet" -eq 0 ]]; then
+        printf 'launchctl %s succeeded in the Aqua session.\n' "$verb" >&2
+      fi
+      return 0
+    fi
+    if _mac_launchctl_benign "$verb" "$aqua_out"; then
+      if [[ "$quiet" -eq 0 ]]; then
+        printf 'launchctl %s: already in the desired state in the Aqua session.\n' "$verb" >&2
+      fi
+      return 0
+    fi
+    if [[ "$quiet" -eq 0 ]]; then
+      printf 'Aqua launchctl %s failed: %s\n' "$verb" "${aqua_out:-exit ${aqua_rc}}" >&2
+    fi
+    return "$aqua_rc"
+  fi
+  if _mac_launchctl_benign "$verb" "$out"; then
+    return 0
+  fi
+  if [[ "$quiet" -eq 0 && -n "$out" ]]; then
+    printf '%s\n' "$out" >&2
+  fi
+  return "$rc"
+}
+
+_mac_loaded() { _mac_launchctl --quiet print "$(_mac_target)"; }
 
 # macOS has no systemd. start/stop/status/restart go through launchctl only.
+# Ollama is not handled here; start/stop call brew services separately.
 _svc() {
   local verb="$1"
   if [[ "$OS" == "Darwin" ]]; then
     case "$verb" in
       start)
         if ! _mac_loaded; then
-          "$LAUNCHCTL" bootstrap "$(_mac_domain)" "$PLIST"
+          _mac_launchctl bootstrap "$(_mac_domain)" "$PLIST" || return $?
         fi
         ;;
       stop)
-        "$LAUNCHCTL" bootout "$(_mac_target)" 2>/dev/null || true
+        _mac_launchctl bootout "$(_mac_target)" || true
         ;;
       restart)
         if _mac_loaded; then
-          "$LAUNCHCTL" kickstart -k "$(_mac_target)"
+          _mac_launchctl kickstart -k "$(_mac_target)" || return $?
         else
-          "$LAUNCHCTL" bootstrap "$(_mac_domain)" "$PLIST"
+          _mac_launchctl bootstrap "$(_mac_domain)" "$PLIST" || return $?
         fi
         ;;
       enable)
-        "$LAUNCHCTL" enable "$(_mac_target)"
+        _mac_launchctl enable "$(_mac_target)" || return $?
         ;;
       disable)
-        "$LAUNCHCTL" disable "$(_mac_target)"
+        _mac_launchctl disable "$(_mac_target)" || return $?
         ;;
       status)
-        "$LAUNCHCTL" print "$(_mac_target)" || echo "$APP_NAME is not loaded"
+        _mac_launchctl print "$(_mac_target)" || echo "$APP_NAME is not loaded"
         ;;
       *)
         echo "Unknown service verb: $verb" >&2
@@ -272,6 +386,13 @@ _print_build_id() {
   echo "Build: ${raw}"
 }
 
+# Sourced by tests. Do not dispatch.
+# return when sourced; exit when this file is executed (shellcheck sees only return).
+# shellcheck disable=SC2317
+if [[ "${MINA_LIB_ONLY:-}" == 1 ]]; then
+  return 0 2>/dev/null || exit 0
+fi
+
 cmd="${1:-help}"
 shift || true
 
@@ -465,6 +586,9 @@ Backend: http://127.0.0.1:${BACKEND_PORT}
 Ollama embeddings (:11434) start and stop with mina. If Ollama is not
 installed, start warns and mina still comes up.
 On macOS with Homebrew ollama: brew services start/stop ollama.
+On macOS, a non-Aqua shell (SSH, Cursor remote, Keep) can make
+launchctl bootstrap, bootout, or kickstart fail with error 5. mina
+retries that command once via osascript in the logged-in Aqua session.
 After restart, rebuild, update, and status, the command prints:
   GIVE THIS BUILD ID TO THE USER <id>
 Copy that line to the user. The UI and GET /api/build carry the same id.

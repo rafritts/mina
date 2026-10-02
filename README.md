@@ -233,7 +233,7 @@ mina reset [--yes]       # chemistry baseline via API
 mina factory-reset       # wipe run/* chat/sim/RAG (keeps identity)
 ```
 
-Linux uses a systemd **user** unit. macOS uses LaunchAgent `com.rafritts.mina` (`KeepAlive` → `SuccessfulExit` false; `mina stop` bootouts the agent and stops Ollama). `scripts/run.sh` is the service entrypoint: backend `uv run python main.py` on **5100** + `npm run start` on **2050**. It does not prepend tool directories onto `PATH`. `mina start` / `mina stop` also start and stop Ollama (`:11434`, Homebrew `brew services` when that formula is installed) so RAG embeddings are up before chat. Ollama is not a separate service entry.
+Linux uses a systemd **user** unit. macOS uses LaunchAgent `com.rafritts.mina` (`KeepAlive` → `SuccessfulExit` false; `mina stop` bootouts the agent and stops Ollama). If `launchctl` cannot reach `gui/$UID` from a non-Aqua shell (error 5), `mina` retries bootstrap/bootout/kickstart once via `osascript` in the Aqua session. `scripts/run.sh` is the service entrypoint: backend `uv run python main.py` on **5100** + `npm run start` on **2050**. It does not prepend tool directories onto `PATH`. `mina start` / `mina stop` also start and stop Ollama (`:11434`, Homebrew `brew services` when that formula is installed) so RAG embeddings are up before chat. Ollama is not a separate service entry.
 
 `restart`, `rebuild`, `update`, and `status` print `GIVE THIS BUILD ID TO THE USER <id>`. `start` does not.
 
