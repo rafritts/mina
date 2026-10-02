@@ -8,7 +8,7 @@ import { SECOND_ORDER, THIRD_ORDER, presenceLabel } from '../lib/presence'
 import { Chip } from '../components/Chip'
 import { FeltMetricList } from '../components/presence/FeltMetricList'
 import { SleepStatusCard } from '../components/presence/SleepStatusCard'
-import { StateNotice } from '../components/StateNotice'
+import { StateNotice, offlineDetail } from '../components/StateNotice'
 
 function formatTs(ts: number): string {
   const diff = Date.now() - ts * 1000
@@ -30,11 +30,14 @@ export default function OverviewPage() {
 
   if (!state) {
     return (
-      <div className="page">
+      <div className="page page-state">
         <StateNotice
           tone={error ? 'error' : 'loading'}
           title={error ? 'Can’t reach the sim' : 'Connecting'}
-          detail={error ?? 'Waiting for chemistry state. Overview fills in as soon as the sim answers.'}
+          detail={offlineDetail(
+            error,
+            'Waiting for chemistry state. Overview fills in as soon as the sim answers.',
+          )}
         />
       </div>
     )

@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useStatePoller } from '../../lib/hooks/useStatePoller'
 import { apiFetch } from '../../lib/api'
 import { StatBar } from '../../components/metrics/StatBar'
-import { StateNotice } from '../../components/StateNotice'
+import { StateNotice, offlineDetail } from '../../components/StateNotice'
 import { CHEM_EDITOR_GROUPS } from '../../lib/chem-groups'
 import { DISPLAY_RANGES } from '../../lib/labels'
 import type { ChemicalEntry, SecretionQueueEntry } from '../../lib/api'
@@ -16,11 +16,14 @@ export default function NeuroPage() {
 
   if (!state) {
     return (
-      <div className="page">
+      <div className="page page-state">
         <StateNotice
           tone={error ? 'error' : 'loading'}
           title={error ? 'Can’t reach the sim' : 'Connecting'}
-          detail={error ?? 'Chemistry editors appear once tonic state is available.'}
+          detail={offlineDetail(
+            error,
+            'Chemistry editors appear once tonic state is available.',
+          )}
         />
       </div>
     )

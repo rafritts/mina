@@ -7,7 +7,7 @@ import { SECOND_ORDER, THIRD_ORDER } from '../../lib/presence'
 import { FeltMetricList } from '../presence/FeltMetricList'
 import { FreetimePeek } from '../presence/FreetimePeek'
 import { SleepStatusCard } from '../presence/SleepStatusCard'
-import { StateNotice } from '../StateNotice'
+import { StateNotice, offlineDetail } from '../StateNotice'
 import { Sheet } from './Sheet'
 
 function UpdatedAgo({ at }: { at: number | null }) {
@@ -51,10 +51,10 @@ export function PresenceSheet({
           <StateNotice
             tone={error ? 'error' : 'loading'}
             title={error ? 'Can’t reach the sim' : 'Waiting for the sim'}
-            detail={
-              error ??
-              'Start the backend with uv run python main.py. Presence fills in once state is polling.'
-            }
+            detail={offlineDetail(
+              error,
+              'Start the backend with uv run python main.py. Presence fills in once state is polling.',
+            )}
           />
         ) : (
           <>

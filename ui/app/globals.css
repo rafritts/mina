@@ -1327,6 +1327,18 @@ button.status-pill:hover {
   max-width: 56rem;
 }
 
+.page-state {
+  min-height: calc(100dvh - var(--header-h) - 3rem);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.page-state .state {
+  width: min(100%, 26rem);
+  text-align: center;
+  justify-content: center;
+}
+
 .page-head {
   display: flex;
   flex-wrap: wrap;

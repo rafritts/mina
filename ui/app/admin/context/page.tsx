@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { StateNotice } from '../../components/StateNotice'
+import { StateNotice, offlineDetail } from '../../components/StateNotice'
 import { apiFetch } from '../../lib/api'
 
 interface ContextAssembly {
@@ -270,7 +270,13 @@ export default function ContextPage() {
         <StateNotice tone="loading" title="Loading the latest turn" detail="Reading the pillar chain." />
       )}
 
-      {error && !record && <StateNotice tone="info" title="No turn trace yet" detail={error} />}
+      {error && !record && (
+        <StateNotice
+          tone="info"
+          title="No turn trace yet"
+          detail={offlineDetail(error, 'Send a chat message, then refresh. The pillar chain lands here.')}
+        />
+      )}
 
       {showRaw && markdown && (
         <pre

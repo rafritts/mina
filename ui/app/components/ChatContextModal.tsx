@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Chip } from './Chip'
 import { Segmented } from './Segmented'
-import { StateNotice } from './StateNotice'
+import { StateNotice, offlineDetail } from './StateNotice'
 import { apiFetch } from '../lib/api'
 import { cn } from '@/lib/utils'
 
@@ -195,7 +195,13 @@ export function ChatContextModal({ open, onClose }: Props) {
         </header>
 
         <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-6">
-          {error && <div className="alert alert-error">{error}</div>}
+          {error && (
+            <StateNotice
+              tone="error"
+              title="Can’t load the scene"
+              detail={offlineDetail(error, 'The sim did not answer. Refresh once it is running.')}
+            />
+          )}
 
           <section id="mina-ctx-scene" className="scroll-mt-3">
             <h3 className="label m-0 mb-1">

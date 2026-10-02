@@ -15,7 +15,7 @@ import {
   freetimeChipLabels,
 } from '../../lib/presence'
 import { Chip } from '../../components/Chip'
-import { StateNotice } from '../../components/StateNotice'
+import { StateNotice, offlineDetail } from '../../components/StateNotice'
 import { cn } from '@/lib/utils'
 
 type SectionKey =
@@ -415,7 +415,16 @@ export default function FreetimePage() {
           {loading && !detail && (
             <StateNotice tone="loading" title="Loading session" detail="Fetching the latest free-time record." />
           )}
-          {error && !detail && <StateNotice tone="info" title="Free time unavailable" detail={error} />}
+          {error && !detail && (
+            <StateNotice
+              tone="info"
+              title="Free time unavailable"
+              detail={offlineDetail(
+                error,
+                'Sessions appear after a heartbeat. Run one from the Tools sheet.',
+              )}
+            />
+          )}
 
           {detail && (
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mono text-muted px-0.5">

@@ -2,6 +2,14 @@ import { cn } from '@/lib/utils'
 
 type Tone = 'loading' | 'empty' | 'error' | 'info'
 
+/** Hide a status-only fetch failure ("500:") behind a sentence a person can read. */
+export function offlineDetail(error: string | null | undefined, fallback: string): string {
+  if (!error) return fallback
+  const bare = error.trim()
+  if (/^\d{3}:?\s*$/.test(bare)) return fallback
+  return bare
+}
+
 /**
  * Shared empty, loading, and error block.
  * `bare` sits inside an existing surface; the default draws its own frame.
