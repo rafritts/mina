@@ -27,6 +27,7 @@ import {
   fetchRemoteChatStore,
   pushRemoteChatStore,
 } from '../lib/chat-store-api'
+import { fetchImageBackend, isImageBackend, type ImageBackend } from '../lib/image-backend'
 import type { StoredChatMessage } from '../lib/chat-store-file'
 import {
   EMPTY_TURN_MIND,
@@ -833,6 +834,22 @@ export function ChatApp() {
   }, [hydrated, messages])
 
   useEffect(() => {
+    const onPrefs = (e: Event) => {
+      const detail = (e as CustomEvent<{ imageCount?: ImageCount; imageAspect?: ImageAspect }>).detail
+      if (!detail) return
+      skipDirtyRef.current = true
+      if (detail.imageAspect && isImageAspect(detail.imageAspect)) {
+        setImageAspect(detail.imageAspect)
+      }
+      if (detail.imageCount !== undefined && isImageCount(detail.imageCount)) {
+        setImageCount(normalizeImageCount(detail.imageCount))
+      }
+    }
+    window.addEventListener('mina:image-prefs', onPrefs)
+    return () => window.removeEventListener('mina:image-prefs', onPrefs)
+  }, [])
+
+  useEffect(() => {
     const onErase = (e: Event) => {
       if (e.cancelable) e.preventDefault()
       setMessages([])
@@ -860,6 +877,21 @@ export function ChatApp() {
       setMind(EMPTY_TURN_MIND)
       mindRef.current = EMPTY_TURN_MIND
 
+      let imageBackend: ImageBackend = 'mint'
+      try {
+        const status = await fetchImageBackend()
+        if (status && isImageBackend(status.backend)) {
+          imageBackend = status.backend
+        } else {
+          const store = await fetchRemoteChatStore()
+          if (store?.imageBackend && isImageBackend(store.imageBackend)) {
+            imageBackend = store.imageBackend
+          }
+        }
+      } catch {
+        imageBackend = 'mint'
+      }
+
       try {
         const res = await fetch('/api/chat', {
           method: 'POST',
@@ -868,6 +900,7 @@ export function ChatApp() {
             message: text,
             image_count: imageCount,
             image_aspect: imageAspect,
+            image_backend: imageBackend,
             redo: Boolean(opts?.redo),
             ...(opts?.rewindMessage
               ? { rewind_message: opts.rewindMessage }

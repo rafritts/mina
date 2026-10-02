@@ -264,6 +264,7 @@ async def run_claimed(
     username: str,
     image_count: str | int,
     image_aspect: str,
+    image_backend: str,
     redo: bool,
     rewind_message: str,
     turn_id: str,
@@ -311,6 +312,7 @@ async def run_claimed(
             sim,
             image_count=image_count,
             image_aspect=image_aspect,
+            image_backend=image_backend,
             on_voice=on_voice,
             on_photos=on_photos,
         )
@@ -406,6 +408,7 @@ async def submit(
     username: str,
     image_count: str | int = "auto",
     image_aspect: str = "square",
+    image_backend: str = "mint",
     redo: bool = False,
     rewind_message: str | None = None,
 ) -> tuple[int, dict[str, Any]]:
@@ -436,6 +439,7 @@ async def submit(
             username=username,
             image_count=image_count,
             image_aspect=image_aspect,
+            image_backend=image_backend,
             redo=redo,
             rewind_message=rewind,
             turn_id=turn_id,

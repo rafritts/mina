@@ -14,7 +14,7 @@ For each incoming message:
 
 Conversation window and JSONL log are managed here.
 Sliding RAG write is called after each message (user and Mina).
-Optional send_photo tool (comfy-fe) when image_count allows.
+Optional send_photo tool when image_count allows and image_backend is not off.
 """
 from __future__ import annotations
 
@@ -52,8 +52,10 @@ from .chat_tools import (
     CHAT_TOOLS,
     call_chat_tool,
     max_photos,
+    normalize_image_backend,
     parse_tool_args,
     photo_turn_context,
+    photos_allowed,
 )
 from .time_context import format_host_time_block
 from .stage_direction import (
@@ -189,6 +191,7 @@ async def run_turn(
     *,
     image_count: str | int = "auto",
     image_aspect: str = "square",
+    image_backend: str = "mint",
     on_voice: Callable[[str], str | None] | None = None,
     on_photos: Callable[[str, str, list[str]], None] | None = None,
 ) -> dict:
@@ -200,11 +203,14 @@ async def run_turn(
 
     image_count: "auto" | 0 | 1..5 — UI pic preference (hard cap on send_photo).
     image_aspect: landscape | square | portrait — forced on host generate.
+    image_backend: mint | grok | off — where photos are rendered. off blocks send_photo.
     """
     ts = time.time()
     log("USER", f"{username}: {message[:120]}")
+    backend = normalize_image_backend(image_backend)
     photo_cap = max_photos(image_count)
     aspect = image_aspect if image_aspect in ("landscape", "square", "portrait") else "square"
+    allow_photos = photos_allowed(image_count, backend)
 
     # `[Host: ...]` is a beat, not dialogue. Speech still appraises; the note does not.
     parsed = parse_stage_direction(message)
@@ -414,7 +420,7 @@ async def run_turn(
             last_activity_ts = float(t)
             break
     system_prompt += "\n\n" + format_host_time_block(last_activity_ts=last_activity_ts)
-    system_prompt += "\n\n" + photo_turn_context(image_count, aspect)
+    system_prompt += "\n\n" + photo_turn_context(image_count, aspect, backend)
     system_prompt += "\n\n" + mouth_scene_instructions()
     if directions:
         system_prompt += "\n\n" + format_mouth_block(directions)
@@ -435,7 +441,7 @@ async def run_turn(
                 continue
         messages.append({"role": m["role"], "content": content})
 
-    tools = CHAT_TOOLS if photo_cap > 0 else None
+    tools = CHAT_TOOLS if allow_photos else None
     reply = ""
     final_mouth: dict | None = None
     photo_calls: list[dict] = []
@@ -504,9 +510,16 @@ async def run_turn(
         try:
             for i, args in enumerate(photo_calls, start=1):
                 log("PIPELINE", f"Photo {i} after voice")
-                result = await asyncio.to_thread(
-                    call_chat_tool, "send_photo", args, image_aspect=aspect
-                )
+                if not allow_photos:
+                    result = "[send_photo failed: image generation is off]"
+                else:
+                    result = await asyncio.to_thread(
+                        call_chat_tool,
+                        "send_photo",
+                        args,
+                        image_aspect=aspect,
+                        image_backend=backend,
+                    )
                 if "/images/" in result:
                     photo_units.append(result)
         except Exception as e:

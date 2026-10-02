@@ -64,7 +64,7 @@ user message
     → Hippocampus pillar     LLM: situational context (framed by felt state)
     → PFC pillar             LLM: strategy + constructs system prompt
     → Mouth (Mina)           LLM: reply JSON (text + optional scene fields)
-         optional send_photo tool loop (Comfy / comfy-fe)
+         optional send_photo tool loop (Mint Comfy / Grok Imagine)
     → Persist window, logs, sliding RAG, scene_context.json
 ```
 

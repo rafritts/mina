@@ -7,6 +7,7 @@ import { apiFetch } from '../../lib/api'
 import { clearRemoteTranscript } from '../../lib/chat-store-api'
 import { PRESETS } from '../../lib/presets'
 import { cn } from '@/lib/utils'
+import { PhotoSettings } from './PhotoSettings'
 import { Sheet } from './Sheet'
 
 export function ToolsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -101,6 +102,7 @@ export function ToolsSheet({ open, onClose }: { open: boolean; onClose: () => vo
     <>
       <Sheet open={open} onClose={onClose} title="Tools">
         <div className="p-4 space-y-5">
+          <PhotoSettings />
           <section>
             <div className="label section-head">Mood presets</div>
             <div className="grid grid-cols-2 gap-2">

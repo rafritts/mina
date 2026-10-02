@@ -17,6 +17,10 @@ from urllib.request import Request, urlopen
 from src.application.infra.log import log
 from src.config.config import RUN_DIR
 
+# Krea API (comfy-restless-frontend), not ComfyUI. The GPU is Mint's Comfy
+# at MINT_COMFY_URL (default http://restless-mint:8188). Run the frontend
+# with that URL as its Comfy upstream (COMFY_BASE_URL). :8886 being up is
+# not what "Mint" means — nothing listens there on Mini Production today.
 COMFY_FE_URL = os.getenv("COMFY_FE_URL", "http://127.0.0.1:8886").rstrip("/")
 CHAT_IMAGES_DIR = Path(RUN_DIR) / "chat-images"
 _IMAGE_NAME = re.compile(r"/images/([A-Za-z0-9._-]+)")
