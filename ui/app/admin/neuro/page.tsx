@@ -4,16 +4,9 @@ import { useState } from 'react'
 import { useStatePoller } from '../../lib/hooks/useStatePoller'
 import { apiFetch } from '../../lib/api'
 import { StatBar } from '../../components/metrics/StatBar'
+import { CHEM_EDITOR_GROUPS } from '../../lib/chem-groups'
 import { DISPLAY_RANGES } from '../../lib/labels'
-import type { SecretionQueueEntry } from '../../lib/api'
-
-const GROUPS: { label: string; chemicals: string[] }[] = [
-  { label: 'Monoamines', chemicals: ['dopamine', 'serotonin', 'norepinephrine'] },
-  { label: 'Bonding & social', chemicals: ['oxytocin', 'endorphins'] },
-  { label: 'Stress', chemicals: ['cortisol', 'epinephrine', 'crh'] },
-  { label: 'Sleep & clock', chemicals: ['adenosine', 'melatonin', 'orexin'] },
-  { label: 'Other peptides', chemicals: ['anandamide', 'ghrelin', 'substance_p', 'vasopressin'] },
-]
+import type { ChemicalEntry, SecretionQueueEntry } from '../../lib/api'
 
 export default function NeuroPage() {
   const { state, error } = useStatePoller()
@@ -49,18 +42,30 @@ export default function NeuroPage() {
     <div className="page">
       <h1 className="page-title">Chemistry</h1>
       <p className="page-desc">
-        Direct tonic overrides, with full groups, the secretion queue, and receptor sensitivities.
+        The only chemistry editor: tonic overrides for the full set (including substance P and
+        vasopressin), plus the secretion queue and receptor sensitivities.
       </p>
 
-      {GROUPS.map(({ label, chemicals }) => (
+      {CHEM_EDITOR_GROUPS.map(({ label, chemicals }) => (
         <section key={label} className="section">
           <div className="label section-head">{label}</div>
           <div className="surface divide-y divide-[var(--border-subtle)]">
             {chemicals.map((field) => {
-              const entry = state.chemicals[field]
+              const range = DISPLAY_RANGES[field]
+              const live = state.chemicals[field]
+              const entry: ChemicalEntry | null =
+                live ??
+                (range
+                  ? {
+                      value: range.min,
+                      unit: range.unit,
+                      label: '',
+                      normalized: 0,
+                      norm_max: range.max,
+                    }
+                  : null)
               if (!entry) return null
               const isDirty = field in pending
-              const range = DISPLAY_RANGES[field]
               const min = range?.min ?? 0
               const max = entry.norm_max ?? range?.max ?? Math.max(entry.value * 3, 1)
               const step = max <= 1 ? 0.001 : max <= 20 ? 0.01 : 1

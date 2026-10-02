@@ -15,7 +15,7 @@
 | [RES-122](https://linear.app/restlessapi/issue/RES-122) | Implement the shell. Do not start here. |
 | [RES-123](https://linear.app/restlessapi/issue/RES-123) | Visual tokens / density. Out of scope. |
 | [RES-124](https://linear.app/restlessapi/issue/RES-124) | No-drop acceptance. Use §4 as the seed checklist. |
-| [RES-125](https://linear.app/restlessapi/issue/RES-125) | Control ↔ Lab dedupe. Use §3. Do not merge UIs here. |
+| [RES-125](https://linear.app/restlessapi/issue/RES-125) | Control ↔ Lab dedupe. Implemented. Outcome is §3 below and [docs/res-125-action-map.md](../res-125-action-map.md). |
 
 **Stack constraint:** Next.js + shadcn. This ADR does not change components, tokens, or APIs.
 
@@ -358,9 +358,19 @@ These pairs share words and must stay **two reaches**:
 
 ---
 
-## 3. Control ↔ Lab duplicates (RES-125 — do not implement here)
+## 3. Control ↔ Lab duplicates (RES-125)
 
 Same facts, two UIs. RES-125 picks the surviving control and deletes the twin **without** dropping an action from §4.
+
+**Outcome (implemented):**
+
+- Sleep is one card (`SleepStatusCard`): compact on the Presence sheet, page-size on Overview. Both use `sleepStatusLines`. The sheet footer no longer repeats awake/sleeping.
+- Felt state and signals are one readout (`FeltMetricList`): bars on the sheet, cards on Overview. Same six + six fields.
+- Free-time peek lives only on the Presence sheet (`FreetimePeek`, up to 4 chips). Overview no longer peeks. The Free time page stays the session log.
+- Chemistry route is the only editor. The union, including `substance_p`, `vasopressin`, and `crh` under Stress, is `ui/app/lib/chem-groups.ts`. No second slider list.
+- Presets, advance, heartbeat, reset, and erase stay on the header Tools sheet. System keeps heartbeat status. Free-time empty copy points at that sheet.
+
+The map of every former Control-tab / Lab-page action is [docs/res-125-action-map.md](../res-125-action-map.md). The table below is the problem this outcome closed.
 
 | Topic | Control (`ControlPane.tsx`) | Lab | Note for RES-125 |
 |-------|------------------------------|-----|------------------|
@@ -394,12 +404,13 @@ Every inventory id remains reachable under the IA in §2. RES-122/125 may change
 | C-empty, C-send, C-edit, C-redo, C-error, C-persist, C-erase-event | Chat home, unchanged |
 | C-img-count, C-img-aspect, C-img-render, C-img-pending, C-img-fail, C-lightbox | Composer + bubbles + lightbox |
 | C-mind-live, C-mind-archive, C-mind-rail, C-mind-chem, C-mind-feel, C-mind-memory, C-mind-situate, C-mind-decide, C-mind-silence | Inline ThoughtStream on Chat |
-| C-pres-sleep, C-pres-felt, C-pres-signals | Presence sheet **and** Overview (dedupe in RES-125; until then both may exist) |
-| C-pres-ft | Presence sheet peek, Overview peek, and Free time page |
+| C-pres-sleep, C-pres-felt, C-pres-signals | Presence sheet (compact) and Overview (page). Shared components; see [action map](../res-125-action-map.md) |
+| C-pres-ft | Presence sheet peek only, plus the Free time page for sessions. Overview does not peek |
 | C-chem-mono, C-chem-bond, C-chem-stress, C-chem-sleep, C-chem-other | Chemistry route. Union of chemicals must include Control’s set |
 | C-preset, C-advance, C-heartbeat, C-reset, C-erase | Header **Tools** sheet, with the same confirms |
 | C-lab-link | Primary nav (no cross-app link required) |
-| L-ov-title, L-ov-sleep, L-ov-ft, L-ov-felt, L-ov-signals, L-ov-events | Overview route |
+| L-ov-title, L-ov-sleep, L-ov-felt, L-ov-signals, L-ov-events | Overview route |
+| L-ov-ft | Moved to the Presence sheet peek (one peek). Free time page remains the session log |
 | L-chem-mono, L-chem-bond, L-chem-stress, L-chem-sleep, L-chem-other, L-chem-queue, L-chem-receptors | Chemistry route. Union must include `substance_p`, `vasopressin`, secretion queue, receptors |
 | L-turn-live, L-turn-refresh, L-turn-copy, L-turn-raw, L-turn-meta, L-turn-msg, L-turn-enc, L-turn-dec, L-turn-asm, L-turn-ins, L-turn-hip, L-turn-pfc, L-turn-sys, L-turn-reply, L-turn-empty | Turn trace route (`/admin/context`) |
 | L-ft-live, L-ft-refresh, L-ft-copy, L-ft-raw, L-ft-list, L-ft-meta, L-ft-msg, L-ft-tools, L-ft-reply, L-ft-enc, L-ft-dec, L-ft-asm, L-ft-ins, L-ft-hip, L-ft-pfc, L-ft-sys, L-ft-empty | Free time route |
@@ -416,6 +427,6 @@ Mobile acceptance for RES-124: every primary-nav row is reachable below 640px fr
 
 - Visual polish, density, and token cleanup (RES-123).
 - Building the sidebar/drawer shell (RES-122). This ADR names the regions; it does not spec spacing, type, or shadcn component choice beyond “sidebar / sheet / existing modal.”
-- Removing duplicate chem sliders, presence cards, or free-time peeks (RES-125).
+- Removing duplicate chem sliders, presence cards, or free-time peeks (RES-125). Done. See [docs/res-125-action-map.md](../res-125-action-map.md).
 - Backend, API, or route renames. `/admin/*` stays.
 - New features. No new instrumentation. `DerivedCard` stays unused.
