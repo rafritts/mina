@@ -27,11 +27,11 @@ export function AspectRatioSlider({ value, onChange, className, disabled }: Prop
       <div
         role="radiogroup"
         aria-label="Image aspect ratio"
-        className="relative flex h-9 items-center rounded-full border border-[var(--border)] bg-[var(--surface)] p-0.5"
+        className="relative flex h-8 items-center rounded-lg border border-[var(--border)] bg-[var(--surface)] p-0.5"
       >
         <div
           aria-hidden
-          className="pointer-events-none absolute top-0.5 bottom-0.5 w-[calc((100%-4px)/3)] rounded-full transition-transform duration-200 ease-out"
+          className="pointer-events-none absolute top-0.5 bottom-0.5 w-[calc((100%-4px)/3)] rounded-md transition-transform duration-200 ease-out"
           style={{
             transform: `translateX(${index * 100}%)`,
             background: 'var(--accent-dim)',
@@ -50,7 +50,7 @@ export function AspectRatioSlider({ value, onChange, className, disabled }: Prop
               disabled={disabled}
               onClick={() => onChange(opt.id)}
               className={cn(
-                'relative z-10 flex h-8 w-8 items-center justify-center rounded-full border-0 bg-transparent transition-colors sm:w-9 cursor-pointer',
+                'relative z-10 flex h-7 w-8 items-center justify-center rounded-md border-0 bg-transparent transition-colors sm:w-9 cursor-pointer',
                 selected ? 'text-[var(--accent-bright)]' : 'text-[var(--text-faint)] hover:text-[var(--text-muted)]',
               )}
             >

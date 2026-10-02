@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
+import { Button } from '@/components/ui/button'
 
 const emptySubscribe = () => () => {}
 
@@ -32,14 +33,15 @@ export function Sheet({
       <div className="sheet-panel" role="dialog" aria-modal="true" aria-label={title}>
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] px-4 py-3">
           <div className="text-sm font-medium truncate">{title}</div>
-          <button
+          <Button
             type="button"
-            className="btn btn-ghost btn-sm"
+            variant="ghost"
+            size="sm"
             onClick={onClose}
             aria-label={`Close ${title}`}
           >
             ✕
-          </button>
+          </Button>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto">{children}</div>
         {footer ? (

@@ -18,7 +18,7 @@
   --color-sidebar-border: var(--border);
   --color-sidebar-accent-foreground: var(--text);
   --color-sidebar-accent: var(--surface);
-  --color-sidebar-primary-foreground: var(--bg);
+  --color-sidebar-primary-foreground: var(--accent-fg);
   --color-sidebar-primary: var(--accent);
   --color-sidebar-foreground: var(--text);
   --color-sidebar: var(--bg-elevated);
@@ -37,7 +37,7 @@
   --color-muted: var(--surface);
   --color-secondary-foreground: var(--text);
   --color-secondary: var(--surface);
-  --color-primary-foreground: var(--bg);
+  --color-primary-foreground: var(--accent-fg);
   --color-primary: var(--accent);
   --color-popover-foreground: var(--text);
   --color-popover: var(--bg-elevated);
@@ -89,6 +89,20 @@
   --header-h: 3.25rem;
   --control-w: 22.5rem;
   --radius: 0.75rem;
+
+  --shadow-1: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 10px 28px rgba(0, 0, 0, 0.22);
+  --shadow-2: 0 24px 64px rgba(0, 0, 0, 0.42);
+
+  /* Shared hues for mind sections, lab section labels, and metric bars. */
+  --tone-sense: var(--info);
+  --tone-tools: var(--warning);
+  --tone-chem: var(--success);
+  --tone-feel: var(--chart-5);
+  --tone-situate: var(--chart-4);
+  --tone-decide: var(--accent-bright);
+  --tone-system: var(--text-secondary);
+  --tone-reply: var(--success);
+  --tone-assembly: color-mix(in srgb, var(--chart-4) 82%, white);
 
   --chart-1: #d4a574;
   --chart-2: #5dcf9b;
@@ -283,6 +297,15 @@ body {
 .text-faint {
   color: var(--text-faint);
 }
+.text-accent {
+  color: var(--accent-bright);
+}
+.text-danger {
+  color: var(--danger);
+}
+.text-success {
+  color: var(--success);
+}
 
 /* ── Surfaces ─────────────────────────────────────────────── */
 
@@ -296,6 +319,14 @@ body {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+}
+
+.surface[data-tone="sleep"] {
+  box-shadow: inset 2px 0 0 var(--info);
+}
+.surface[data-tone="live"] {
+  box-shadow: inset 2px 0 0 var(--success);
 }
 
 .surface-interactive {
@@ -390,6 +421,16 @@ body {
   width: 100%;
   justify-content: flex-start;
 }
+.btn[data-active="true"] {
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
+  color: var(--accent-bright);
+}
+.btn[data-tone="live"] {
+  background: var(--success-dim);
+  border-color: var(--success-border);
+  color: var(--success);
+}
 
 /* ── Inputs ───────────────────────────────────────────────── */
 
@@ -409,6 +450,9 @@ body {
 }
 .field::placeholder {
   color: var(--text-faint);
+}
+.field.field-narrow {
+  width: 5rem;
 }
 
 .field-area {
@@ -490,6 +534,7 @@ body {
 .side-link[data-active="true"] {
   color: var(--text);
   background: var(--accent-dim);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 /* ── Status ───────────────────────────────────────────────── */
@@ -613,7 +658,7 @@ button.status-pill:hover {
   padding: 0.75rem 1rem;
   font-size: 0.9375rem;
   line-height: 1.65;
-  border-radius: 1rem;
+  border-radius: calc(var(--radius) + 0.25rem);
 }
 .msg-user {
   background: var(--accent-dim);
@@ -1002,8 +1047,9 @@ button.status-pill:hover {
 
 .mind {
   border: 1px solid var(--border);
-  border-radius: 1rem;
-  background: linear-gradient(180deg, var(--bg-elevated) 0%, var(--bg-sunken) 100%);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-1);
   overflow: hidden;
   animation: rise 0.35s ease both;
 }
@@ -1070,22 +1116,22 @@ button.status-pill:hover {
   animation: rise 0.4s ease both;
 }
 .mind-section[data-tone="sense"] {
-  border-left-color: #94a3b8;
+  border-left-color: var(--tone-sense);
 }
 .mind-section[data-tone="chemistry"] {
-  border-left-color: #34d399;
+  border-left-color: var(--tone-chem);
 }
 .mind-section[data-tone="feel"] {
-  border-left-color: #e878a0;
+  border-left-color: var(--tone-feel);
 }
 .mind-section[data-tone="memory"] {
-  border-left-color: var(--success);
+  border-left-color: var(--tone-chem);
 }
 .mind-section[data-tone="situate"] {
-  border-left-color: #b39df0;
+  border-left-color: var(--tone-situate);
 }
 .mind-section[data-tone="decide"] {
-  border-left-color: var(--accent);
+  border-left-color: var(--tone-decide);
 }
 
 @keyframes rise {
@@ -1123,8 +1169,13 @@ button.status-pill:hover {
   border-radius: 999px;
   transition: width 0.6s ease;
   background: var(--accent);
-  opacity: 0.85;
+  opacity: 0.9;
 }
+.metric-fill[data-tone="success"] { background: var(--success); }
+.metric-fill[data-tone="warning"] { background: var(--warning); }
+.metric-fill[data-tone="error"] { background: var(--danger); }
+.metric-fill[data-tone="info"] { background: var(--info); }
+.metric-fill[data-tone="neutral"] { background: var(--text-faint); }
 
 .chip {
   display: inline-flex;
@@ -1185,6 +1236,7 @@ button.status-pill:hover {
   min-height: 0;
   border-left: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg-elevated) 96%, transparent);
+  box-shadow: var(--shadow-2);
   backdrop-filter: blur(16px);
 }
 
@@ -1267,12 +1319,28 @@ button.status-pill:hover {
 .page-desc {
   font-size: 0.8125rem;
   color: var(--text-muted);
-  margin: 0 0 1.5rem;
+  margin: 0 0 1.25rem;
   line-height: 1.5;
 }
 
+.page-wide {
+  max-width: 56rem;
+}
+
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.page-head .page-desc {
+  margin-bottom: 0;
+}
+
 .section {
-  margin-bottom: 1.75rem;
+  margin-bottom: 1.5rem;
 }
 .section-head {
   margin-bottom: 0.75rem;
@@ -1348,6 +1416,155 @@ button.status-pill:hover {
   background: var(--border-subtle);
   border: none;
   margin: 0;
+}
+
+/* Segmented filters — one control for Events, History, Scene. */
+.seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 0.625rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.seg-item {
+  height: 1.75rem;
+  padding: 0 0.7rem;
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.seg-item:hover {
+  color: var(--text-secondary);
+}
+.seg-item[data-active="true"] {
+  background: var(--accent-dim);
+  color: var(--accent-bright);
+  box-shadow: inset 0 0 0 1px var(--accent-border);
+}
+
+/* Empty, loading, and error — one block for chat-adjacent and lab pages. */
+.state {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.75rem;
+  border-radius: var(--radius);
+  border: 1px dashed var(--border-strong);
+  background: var(--bg-sunken);
+  padding: 1.35rem 1.1rem;
+  text-align: left;
+}
+.state[data-tone="error"] {
+  border-style: solid;
+  border-color: var(--danger-border);
+  background: var(--danger-dim);
+}
+.state[data-tone="info"] {
+  border-style: solid;
+  border-color: rgba(122, 175, 239, 0.28);
+  background: var(--info-dim);
+}
+.state[data-tone="loading"] {
+  border-style: solid;
+}
+.state-compact {
+  padding: 0.9rem 0.85rem;
+}
+.state-bare {
+  border: none;
+  background: transparent;
+  padding: 0.85rem 0.5rem;
+}
+.state-spinner {
+  margin-top: 0.15rem;
+}
+.state-copy {
+  min-width: 0;
+}
+.state-title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+.state[data-tone="error"] .state-title {
+  color: var(--danger);
+}
+.state[data-tone="info"] .state-title {
+  color: var(--info);
+}
+.state-detail {
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.state[data-tone="error"] .state-detail,
+.state[data-tone="info"] .state-detail {
+  color: inherit;
+  opacity: 0.85;
+}
+
+/* One board instead of a grid of bordered metric cards. */
+.metric-board {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--border-subtle);
+}
+@media (min-width: 640px) {
+  .metric-board {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.metric-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.85rem 1rem 0.95rem;
+  background: var(--bg-elevated);
+}
+
+.inset {
+  border-radius: calc(var(--radius) - 0.125rem);
+  background: var(--bg-sunken);
+  padding: 0.75rem;
+}
+
+.section-accent {
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.section-accent[data-tone="sense"] { color: var(--tone-sense); }
+.section-accent[data-tone="tools"] { color: var(--tone-tools); }
+.section-accent[data-tone="chem"] { color: var(--tone-chem); }
+.section-accent[data-tone="feel"] { color: var(--tone-feel); }
+.section-accent[data-tone="situate"] { color: var(--tone-situate); }
+.section-accent[data-tone="decide"] { color: var(--tone-decide); }
+.section-accent[data-tone="system"] { color: var(--tone-system); }
+.section-accent[data-tone="reply"] { color: var(--tone-reply); }
+.section-accent[data-tone="assembly"] { color: var(--tone-assembly); }
+
+.modal-panel {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: calc(var(--radius) + 0.25rem);
+  box-shadow: var(--shadow-2);
 }
 
 /* Range inputs */

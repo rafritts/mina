@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useStatePoller } from '../../lib/hooks/useStatePoller'
 import { apiFetch } from '../../lib/api'
 import { StatBar } from '../../components/metrics/StatBar'
+import { StateNotice } from '../../components/StateNotice'
 import { CHEM_EDITOR_GROUPS } from '../../lib/chem-groups'
 import { DISPLAY_RANGES } from '../../lib/labels'
 import type { ChemicalEntry, SecretionQueueEntry } from '../../lib/api'
@@ -16,7 +17,11 @@ export default function NeuroPage() {
   if (!state) {
     return (
       <div className="page">
-        <p className="mono text-sm text-muted m-0">{error ?? 'Connecting…'}</p>
+        <StateNotice
+          tone={error ? 'error' : 'loading'}
+          title={error ? 'Can’t reach the sim' : 'Connecting'}
+          detail={error ?? 'Chemistry editors appear once tonic state is available.'}
+        />
       </div>
     )
   }
@@ -108,7 +113,11 @@ export default function NeuroPage() {
       <section className="section">
         <div className="label section-head">Secretion queue</div>
         {!state.secretion_queue?.length ? (
-          <div className="surface px-4 py-3 text-xs mono text-faint">Empty</div>
+          <StateNotice
+            compact
+            title="Secretion queue is empty"
+            detail="Phasic releases show up here while they are still decaying."
+          />
         ) : (
           <div className="surface overflow-hidden">
             <table className="w-full text-xs">

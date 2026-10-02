@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 import { Check, Pencil, RotateCcw, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import {
   IMAGE_ASPECT_DEFAULT,
   isImageAspect,
@@ -307,23 +308,27 @@ function UserMessage({
           }}
         />
         <div className="msg-edit-actions">
-          <button
+          <Button
             type="button"
-            className="btn btn-soft btn-sm msg-action-btn"
+            variant="outline"
+            size="sm"
+            className="msg-action-btn"
             onClick={save}
             disabled={!draft.trim()}
           >
             <Check className="msg-action-icon" aria-hidden />
             Save
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="btn btn-ghost btn-sm msg-action-btn"
+            variant="ghost"
+            size="sm"
+            className="msg-action-btn"
             onClick={cancel}
           >
             <X className="msg-action-icon" aria-hidden />
             Cancel
-          </button>
+          </Button>
           <span className="msg-edit-hint">⌘/Ctrl+Enter</span>
         </div>
       </div>
@@ -337,9 +342,11 @@ function UserMessage({
       </div>
       {canEdit ? (
         <div className="msg-actions msg-actions-user">
-          <button
+          <Button
             type="button"
-            className="btn btn-ghost btn-sm msg-action-btn"
+            variant="ghost"
+            size="sm"
+            className="msg-action-btn"
             onClick={() => {
               setDraft(content)
               setEditing(true)
@@ -349,7 +356,7 @@ function UserMessage({
           >
             <Pencil className="msg-action-icon" aria-hidden />
             Edit
-          </button>
+          </Button>
         </div>
       ) : null}
     </div>
@@ -1076,9 +1083,11 @@ export function ChatApp() {
                           </div>
                           {!sending && (
                             <div className="msg-actions">
-                              <button
+                              <Button
                                 type="button"
-                                className="btn btn-ghost btn-sm msg-action-btn"
+                                variant="ghost"
+                                size="sm"
+                                className="msg-action-btn"
                                 onClick={() => void handleRedo(m.id)}
                                 title="Redo response"
                                 aria-label="Redo response"
@@ -1088,7 +1097,7 @@ export function ChatApp() {
                                   aria-hidden
                                 />
                                 Redo
-                              </button>
+                              </Button>
                             </div>
                           )}
                         </div>
@@ -1160,14 +1169,15 @@ export function ChatApp() {
                   className="field-area"
                   aria-label="Message Mina"
                 />
-                <button
+                <Button
                   type="button"
-                  className="btn btn-primary btn-lg shrink-0 self-end mb-0.5"
+                  size="lg"
+                  className="shrink-0 self-end mb-0.5"
                   onClick={() => void send()}
                   disabled={sending || !input.trim()}
                 >
                   {sending ? '…' : 'Send'}
-                </button>
+                </Button>
               </div>
               <p className="text-center text-[10px] mono text-faint m-0">
                 Enter to send · Shift+Enter for newline

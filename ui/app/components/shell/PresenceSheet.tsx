@@ -7,6 +7,7 @@ import { SECOND_ORDER, THIRD_ORDER } from '../../lib/presence'
 import { FeltMetricList } from '../presence/FeltMetricList'
 import { FreetimePeek } from '../presence/FreetimePeek'
 import { SleepStatusCard } from '../presence/SleepStatusCard'
+import { StateNotice } from '../StateNotice'
 import { Sheet } from './Sheet'
 
 function UpdatedAgo({ at }: { at: number | null }) {
@@ -47,12 +48,14 @@ export function PresenceSheet({
     >
       <div className="p-4 space-y-5">
         {!state ? (
-          <div className="space-y-2">
-            <p className="text-xs mono text-muted m-0">{error ?? 'Waiting for sim…'}</p>
-            <p className="text-[11.5px] text-faint leading-relaxed m-0">
-              Start the backend with <code className="mono">uv run python main.py</code>
-            </p>
-          </div>
+          <StateNotice
+            tone={error ? 'error' : 'loading'}
+            title={error ? 'Can’t reach the sim' : 'Waiting for the sim'}
+            detail={
+              error ??
+              'Start the backend with uv run python main.py. Presence fills in once state is polling.'
+            }
+          />
         ) : (
           <>
             <section>

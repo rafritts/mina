@@ -5,9 +5,10 @@ import Link from 'next/link'
 import { useStatePoller } from '../lib/hooks/useStatePoller'
 import { apiFetch, type EventEntry } from '../lib/api'
 import { SECOND_ORDER, THIRD_ORDER, presenceLabel } from '../lib/presence'
+import { Chip } from '../components/Chip'
 import { FeltMetricList } from '../components/presence/FeltMetricList'
 import { SleepStatusCard } from '../components/presence/SleepStatusCard'
-import { cn } from '@/lib/utils'
+import { StateNotice } from '../components/StateNotice'
 
 function formatTs(ts: number): string {
   const diff = Date.now() - ts * 1000
@@ -30,9 +31,11 @@ export default function OverviewPage() {
   if (!state) {
     return (
       <div className="page">
-        <p className="mono text-sm text-muted m-0">
-          {error ?? 'Connecting to sim…'}
-        </p>
+        <StateNotice
+          tone={error ? 'error' : 'loading'}
+          title={error ? 'Can’t reach the sim' : 'Connecting'}
+          detail={error ?? 'Waiting for chemistry state. Overview fills in as soon as the sim answers.'}
+        />
       </div>
     )
   }
@@ -79,13 +82,18 @@ export default function OverviewPage() {
         </div>
         <div className="surface divide-y divide-[var(--border-subtle)] overflow-hidden">
           {events.length === 0 && (
-            <p className="px-3.5 py-3 text-xs mono text-faint m-0">No recent events</p>
+            <StateNotice
+              bare
+              compact
+              title="No recent events"
+              detail="Stimulus, replies, and tool calls land here after a turn."
+            />
           )}
           {events.map((ev, i) => (
             <div key={i} className="px-3.5 py-2.5 flex items-center gap-2.5">
-              <span className={cn('chip shrink-0', ev.type === 'response' && 'chip-success')}>
+              <Chip tone={ev.type === 'response' ? 'success' : 'neutral'} className="shrink-0">
                 {ev.type}
-              </span>
+              </Chip>
               <p className="flex-1 min-w-0 text-xs text-secondary truncate m-0">
                 {ev.preview ?? ev.result ?? ev.tool ?? '—'}
               </p>

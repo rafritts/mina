@@ -1,6 +1,9 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { Chip } from '../../components/Chip'
+import { Segmented } from '../../components/Segmented'
+import { StateNotice } from '../../components/StateNotice'
 import { apiFetch, type EventEntry } from '../../lib/api'
 
 const TYPE_FILTERS = ['all', 'activity', 'tool', 'stimulus', 'response'] as const
@@ -56,27 +59,15 @@ export default function EventsPage() {
       <p className="page-desc">Stimulus, response, activity, and tool log from the sim process.</p>
 
       <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
-        <div className="flex gap-1 flex-wrap">
-          {TYPE_FILTERS.map((t) => (
-            <button
-              key={t}
-              type="button"
-              className="btn btn-sm capitalize"
-              style={
-                filter === t
-                  ? {
-                      background: 'var(--accent-dim)',
-                      border: '1px solid var(--accent-border)',
-                      color: 'var(--accent-bright)',
-                    }
-                  : { border: '1px solid var(--border)' }
-              }
-              onClick={() => setFilter(t)}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          ariaLabel="Event type"
+          value={filter}
+          options={TYPE_FILTERS.map((t) => ({
+            value: t,
+            label: t.charAt(0).toUpperCase() + t.slice(1),
+          }))}
+          onChange={setFilter}
+        />
         <label className="flex items-center gap-2 text-xs text-muted cursor-pointer">
           <input
             type="checkbox"
@@ -89,7 +80,11 @@ export default function EventsPage() {
 
       <div className="surface divide-y divide-[var(--border-subtle)]">
         {visible.length === 0 && (
-          <p className="p-4 text-xs mono text-faint m-0">No events</p>
+          <StateNotice
+            bare
+            title={filter === 'all' ? 'No events yet' : `No ${filter} events`}
+            detail="The log fills as the sim handles stimuli, tools, and replies."
+          />
         )}
         {visible.map((ev, i) => {
           const isOpen = expanded.has(i)
@@ -109,7 +104,7 @@ export default function EventsPage() {
               }
             >
               <div className="flex items-start gap-3">
-                <span className="chip shrink-0 mt-0.5">{ev.type}</span>
+                <Chip className="shrink-0 mt-0.5">{ev.type}</Chip>
                 <div className="flex-1 min-w-0 space-y-1">
                   <p className="text-xs text-secondary truncate m-0">{eventText(ev)}</p>
                   {ev.deltas && Object.keys(ev.deltas).length > 0 && (
@@ -117,18 +112,10 @@ export default function EventsPage() {
                       {Object.entries(ev.deltas)
                         .slice(0, 5)
                         .map(([k, v]) => (
-                          <span
-                            key={k}
-                            className="chip mono"
-                            style={{
-                              color: v > 0 ? 'var(--success)' : 'var(--danger)',
-                              borderColor:
-                                v > 0 ? 'var(--success-border)' : 'var(--danger-border)',
-                            }}
-                          >
+                          <Chip key={k} tone={v > 0 ? 'success' : 'error'} className="mono">
                             {v > 0 ? '+' : ''}
                             {v.toFixed(1)} {k}
-                          </span>
+                          </Chip>
                         ))}
                     </div>
                   )}

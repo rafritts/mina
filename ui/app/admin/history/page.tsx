@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { Segmented } from '../../components/Segmented'
+import { StateNotice } from '../../components/StateNotice'
 import { useHistoryPoller } from '../../lib/hooks/useHistoryPoller'
 import {
   LineChart,
@@ -58,64 +60,47 @@ export default function HistoryPage() {
   })
 
   return (
-    <div className="page" style={{ maxWidth: '56rem' }}>
+    <div className="page page-wide">
       <h1 className="page-title">History</h1>
       <p className="page-desc">Chemical and derived-state trajectories over the recent window.</p>
 
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <div className="flex gap-1">
-          {TIME_RANGES.map(({ label, hours: h }) => (
-            <button
-              key={h}
-              type="button"
-              className="btn btn-sm"
-              style={
-                hours === h
-                  ? {
-                      background: 'var(--accent-dim)',
-                      border: '1px solid var(--accent-border)',
-                      color: 'var(--accent-bright)',
-                    }
-                  : { border: '1px solid var(--border)' }
-              }
-              onClick={() => setHours(h)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-1 flex-wrap">
-          {CHART_GROUPS.map(({ label }, i) => (
-            <button
-              key={label}
-              type="button"
-              className="btn btn-sm"
-              style={
-                activeGroup === i
-                  ? {
-                      background: 'var(--surface-2)',
-                      border: '1px solid var(--border-strong)',
-                      color: 'var(--text)',
-                    }
-                  : { border: '1px solid var(--border)' }
-              }
-              onClick={() => setActiveGroup(i)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          ariaLabel="Time range"
+          value={String(hours)}
+          options={TIME_RANGES.map(({ label, hours: h }) => ({
+            value: String(h),
+            label,
+          }))}
+          onChange={(next) => setHours(Number(next))}
+        />
+        <Segmented
+          ariaLabel="Chart group"
+          value={String(activeGroup)}
+          options={CHART_GROUPS.map(({ label }, i) => ({
+            value: String(i),
+            label,
+          }))}
+          onChange={(next) => setActiveGroup(Number(next))}
+        />
       </div>
 
       <div className="surface-raised p-4 sm:p-6">
         {loading ? (
-          <div className="h-64 flex items-center justify-center text-xs mono text-faint">
-            Loading…
-          </div>
+          <StateNotice
+            bare
+            tone="loading"
+            className="min-h-64 items-center"
+            title="Loading history"
+            detail="Pulling samples for this window."
+          />
         ) : chartData.length === 0 ? (
-          <div className="h-64 flex items-center justify-center text-xs mono text-faint">
-            No history samples yet
-          </div>
+          <StateNotice
+            bare
+            className="min-h-64 items-center"
+            title="No history samples yet"
+            detail="Trajectories appear after the sim has been running in this window."
+          />
         ) : (
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={chartData}>

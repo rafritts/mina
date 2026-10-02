@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { StateNotice } from '../../components/StateNotice'
 import { apiFetch } from '../../lib/api'
 
 interface ContextAssembly {
@@ -41,16 +42,16 @@ type SectionKey =
   | 'system'
   | 'reply'
 
-const SECTION_META: { key: SectionKey; label: string; accent: string }[] = [
-  { key: 'message', label: 'User message', accent: 'rgba(96,165,250,0.75)' },
-  { key: 'encoder', label: 'Encoder (amygdala)', accent: 'rgba(251,146,60,0.75)' },
-  { key: 'decoder', label: 'Decoder (chemistry)', accent: 'rgba(52,211,153,0.75)' },
-  { key: 'assembly', label: 'Context assembly', accent: 'rgba(167,139,250,0.75)' },
-  { key: 'insula', label: 'Insula (emotion)', accent: 'rgba(251,113,133,0.75)' },
-  { key: 'hippocampus', label: 'Hippocampus (situation)', accent: 'rgba(196,181,253,0.75)' },
-  { key: 'pfc', label: 'PFC (strategy)', accent: 'rgba(248,200,79,0.75)' },
-  { key: 'system', label: 'System prompt (Mina sees)', accent: 'rgba(232,228,221,0.55)' },
-  { key: 'reply', label: 'Reply', accent: 'rgba(52,211,153,0.65)' },
+const SECTION_META: { key: SectionKey; label: string; tone: string }[] = [
+  { key: 'message', label: 'User message', tone: 'sense' },
+  { key: 'encoder', label: 'Encoder (amygdala)', tone: 'tools' },
+  { key: 'decoder', label: 'Decoder (chemistry)', tone: 'chem' },
+  { key: 'assembly', label: 'Context assembly', tone: 'assembly' },
+  { key: 'insula', label: 'Insula (emotion)', tone: 'feel' },
+  { key: 'hippocampus', label: 'Hippocampus (situation)', tone: 'situate' },
+  { key: 'pfc', label: 'PFC (strategy)', tone: 'decide' },
+  { key: 'system', label: 'System prompt (Mina sees)', tone: 'system' },
+  { key: 'reply', label: 'Reply', tone: 'reply' },
 ]
 
 function fmtVal(v: unknown): string {
@@ -91,13 +92,13 @@ function Prose({ text }: { text: string | undefined }) {
 
 function Section({
   label,
-  accent,
+  tone,
   open,
   onToggle,
   children,
 }: {
   label: string
-  accent: string
+  tone: string
   open: boolean
   onToggle: () => void
   children: ReactNode
@@ -109,7 +110,7 @@ function Section({
         onClick={onToggle}
         className="w-full flex items-center justify-between px-4 py-3 text-left border-0 bg-transparent cursor-pointer hover:bg-[var(--surface-hover)] transition-colors"
       >
-        <span className="text-[11px] uppercase tracking-[0.14em] font-medium" style={{ color: accent }}>
+        <span className="section-accent" data-tone={tone}>
           {label}
         </span>
         <span className="text-xs mono text-faint">{open ? '−' : '+'}</span>
@@ -217,7 +218,7 @@ export default function ContextPage() {
 
   return (
     <div className="page space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="page-head">
         <div>
           <h1 className="page-title">Context</h1>
           <p className="page-desc mb-0">
@@ -228,16 +229,8 @@ export default function ContextPage() {
           <button
             type="button"
             onClick={() => setAutoRefresh((v) => !v)}
-            className="btn btn-sm mono"
-            style={
-              autoRefresh
-                ? {
-                    border: '1px solid var(--success-border)',
-                    color: 'var(--success)',
-                    background: 'var(--success-dim)',
-                  }
-                : { border: '1px solid var(--border)' }
-            }
+            className="btn btn-soft btn-sm mono"
+            data-tone={autoRefresh ? 'live' : undefined}
           >
             {autoRefresh ? 'live' : 'paused'}
           </button>
@@ -269,13 +262,15 @@ export default function ContextPage() {
           <span>{relativeAge(record.ts)}</span>
           <span>source={record.source || 'chat'}</span>
           <span>user={record.username || '—'}</span>
-          {record.skipped && <span style={{ color: 'var(--danger)' }}>skipped reply</span>}
+          {record.skipped && <span className="text-danger">skipped reply</span>}
         </div>
       )}
 
-      {loading && !record && <p className="text-xs mono text-muted m-0">Loading…</p>}
+      {loading && !record && (
+        <StateNotice tone="loading" title="Loading the latest turn" detail="Reading the pillar chain." />
+      )}
 
-      {error && !record && <div className="alert alert-info">{error}</div>}
+      {error && !record && <StateNotice tone="info" title="No turn trace yet" detail={error} />}
 
       {showRaw && markdown && (
         <pre
@@ -290,7 +285,7 @@ export default function ContextPage() {
         <div className="space-y-2">
           <Section
             label={SECTION_META[0].label}
-            accent={SECTION_META[0].accent}
+            tone={SECTION_META[0].tone}
             open={open.message}
             onToggle={() => toggle('message')}
           >
@@ -299,13 +294,13 @@ export default function ContextPage() {
 
           <Section
             label={SECTION_META[1].label}
-            accent={SECTION_META[1].accent}
+            tone={SECTION_META[1].tone}
             open={open.encoder}
             onToggle={() => toggle('encoder')}
           >
             <KvList data={record.encoder as Record<string, unknown>} />
             {record.relationship_modifier != null && (
-              <p className="mt-3 text-xs value-mono" style={{ color: 'rgba(232,228,221,0.45)' }}>
+              <p className="mt-3 text-xs value-mono text-muted">
                 relationship_modifier: {record.relationship_modifier}
               </p>
             )}
@@ -313,7 +308,7 @@ export default function ContextPage() {
 
           <Section
             label={SECTION_META[2].label}
-            accent={SECTION_META[2].accent}
+            tone={SECTION_META[2].tone}
             open={open.decoder}
             onToggle={() => toggle('decoder')}
           >
@@ -321,7 +316,7 @@ export default function ContextPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-xs value-mono">
                   <thead>
-                    <tr style={{ color: 'rgba(232,228,221,0.35)' }}>
+                    <tr className="text-faint">
                       <th className="text-left font-normal py-1 pr-3">chemical</th>
                       <th className="text-right font-normal py-1 px-2">norm</th>
                       <th className="text-right font-normal py-1 px-2">set</th>
@@ -333,7 +328,7 @@ export default function ContextPage() {
                     {Object.entries(record.sim_snapshot)
                       .sort(([a], [b]) => a.localeCompare(b))
                       .map(([name, vals]) => (
-                        <tr key={name} style={{ color: 'rgba(232,228,221,0.75)' }}>
+                        <tr key={name} className="text-secondary">
                           <td className="py-0.5 pr-3">{name}</td>
                           <td className="text-right px-2">{vals.normalized ?? '—'}</td>
                           <td className="text-right px-2">{vals.setpoint ?? '—'}</td>
@@ -349,14 +344,11 @@ export default function ContextPage() {
                 </table>
               </div>
             ) : (
-              <p className="text-xs value-mono" style={{ color: 'rgba(232,228,221,0.3)' }}>(none)</p>
+              <p className="text-xs value-mono text-faint m-0">(none)</p>
             )}
             {record.big5 && Object.keys(record.big5).length > 0 && (
               <div className="mt-4">
-                <div
-                  className="text-[10px] uppercase tracking-widest mb-2"
-                  style={{ color: 'rgba(232,228,221,0.32)' }}
-                >
+                <div className="label mb-2">
                   Big 5
                 </div>
                 <KvList data={record.big5 as Record<string, unknown>} />
@@ -366,50 +358,38 @@ export default function ContextPage() {
 
           <Section
             label={SECTION_META[3].label}
-            accent={SECTION_META[3].accent}
+            tone={SECTION_META[3].tone}
             open={open.assembly}
             onToggle={() => toggle('assembly')}
           >
             <div className="space-y-4">
               <div>
-                <div
-                  className="text-[10px] uppercase tracking-widest mb-1.5"
-                  style={{ color: 'rgba(232,228,221,0.32)' }}
-                >
+                <div className="label mb-1.5">
                   Window synthesis
                 </div>
                 <Prose text={a?.window_context} />
               </div>
               <div>
-                <div
-                  className="text-[10px] uppercase tracking-widest mb-1.5"
-                  style={{ color: 'rgba(232,228,221,0.32)' }}
-                >
+                <div className="label mb-1.5">
                   RAG synthesis
                 </div>
                 <Prose text={a?.rag_context} />
               </div>
               <div>
-                <div
-                  className="text-[10px] uppercase tracking-widest mb-1.5"
-                  style={{ color: 'rgba(232,228,221,0.32)' }}
-                >
+                <div className="label mb-1.5">
                   KAG
                 </div>
                 <Prose text={a?.kag_context} />
               </div>
               {(a?.sliding_raw || a?.experiences_raw) && (
                 <details className="text-xs">
-                  <summary
-                    className="cursor-pointer uppercase tracking-widest text-[10px]"
-                    style={{ color: 'rgba(232,228,221,0.35)' }}
-                  >
+                  <summary className="label cursor-pointer">
                     Raw retrieval
                   </summary>
                   <div className="mt-3 space-y-3">
                     {a.sliding_raw && (
                       <div>
-                        <div className="mb-1" style={{ color: 'rgba(232,228,221,0.32)' }}>
+                        <div className="label mb-1">
                           Sliding
                         </div>
                         <Prose text={a.sliding_raw} />
@@ -417,7 +397,7 @@ export default function ContextPage() {
                     )}
                     {a.experiences_raw && (
                       <div>
-                        <div className="mb-1" style={{ color: 'rgba(232,228,221,0.32)' }}>
+                        <div className="label mb-1">
                           Episodic
                         </div>
                         <Prose text={a.experiences_raw} />
@@ -431,7 +411,7 @@ export default function ContextPage() {
 
           <Section
             label={SECTION_META[4].label}
-            accent={SECTION_META[4].accent}
+            tone={SECTION_META[4].tone}
             open={open.insula}
             onToggle={() => toggle('insula')}
           >
@@ -440,7 +420,7 @@ export default function ContextPage() {
 
           <Section
             label={SECTION_META[5].label}
-            accent={SECTION_META[5].accent}
+            tone={SECTION_META[5].tone}
             open={open.hippocampus}
             onToggle={() => toggle('hippocampus')}
           >
@@ -449,7 +429,7 @@ export default function ContextPage() {
 
           <Section
             label={SECTION_META[6].label}
-            accent={SECTION_META[6].accent}
+            tone={SECTION_META[6].tone}
             open={open.pfc}
             onToggle={() => toggle('pfc')}
           >
@@ -458,13 +438,12 @@ export default function ContextPage() {
 
           <Section
             label={SECTION_META[7].label}
-            accent={SECTION_META[7].accent}
+            tone={SECTION_META[7].tone}
             open={open.system}
             onToggle={() => toggle('system')}
           >
             <pre
-              className="text-xs leading-relaxed whitespace-pre-wrap break-words value-mono max-h-[28rem] overflow-y-auto"
-              style={{ color: 'rgba(232,228,221,0.72)' }}
+              className="text-xs leading-relaxed whitespace-pre-wrap break-words value-mono text-secondary max-h-[28rem] overflow-y-auto m-0"
             >
               {(record.system_prompt || '').trim() || '(none)'}
             </pre>
@@ -472,7 +451,7 @@ export default function ContextPage() {
 
           <Section
             label={SECTION_META[8].label}
-            accent={SECTION_META[8].accent}
+            tone={SECTION_META[8].tone}
             open={open.reply}
             onToggle={() => toggle('reply')}
           >

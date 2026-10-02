@@ -43,7 +43,7 @@ export function ImageCountSelector({ value, onChange, className, disabled }: Pro
             if (Number.isInteger(n) && n >= 0 && n <= 5) onChange(n as ImageCount)
           }}
           className={cn(
-            'h-9 w-[4.75rem] cursor-pointer appearance-none rounded-full border border-[var(--border)]',
+            'h-8 w-[4.75rem] cursor-pointer appearance-none rounded-lg border border-[var(--border)]',
             'bg-[var(--surface)] py-0 pl-2.5 pr-6 text-center text-[11px] font-medium mono text-[var(--text-secondary)]',
             'disabled:cursor-not-allowed',
           )}

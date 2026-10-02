@@ -22,6 +22,7 @@ export function SleepStatusCard({
           ? 'surface flex items-center justify-between gap-3 px-3 py-2'
           : 'surface p-3.5 flex items-start justify-between gap-3'
       }
+      data-tone={state.sleeping ? 'sleep' : 'live'}
       aria-live="polite"
     >
       <div className="min-w-0">
