@@ -33,7 +33,10 @@ export default function SystemPage() {
   return (
     <div className="page">
       <h1 className="page-title">System</h1>
-      <p className="page-desc">Runtime health, token usage, and build identity.</p>
+      <p className="page-desc">
+        Runtime health, token usage, and build identity. Heartbeat status is on this page. Run a
+        heartbeat, reset chemistry, or erase history from the header Tools sheet.
+      </p>
 
       <section className="section">
         <div className="label section-head">Build</div>
