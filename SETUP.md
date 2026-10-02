@@ -175,6 +175,8 @@ mina setup                          # same
 
 The service does not read the shell rc. `PATH` is whatever install wrote. Re-run `mina setup` when Node, npm, or uv moves, then restart. `~/.local/bin` must be on the interactive `PATH` so the `mina` command resolves.
 
+From a non-Aqua shell (SSH, Cursor remote, Keep), `launchctl bootstrap gui/$UID` can fail with error 5 (Input/output error). `mina start` retries that bootstrap through `osascript` in the logged-in Aqua session. `mina stop` and `restart` do the same for `bootout` and `kickstart` when those calls fail the same way. An already-loaded or already-unloaded job is not an error.
+
 ### CLI cheatsheet
 
 ```bash
