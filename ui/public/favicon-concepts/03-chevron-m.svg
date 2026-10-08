@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Chevron M — bold geometric letter from deco chevrons / peaks -->
+  <rect width="32" height="32" fill="#0b0b0d"/>
+  <!-- outer diamond frame -->
+  <path d="M16 2.5L29.5 16 16 29.5 2.5 16 16 2.5z" stroke="#d4a574" stroke-width="1.2" opacity="0.85"/>
+  <path d="M16 5.5L26.5 16 16 26.5 5.5 16 16 5.5z" stroke="#d4a574" stroke-width="0.75" opacity="0.35"/>
+  <!-- geometric M — same form, stretched vertically; high miter = one sharp tip per leg -->
+  <path
+    d="M9 26V7l7 13 7-13v19"
+    stroke="#e8bc8a"
+    stroke-width="2.3"
+    stroke-linecap="butt"
+    stroke-linejoin="miter"
+    stroke-miterlimit="12"
+  />
+</svg>

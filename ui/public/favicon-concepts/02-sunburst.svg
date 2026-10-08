@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Deco sunburst — half-fan rising behind a stepped M pedestal -->
+  <rect width="32" height="32" fill="#0b0b0d"/>
+  <!-- sunburst rays from lower center -->
+  <g stroke="#d4a574" stroke-width="1.1" stroke-linecap="round" opacity="0.55">
+    <path d="M16 22V5"/>
+    <path d="M16 22L9 7"/>
+    <path d="M16 22L23 7"/>
+    <path d="M16 22L5.5 11"/>
+    <path d="M16 22L26.5 11"/>
+    <path d="M16 22L4 16"/>
+    <path d="M16 22L28 16"/>
+    <path d="M16 22L6 21"/>
+    <path d="M16 22L26 21"/>
+  </g>
+  <!-- arc bands -->
+  <path d="M6 22a10 10 0 0 1 20 0" stroke="#e8bc8a" stroke-width="1.15" opacity="0.7"/>
+  <path d="M9 22a7 7 0 0 1 14 0" stroke="#d4a574" stroke-width="0.9" opacity="0.4"/>
+  <!-- stepped base -->
+  <path d="M4 28h24v-2H4v2zm3-2h18v-2H7v2zm3-2h12v-1.5H10V24z" fill="#d4a574" opacity="0.85"/>
+  <!-- small centered M crest -->
+  <path d="M12.2 20.5V12.8h1.55l1.9 5h.1l1.9-5h1.55v7.7h-1.25v-5.1h-.06l-1.7 4.5h-.78l-1.7-4.5h-.06v5.1h-1.25z" fill="#e8bc8a"/>
+</svg>

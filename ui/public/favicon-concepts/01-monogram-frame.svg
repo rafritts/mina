@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Deco monogram — M in a double geometric frame -->
+  <rect width="32" height="32" fill="#0b0b0d"/>
+  <rect x="1.5" y="1.5" width="29" height="29" stroke="#d4a574" stroke-width="1.25" opacity="0.9"/>
+  <rect x="3.75" y="3.75" width="24.5" height="24.5" stroke="#d4a574" stroke-width="0.75" opacity="0.4"/>
+  <!-- corner ticks -->
+  <path d="M1.5 7h3M1.5 25h3M27.5 7h3M27.5 25h3M7 1.5v3M25 1.5v3M7 27.5v3M25 27.5v3" stroke="#e8bc8a" stroke-width="1" stroke-linecap="square"/>
+  <!-- M -->
+  <path
+    d="M9 23V9h2.4l3.45 9.1h.1L18.4 9H20.8v14h-2.15v-9.4h-.08l-3.2 8.2h-1.15l-3.2-8.2h-.07V23H9z"
+    fill="#e8bc8a"
+  />
+</svg>
