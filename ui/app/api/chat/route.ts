@@ -19,9 +19,6 @@ const BACKEND_PORT = Number(process.env.MINA_BACKEND_PORT ?? '5100')
  * Body: {
  *   message: string
  *   history?: ignored (server owns transcript)
- *   image_count?: "auto" | 0 | 1..5
- *   image_aspect?: "landscape" | "square" | "portrait"
- *   image_backend?: "mint" | "grok" | "off"
  *   redo?: boolean
  *   rewind_message?: string
  * }
@@ -33,9 +30,6 @@ export async function POST(request: NextRequest) {
   let body: {
     message?: string
     history?: { role: string; content: string }[]
-    image_count?: string | number
-    image_aspect?: string
-    image_backend?: string
     redo?: boolean
     rewind_message?: string
   }
@@ -53,9 +47,6 @@ export async function POST(request: NextRequest) {
   const rewindMessage = (body.rewind_message ?? '').trim()
   const payload = JSON.stringify({
     message,
-    image_count: body.image_count ?? 'auto',
-    image_aspect: body.image_aspect ?? 'square',
-    ...(body.image_backend ? { image_backend: body.image_backend } : {}),
     redo: Boolean(body.redo),
     ...(rewindMessage ? { rewind_message: rewindMessage } : {}),
   })

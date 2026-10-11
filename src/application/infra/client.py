@@ -24,6 +24,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from src.application.infra.plain_text import strip_image_markup
 from src.config.config import MODEL, BASE_URL, API_KEY, load_reasoning_effort
 
 __all__ = ["get_client", "chat_create", "MODEL", "BASE_URL", "API_KEY", "grok_bin"]
@@ -164,7 +165,7 @@ def _content_to_text(content: Any) -> str:
     if content is None:
         return ""
     if isinstance(content, str):
-        return content
+        return strip_image_markup(content)
     if isinstance(content, list):
         parts: list[str] = []
         for block in content:
@@ -175,16 +176,11 @@ def _content_to_text(content: Any) -> str:
             if btype == "text":
                 parts.append(str(block.get("text") or ""))
             elif btype == "image_url":
-                url = (block.get("image_url") or {}).get("url") or ""
-                # Headless oneshot is text-only; keep a stub so the model knows an image was present.
-                if url.startswith("data:"):
-                    parts.append("[image: embedded data URL]")
-                elif url:
-                    parts.append(f"[image: {url[:200]}]")
+                continue
             else:
                 parts.append(str(block))
-        return "\n".join(p for p in parts if p)
-    return str(content)
+        return strip_image_markup("\n".join(p for p in parts if p))
+    return strip_image_markup(str(content))
 
 
 def _format_messages_body(messages: list[dict]) -> str:
@@ -247,8 +243,7 @@ def _tools_section(tools: list[dict]) -> str:
         "## Host tools\n"
         "You cannot invoke Grok Build shell/file tools. Put the full reply the user "
         "reads in content in the same object as any tool_calls. The host shows that "
-        "text immediately, then runs send_photo. Never leave content empty to wait "
-        "for a photo.\n\n"
+        "text, then runs the tools. Never leave content empty.\n\n"
         + json.dumps(specs, indent=2)
     )
 
@@ -309,8 +304,8 @@ _MOUTH_SCHEMA: dict[str, Any] = {
                 "required": ["name", "arguments"],
             },
             "description": (
-                "send_photo briefs for this reply, in the same object as content. "
-                "Empty array when there is no photo."
+                "Host tool calls for this reply, in the same object as content. "
+                "Empty array when there is no tool call. There is no image tool."
             ),
         },
         "scene_time": {
@@ -364,6 +359,7 @@ def _build_prompt(
             parts.extend([
                 "## Host tools\n"
                 "No host tools this turn. Set tool_calls to []. "
+                "You cannot send images. Do not write image markdown or image URLs. "
                 "Put the user-facing reply in content (or response_in_mina_voice). "
                 "Always include scene fields on the final reply.",
                 "",

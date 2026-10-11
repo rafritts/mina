@@ -1,10 +1,4 @@
 import { NextResponse } from 'next/server'
-import { isImageAspect } from '../../lib/image-aspect'
-import { isImageBackend } from '../../lib/image-backend'
-import {
-  isImageCount,
-  normalizeImageCount,
-} from '../../lib/image-count'
 import {
   readChatStore,
   sanitizeMessages,
@@ -62,30 +56,12 @@ export async function PUT(req: Request) {
       })
     }
 
-    let imageAspect = isImageAspect(b.imageAspect) ? b.imageAspect : undefined
-    if (imageAspect === undefined) {
-      imageAspect = existing.imageAspect
-    }
-    let imageCount = isImageCount(b.imageCount)
-      ? normalizeImageCount(b.imageCount)
-      : undefined
-    if (imageCount === undefined) {
-      imageCount = existing.imageCount
-    }
-    let imageBackend = isImageBackend(b.imageBackend) ? b.imageBackend : undefined
-    if (imageBackend === undefined) {
-      imageBackend = existing.imageBackend
-    }
-
     const messages = sanitizeMessages(b.messages)
 
     const saved = await writeChatStoreUnlocked({
       updatedAt: 0, // server stamps
       putRevision: diskRevision + 1,
       messages,
-      ...(imageAspect ? { imageAspect } : {}),
-      ...(imageCount !== undefined ? { imageCount } : {}),
-      ...(imageBackend ? { imageBackend } : {}),
     })
 
     return NextResponse.json(saved, {

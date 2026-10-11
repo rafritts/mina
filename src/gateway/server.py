@@ -21,8 +21,6 @@ State / admin (proxied by Next):
   GET  /api/context           — latest pillar assembly (JSON; ?format=md for markdown)
   GET  /api/context/text     — same assembly as markdown
   GET  /api/scene            — live scene snapshot (agent-authored short-term coherence)
-  GET  /api/image-backend    — photo source + Mint Comfy probe
-  PATCH /api/image-backend   — set photo source (mint | grok | off)
   POST /api/conversation/erase — wipe chat logs + window + sliding RAG (keeps chem/KAG)
   GET  /api/substance         — stub
   GET  /api/billing          — stub
@@ -214,37 +212,7 @@ async def list_models():
     }
 
 
-# ── helpers: photo prefs + username ───────────────────────────────────────────
-
-def _parse_image_count(raw) -> str | int:
-    if raw is None or raw == "":
-        return "auto"
-    if isinstance(raw, bool):
-        return "auto"
-    if isinstance(raw, int) and 0 <= raw <= 5:
-        return raw
-    if isinstance(raw, str):
-        s = raw.strip().lower()
-        if s == "auto":
-            return "auto"
-        if s.isdigit() and 0 <= int(s) <= 5:
-            return int(s)
-    return "auto"
-
-
-def _parse_image_aspect(raw) -> str:
-    return raw if raw in ("landscape", "square", "portrait") else "square"
-
-
-def _image_backend_for_turn(raw) -> str:
-    """Request value wins. Otherwise the saved setting. Default mint."""
-    from src.application.infra.image_backend import parse_image_backend, read_image_backend
-
-    parsed = parse_image_backend(raw)
-    if parsed:
-        return parsed
-    return read_image_backend()
-
+# ── helpers ───────────────────────────────────────────────────────────────────
 
 def _username(body: dict | None = None) -> str:
     from src.config.config import load_config
@@ -272,7 +240,7 @@ async def post_turn(request: Request):
     except Exception:
         return JSONResponse(status_code=400, content={"error": "Invalid JSON."})
 
-    # UI shape: { message, history?, image_count, image_aspect, redo, rewind_message }
+    # UI shape: { message, history?, redo, rewind_message }
     # Also accept OpenAI-ish { messages: [...] } for a single trailing user turn.
     user_msg = (body.get("message") or "").strip()
     if not user_msg:
@@ -290,21 +258,20 @@ async def post_turn(request: Request):
             if user_msg:
                 break
 
+    from src.application.infra.plain_text import strip_image_markup
+
+    user_msg = strip_image_markup(user_msg)
     if not user_msg:
         return JSONResponse(status_code=400, content={"error": "Empty message."})
 
-    image_count = _parse_image_count(body.get("image_count", "auto"))
-    image_aspect = _parse_image_aspect(body.get("image_aspect", "square"))
-    image_backend = _image_backend_for_turn(body.get("image_backend"))
     redo = bool(body.get("redo"))
-    rewind_msg = (body.get("rewind_message") or user_msg or "").strip() or user_msg
+    rewind_msg = strip_image_markup((body.get("rewind_message") or user_msg or "").strip()) or user_msg
     username = _username(body)
 
     log(
         "GATEWAY",
-        f"Turn accepted: {user_msg[:80]} (photos={image_count} aspect={image_aspect}"
-        f" backend={image_backend}"
-        f"{', redo' if redo else ''}{', edit' if redo and rewind_msg != user_msg else ''})",
+        f"Turn accepted: {user_msg[:80]}"
+        f"{', redo' if redo else ''}{', edit' if redo and rewind_msg != user_msg else ''}",
     )
 
     from src.application.infra.turn_job import submit
@@ -313,9 +280,6 @@ async def post_turn(request: Request):
         sim=_sim,
         user_message=user_msg,
         username=username,
-        image_count=image_count,
-        image_aspect=image_aspect,
-        image_backend=image_backend,
         redo=redo,
         rewind_message=rewind_msg,
     )
@@ -364,21 +328,20 @@ async def chat_completions(request: Request):
             if user_msg:
                 break
 
+    from src.application.infra.plain_text import strip_image_markup
+
+    user_msg = strip_image_markup(user_msg)
     if not user_msg:
         return JSONResponse(status_code=400, content={"error": "No user message found."})
 
-    image_count = _parse_image_count(body.get("image_count", "auto"))
-    image_aspect = _parse_image_aspect(body.get("image_aspect", "square"))
-    image_backend = _image_backend_for_turn(body.get("image_backend"))
     redo = bool(body.get("redo"))
-    rewind_msg = (body.get("rewind_message") or user_msg or "").strip() or user_msg
+    rewind_msg = strip_image_markup((body.get("rewind_message") or user_msg or "").strip()) or user_msg
     username = _username(body)
 
     log(
         "GATEWAY",
-        f"Received: {user_msg[:80]} (photos={image_count} aspect={image_aspect}"
-        f" backend={image_backend}"
-        f"{', redo' if redo else ''}{', edit' if redo and rewind_msg != user_msg else ''})",
+        f"Received: {user_msg[:80]}"
+        f"{', redo' if redo else ''}{', edit' if redo and rewind_msg != user_msg else ''}",
     )
 
     from src.application.infra.turn_job import submit
@@ -387,9 +350,6 @@ async def chat_completions(request: Request):
         sim=_sim,
         user_message=user_msg,
         username=username,
-        image_count=image_count,
-        image_aspect=image_aspect,
-        image_backend=image_backend,
         redo=redo,
         rewind_message=rewind_msg,
     )
@@ -410,66 +370,6 @@ async def chat_completions(request: Request):
 @app.get("/health")
 async def health():
     return {"status": "ok"}
-
-
-# ── /api/image-backend ────────────────────────────────────────────────────────
-
-@app.get("/api/image-backend")
-async def get_image_backend():
-    """Saved photo source plus a live Mint Comfy probe. No SSH."""
-    from src.application.infra.image_backend import image_backend_status
-
-    return await asyncio.to_thread(image_backend_status)
-
-
-@app.patch("/api/image-backend")
-async def patch_image_backend(request: Request):
-    """
-    Set image_backend (mint | grok | off).
-
-    Does not touch the transcript, aspect, or photo count.
-    Mint cannot be selected while the probe says it is down.
-    """
-    from src.application.infra.image_backend import (
-        image_backend_status,
-        mint_comfy_url,
-        parse_image_backend,
-        probe_mint,
-        read_image_backend,
-    )
-    from src.application.infra.ui_chat import set_image_backend
-
-    try:
-        body = await request.json()
-    except Exception:
-        return JSONResponse(status_code=400, content={"error": "Invalid JSON."})
-    if not isinstance(body, dict):
-        return JSONResponse(status_code=400, content={"error": "Invalid JSON."})
-
-    parsed = parse_image_backend(body.get("backend"))
-    if parsed is None:
-        return JSONResponse(
-            status_code=400,
-            content={"error": "backend must be mint, grok, or off"},
-        )
-
-    if parsed == "mint":
-        up = await asyncio.to_thread(probe_mint)
-        if not up:
-            return JSONResponse(
-                status_code=409,
-                content={
-                    "error": "Mint is down",
-                    "backend": read_image_backend(),
-                    "mint": {"up": False, "url": mint_comfy_url()},
-                },
-            )
-
-    try:
-        await asyncio.to_thread(set_image_backend, parsed)
-    except ValueError as e:
-        return JSONResponse(status_code=400, content={"error": str(e)})
-    return await asyncio.to_thread(image_backend_status)
 
 
 # ── /api/state ────────────────────────────────────────────────────────────────

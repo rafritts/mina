@@ -11,8 +11,6 @@ APP_NAME="mina"
 LABEL="com.rafritts.mina"
 DEFAULT_PORT="2050"
 BACKEND_PORT="5100"
-COMFY_FE_URL_DEFAULT="http://127.0.0.1:8886"
-MINT_COMFY_URL_DEFAULT="http://restless-mint:8188"
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SETUP_ONLY="${1:-}"
@@ -136,9 +134,6 @@ Environment=MINA_UV_BIN=${UV_BIN:-}
 Environment=MINA_NPM_BIN=${NPM_BIN:-}
 Environment=MINA_BACKEND_PORT=${BACKEND_PORT}
 Environment=MINA_UI_PORT=${DEFAULT_PORT}
-Environment=COMFY_FE_URL=${COMFY_FE_URL_DEFAULT}
-Environment=MINT_COMFY_URL=${MINT_COMFY_URL_DEFAULT}
-Environment=COMFY_BASE_URL=${MINT_COMFY_URL_DEFAULT}
 Environment=NODE_ENV=production
 ExecStart=${REPO_DIR}/scripts/run.sh
 Restart=on-failure
@@ -191,12 +186,6 @@ write_launch_agent() {
     <string>${BACKEND_PORT}</string>
     <key>MINA_UI_PORT</key>
     <string>${DEFAULT_PORT}</string>
-    <key>COMFY_FE_URL</key>
-    <string>$(xml_escape "$COMFY_FE_URL_DEFAULT")</string>
-    <key>MINT_COMFY_URL</key>
-    <string>$(xml_escape "$MINT_COMFY_URL_DEFAULT")</string>
-    <key>COMFY_BASE_URL</key>
-    <string>$(xml_escape "$MINT_COMFY_URL_DEFAULT")</string>
     <key>NODE_ENV</key>
     <string>production</string>
   </dict>

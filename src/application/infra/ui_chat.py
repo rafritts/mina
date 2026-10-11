@@ -2,7 +2,7 @@
 Server-owned UI chat transcript (run/ui_chat.json).
 
 The pipeline / turn job is the only writer of messages. The Next UI reads this
-file (via GET /api/chat-store) and may still PUT image prefs — never the
+file (via GET /api/chat-store) and may PUT an explicit Clear — never the
 message list while a turn is running.
 """
 from __future__ import annotations
@@ -15,6 +15,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from src.application.infra.plain_text import strip_image_markup
 from src.config.config import RUN_DIR
 
 UI_CHAT_PATH = Path(RUN_DIR) / "ui_chat.json"
@@ -30,6 +31,25 @@ _EMPTY: dict[str, Any] = {
 
 def _new_id(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:12]}"
+
+
+def _clean_message(msg: dict[str, Any]) -> dict[str, Any]:
+    content = msg.get("content")
+    if not isinstance(content, str):
+        content = ""
+    cleaned: dict[str, Any] = {
+        "id": msg.get("id"),
+        "role": msg.get("role"),
+        "content": strip_image_markup(content),
+    }
+    mind = msg.get("mind")
+    if msg.get("role") == "assistant" and isinstance(mind, dict):
+        cleaned["mind"] = mind
+    return cleaned
+
+
+def _clean_messages(messages: list[Any]) -> list[dict[str, Any]]:
+    return [_clean_message(m) for m in messages if isinstance(m, dict)]
 
 
 def _read_unlocked() -> dict[str, Any]:
@@ -57,22 +77,11 @@ def _read_unlocked() -> dict[str, Any]:
         updated = int(updated) if updated else 0
     except (TypeError, ValueError):
         updated = 0
-    out: dict[str, Any] = {
+    return {
         "updatedAt": updated,
         "putRevision": rev,
-        "messages": [m for m in messages if isinstance(m, dict)],
+        "messages": _clean_messages(messages),
     }
-    if data.get("imageAspect") in ("landscape", "square", "portrait"):
-        out["imageAspect"] = data["imageAspect"]
-    ic = data.get("imageCount")
-    if ic == "auto" or (isinstance(ic, int) and 0 <= ic <= 5) or (
-        isinstance(ic, str) and ic.isdigit() and 0 <= int(ic) <= 5
-    ):
-        out["imageCount"] = ic if ic == "auto" else (int(ic) if not isinstance(ic, int) else ic)
-    backend = image_backend_value(data.get("imageBackend"))
-    if backend:
-        out["imageBackend"] = backend
-    return out
 
 
 def _write_unlocked(store: dict[str, Any]) -> dict[str, Any]:
@@ -80,36 +89,14 @@ def _write_unlocked(store: dict[str, Any]) -> dict[str, Any]:
     next_store: dict[str, Any] = {
         "updatedAt": int(time.time() * 1000),
         "putRevision": int(store.get("putRevision") or 0),
-        "messages": list(store.get("messages") or []),
+        "messages": _clean_messages(list(store.get("messages") or [])),
     }
-    if store.get("imageAspect") in ("landscape", "square", "portrait"):
-        next_store["imageAspect"] = store["imageAspect"]
-    if "imageCount" in store:
-        next_store["imageCount"] = store["imageCount"]
-    backend = image_backend_value(store.get("imageBackend"))
-    if backend:
-        next_store["imageBackend"] = backend
     tmp = f"{UI_CHAT_PATH}.{os.getpid()}.{time.time_ns()}.tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(json.dumps(next_store, indent=2, ensure_ascii=False))
         f.write("\n")
     os.replace(tmp, UI_CHAT_PATH)
-    try:
-        from src.application.infra.comfy import gc_chat_images, referenced_image_names
-
-        gc_chat_images(referenced_image_names(next_store["messages"]))
-    except Exception as e:
-        from src.application.infra.log import log
-
-        log("UI_CHAT", f"image gc: {e}")
     return next_store
-
-
-def image_backend_value(raw: Any) -> str | None:
-    """mint | grok | off, or None when the field is missing or junk."""
-    if isinstance(raw, str) and raw.strip().lower() in ("mint", "grok", "off"):
-        return raw.strip().lower()
-    return None
 
 
 def read_store() -> dict[str, Any]:
@@ -117,20 +104,8 @@ def read_store() -> dict[str, Any]:
         return _read_unlocked()
 
 
-def set_image_backend(backend: str) -> dict[str, Any]:
-    """Persist image source only. Transcript, aspect, and count stay."""
-    value = image_backend_value(backend)
-    if value is None:
-        raise ValueError("backend must be mint, grok, or off")
-    with _lock:
-        store = _read_unlocked()
-        store["imageBackend"] = value
-        store["putRevision"] = int(store.get("putRevision") or 0) + 1
-        return _write_unlocked(store)
-
-
 def clear_messages() -> dict[str, Any]:
-    """Erase transcript messages; keep image prefs."""
+    """Erase transcript messages."""
     with _lock:
         store = _read_unlocked()
         store["messages"] = []
@@ -142,90 +117,30 @@ def append_user(content: str) -> dict[str, Any]:
     msg = {
         "id": _new_id("u"),
         "role": "user",
-        "content": content,
+        "content": strip_image_markup(content),
     }
     with _lock:
         store = _read_unlocked()
         store["messages"] = list(store.get("messages") or []) + [msg]
         store["putRevision"] = int(store.get("putRevision") or 0) + 1
         return _write_unlocked(store)
-
-
-def _host_image_urls(images: list[str] | None) -> list[str]:
-    if not images:
-        return []
-    return [
-        u
-        for u in images
-        if isinstance(u, str)
-        and (u.startswith("/images/") or u.startswith("/api/generate/"))
-    ]
 
 
 def append_assistant(
     content: str,
     *,
-    images: list[str] | None = None,
     mind: dict[str, Any] | None = None,
-    image_pending: bool = False,
 ) -> dict[str, Any]:
     msg: dict[str, Any] = {
         "id": _new_id("a"),
         "role": "assistant",
-        "content": content,
+        "content": strip_image_markup(content),
     }
-    urls = _host_image_urls(images)
-    if urls:
-        msg["images"] = urls
-    if image_pending:
-        msg["imagePending"] = True
     if mind:
         msg["mind"] = mind
     with _lock:
         store = _read_unlocked()
         store["messages"] = list(store.get("messages") or []) + [msg]
-        store["putRevision"] = int(store.get("putRevision") or 0) + 1
-        return _write_unlocked(store)
-
-
-def update_assistant(
-    message_id: str,
-    *,
-    content: str | None = None,
-    images: list[str] | None = None,
-    image_pending: bool | None = None,
-    mind: dict[str, Any] | None = None,
-) -> dict[str, Any] | None:
-    """Patch one assistant bubble already on screen (photo landing after the text)."""
-    if not message_id:
-        return None
-    with _lock:
-        store = _read_unlocked()
-        messages = list(store.get("messages") or [])
-        found = False
-        for msg in messages:
-            if not isinstance(msg, dict) or msg.get("id") != message_id:
-                continue
-            found = True
-            if content is not None:
-                msg["content"] = content
-            if images is not None:
-                urls = _host_image_urls(images)
-                if urls:
-                    msg["images"] = urls
-                else:
-                    msg.pop("images", None)
-            if image_pending is not None:
-                if image_pending:
-                    msg["imagePending"] = True
-                else:
-                    msg.pop("imagePending", None)
-            if mind is not None:
-                msg["mind"] = mind
-            break
-        if not found:
-            return None
-        store["messages"] = messages
         store["putRevision"] = int(store.get("putRevision") or 0) + 1
         return _write_unlocked(store)
 
