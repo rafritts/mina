@@ -6,29 +6,15 @@ import {
   useLayoutEffect,
   useRef,
   useState,
-  type ReactNode,
 } from 'react'
 import { Check, Pencil, RotateCcw, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
-  IMAGE_ASPECT_DEFAULT,
-  isImageAspect,
-  type ImageAspect,
-} from '../lib/image-aspect'
-import {
-  IMAGE_COUNT_DEFAULT,
-  isImageCount,
-  normalizeImageCount,
-  type ImageCount,
-} from '../lib/image-count'
-import {
-  defaultImageAspect,
-  defaultImageCount,
   fetchRemoteChatStore,
   pushRemoteChatStore,
 } from '../lib/chat-store-api'
-import { fetchImageBackend, isImageBackend, type ImageBackend } from '../lib/image-backend'
 import type { StoredChatMessage } from '../lib/chat-store-file'
+import { stripImageMarkup } from '../lib/plain-text'
 import {
   EMPTY_TURN_MIND,
   reduceTurnMind,
@@ -36,11 +22,7 @@ import {
   type StreamEvent,
   type TurnMind,
 } from '../lib/stream'
-import { AspectRatioSlider } from './AspectRatioSlider'
-import { ImageCountSelector } from './ImageCountSelector'
 import { ThoughtStream } from './ThoughtStream'
-import { Lightbox } from './Lightbox'
-import { retainImageCache, useCachedImage } from '../lib/image-cache'
 import { useWorkspaceChrome } from './shell/workspace-chrome'
 import { MinaMark } from './MinaMark'
 
@@ -50,9 +32,6 @@ interface ChatMessage {
   id: string
   role: Role
   content: string
-  images?: string[]
-  /** Photo is still rendering after the text landed. */
-  imagePending?: boolean
   /** Pillar thought process captured for this turn (assistant only). */
   mind?: TurnMind
 }
@@ -61,195 +40,21 @@ interface ChatMessage {
 const LEGACY_STORAGE_KEY = 'mina-chat-messages'
 const LEGACY_PREFS_KEY = 'mina-chat-prefs'
 
-const SAVE_DEBOUNCE_MS = 400
 const POLL_MS = 4000
 
-const HOST_IMAGE_MD =
-  /!\[([^\]]*)\]\((\/images\/[^)\s]+|\/api\/generate\/[^)\s]+)\)/g
-const HOST_IMAGE_BARE =
-  /(?<![(/])(\/images\/[A-Za-z0-9._-]+\.(?:png|jpe?g|webp|gif))/g
-
-interface MessageImage {
-  src: string
-  caption: string
-}
-
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-/** Caption from alt when real; backend uses alt "photo" for uncaptioned shots. */
-function captionFromAlt(alt: string): string {
-  const t = alt.trim()
-  if (!t || t.toLowerCase() === 'photo') return ''
-  return t
-}
-
-/**
- * Pull host images out of reply text and attach captions.
- *
- * send_photo returns `caption\\n\\n![caption](url)` — the caption must not stay
- * as bubble prose; it belongs under the image.
- */
-function splitMessageMedia(
-  content: string,
-  extra?: string[],
-): { prose: string; images: MessageImage[] } {
-  const images: MessageImage[] = []
-  const seen = new Set<string>()
-  const add = (src: string, caption: string) => {
-    if (!src || seen.has(src)) return
-    if (!src.startsWith('/images/') && !src.startsWith('/api/generate/')) return
-    seen.add(src)
-    images.push({ src, caption })
-  }
-
-  let prose = ''
-  let last = 0
-  const md = new RegExp(HOST_IMAGE_MD.source, 'g')
-  let m: RegExpExecArray | null
-  while ((m = md.exec(content)) !== null) {
-    let before = content.slice(last, m.index)
-    const caption = captionFromAlt(m[1] || '')
-    if (caption) {
-      // Drop the tool-format duplicate line immediately before the image.
-      before = before.replace(
-        new RegExp(
-          `(?:^|\\n)[ \\t]*${escapeRegExp(caption)}[ \\t]*(?:\\n[ \\t]*)*$`,
-        ),
-        (match) => (match.startsWith('\n') ? '\n' : ''),
-      )
-    }
-    prose += before
-    add(m[2], caption)
-    last = m.index + m[0].length
-  }
-  prose += content.slice(last)
-
-  const bare = new RegExp(HOST_IMAGE_BARE.source, 'g')
-  prose = prose.replace(bare, (url) => {
-    add(url, '')
-    return ''
-  })
-
-  for (const u of extra ?? []) add(u, '')
-
-  prose = prose.replace(/\n{3,}/g, '\n\n').trim()
-  return { prose, images }
-}
-
-function extractImageUrls(content: string, extra?: string[]): string[] {
-  return splitMessageMedia(content, extra).images.map((img) => img.src)
-}
-
-function ChatImage({
-  src,
-  caption,
-  urls,
-  index,
-}: {
-  src: string
-  caption: string
-  urls: string[]
-  index: number
-}) {
-  const cached = useCachedImage(src)
-  const [lightbox, setLightbox] = useState<number | null>(null)
-
-  if (cached.failed) {
-    return (
-      <div className="alert alert-error my-2 text-[11px] mono">
-        Image failed to load
-      </div>
-    )
-  }
-  const alt = caption || 'photo'
+function renderMessageBody(content: string) {
   return (
-    <>
-      <figure className="chat-image my-2.5">
-        <button
-          type="button"
-          className="chat-image-btn"
-          onClick={() => cached.src && setLightbox(index)}
-          aria-label={caption ? `View image: ${caption}` : 'View image larger'}
-        >
-          {cached.src ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img
-              src={cached.src}
-              alt={alt}
-              className="max-w-full rounded-xl border border-[var(--border)]"
-              style={{ maxHeight: '26rem' }}
-            />
-          ) : (
-            <span className="chat-image-loading" aria-hidden />
-          )}
-          <span className="chat-image-open-hint" aria-hidden>
-            Open
-          </span>
-        </button>
-        {caption ? (
-          <figcaption className="chat-image-caption">{caption}</figcaption>
-        ) : null}
-      </figure>
-      {lightbox !== null ? (
-        <Lightbox
-          urls={urls}
-          index={lightbox}
-          onClose={() => setLightbox(null)}
-          onIndex={setLightbox}
-        />
-      ) : null}
-    </>
+    <span className="whitespace-pre-wrap">{stripImageMarkup(content)}</span>
   )
-}
-
-function PhotoPending() {
-  return (
-    <div className="chat-image-pending" role="status" aria-live="polite">
-      <span className="photo-spinner" aria-hidden />
-      Developing photo…
-    </div>
-  )
-}
-
-function renderMessageBody(content: string, images?: string[]) {
-  const { prose, images: media } = splitMessageMedia(content, images)
-  const urls = media.map((img) => img.src)
-  const nodes: ReactNode[] = []
-  if (prose) {
-    nodes.push(
-      <span key="prose" className="whitespace-pre-wrap">
-        {prose}
-      </span>,
-    )
-  }
-  media.forEach((img, i) => {
-    nodes.push(
-      <ChatImage
-        key={`img-${i}-${img.src}`}
-        src={img.src}
-        caption={img.caption}
-        urls={urls}
-        index={i}
-      />,
-    )
-  })
-  if (!nodes.length) {
-    return <span className="whitespace-pre-wrap">{content}</span>
-  }
-  return nodes
 }
 
 /** Last user bubble only — inline edit, then re-run the tip turn. */
 function UserMessage({
   content,
-  images,
   canEdit,
   onEdit,
 }: {
   content: string
-  images?: string[]
   canEdit: boolean
   onEdit: (newContent: string) => void
 }) {
@@ -339,7 +144,7 @@ function UserMessage({
   return (
     <div className="msg-user-wrap">
       <div className="msg msg-user">
-        {renderMessageBody(content, images)}
+        {renderMessageBody(content)}
       </div>
       {canEdit ? (
         <div className="msg-actions msg-actions-user">
@@ -389,31 +194,6 @@ function loadLegacyLocalMessages(): ChatMessage[] {
   }
 }
 
-function loadLegacyLocalPrefs(): {
-  imageCount?: ImageCount
-  imageAspect?: ImageAspect
-} {
-  if (typeof window === 'undefined') return {}
-  try {
-    const raw = localStorage.getItem(LEGACY_PREFS_KEY)
-    if (!raw) return {}
-    const p = JSON.parse(raw) as {
-      imageCount?: ImageCount
-      imageAspect?: ImageAspect
-    }
-    return {
-      ...(p.imageCount !== undefined && isImageCount(p.imageCount)
-        ? { imageCount: normalizeImageCount(p.imageCount) }
-        : {}),
-      ...(p.imageAspect !== undefined && isImageAspect(p.imageAspect)
-        ? { imageAspect: p.imageAspect }
-        : {}),
-    }
-  } catch {
-    return {}
-  }
-}
-
 function clearLegacyLocal() {
   try {
     localStorage.removeItem(LEGACY_STORAGE_KEY)
@@ -427,9 +207,7 @@ function toStored(msgs: ChatMessage[]): StoredChatMessage[] {
   return msgs.map((m) => ({
     id: m.id,
     role: m.role,
-    content: m.content,
-    ...(m.images?.length ? { images: m.images } : {}),
-    ...(m.imagePending ? { imagePending: true } : {}),
+    content: stripImageMarkup(m.content),
     ...(m.mind ? { mind: m.mind as StoredChatMessage['mind'] } : {}),
   }))
 }
@@ -438,9 +216,7 @@ function fromStored(msgs: StoredChatMessage[]): ChatMessage[] {
   return msgs.map((m) => ({
     id: m.id,
     role: m.role,
-    content: m.content,
-    ...(m.images?.length ? { images: m.images } : {}),
-    ...(m.imagePending ? { imagePending: true } : {}),
+    content: stripImageMarkup(m.content),
     ...(m.mind ? { mind: m.mind as TurnMind } : {}),
   }))
 }
@@ -452,8 +228,6 @@ export function ChatApp() {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hydrated, setHydrated] = useState(false)
-  const [imageCount, setImageCount] = useState<ImageCount>(IMAGE_COUNT_DEFAULT)
-  const [imageAspect, setImageAspect] = useState<ImageAspect>(IMAGE_ASPECT_DEFAULT)
   const [mind, setMind] = useState<TurnMind>(EMPTY_TURN_MIND)
 
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -461,27 +235,15 @@ export function ChatApp() {
   const sendingRef = useRef(false)
   const mindRef = useRef<TurnMind>(EMPTY_TURN_MIND)
   const messagesRef = useRef<ChatMessage[]>([])
-  const imageAspectRef = useRef<ImageAspect>(IMAGE_ASPECT_DEFAULT)
-  const imageCountRef = useRef<ImageCount>(IMAGE_COUNT_DEFAULT)
   /** Last putRevision from this machine’s disk store. */
   const serverPutRevisionRef = useRef(0)
   const serverUpdatedAtRef = useRef(0)
-  /** True after local edits until a successful push. */
+  /** True while a clear is pushing, so a poll does not restore the old list. */
   const dirtyRef = useRef(false)
-  /** Skip dirty mark when applying remote / hydrate. */
-  const skipDirtyRef = useRef(false)
-  /** Bumps on each local change so in-flight saves don't clear newer dirty. */
-  const changeSeqRef = useRef(0)
 
   useEffect(() => {
     messagesRef.current = messages
   }, [messages])
-  useEffect(() => {
-    imageAspectRef.current = imageAspect
-  }, [imageAspect])
-  useEffect(() => {
-    imageCountRef.current = imageCount
-  }, [imageCount])
 
   const applyRemote = useCallback(
     (
@@ -489,32 +251,21 @@ export function ChatApp() {
         messages: StoredChatMessage[]
         updatedAt: number
         putRevision: number
-        imageAspect?: ImageAspect
-        imageCount?: ImageCount
       },
     ) => {
-      skipDirtyRef.current = true
       setMessages(fromStored(store.messages))
       serverUpdatedAtRef.current = store.updatedAt
       serverPutRevisionRef.current = store.putRevision
-      if (store.imageAspect && isImageAspect(store.imageAspect)) {
-        setImageAspect(store.imageAspect)
-      }
-      if (store.imageCount !== undefined && isImageCount(store.imageCount)) {
-        setImageCount(normalizeImageCount(store.imageCount))
-      }
       dirtyRef.current = false
     },
     [],
   )
 
   /**
-   * Push image prefs (and optional explicit message list for Clear).
-   * Messages are server-owned during turns — never invent transcript here.
+   * Push an explicit message list (Clear). Messages are otherwise server-owned.
    */
   const flushRemoteStore = useCallback(
     async (list?: ChatMessage[]): Promise<boolean> => {
-      // Prefer disk transcript + our prefs so we don't clobber server writes.
       const remote = await fetchRemoteChatStore()
       const baseRevision =
         remote?.putRevision ?? serverPutRevisionRef.current
@@ -523,19 +274,11 @@ export function ChatApp() {
           ? toStored(list)
           : remote?.messages ?? toStored(messagesRef.current)
 
-      const result = await pushRemoteChatStore(
-        messages,
-        imageAspectRef.current,
-        imageCountRef.current,
-        { baseRevision },
-      )
+      const result = await pushRemoteChatStore(messages, { baseRevision })
       if (result.ok) {
         serverUpdatedAtRef.current = result.store.updatedAt
         serverPutRevisionRef.current = result.store.putRevision
-        if (list !== undefined) {
-          applyRemote(result.store)
-        } else if (remote) {
-          // Prefs-only: keep messages in sync with what we just wrote.
+        if (list !== undefined || remote) {
           applyRemote(result.store)
         }
         dirtyRef.current = false
@@ -559,10 +302,9 @@ export function ChatApp() {
     ) {
       return
     }
-    // Always take the server transcript. If local image prefs are dirty, keep
-    // them — never let a prefs edit block seeing the reply.
+    // A clear is in flight. Take the server list once it lands, but do not
+    // mark the view clean until that push finishes.
     if (dirtyRef.current) {
-      skipDirtyRef.current = true
       setMessages(fromStored(remote.messages))
       messagesRef.current = fromStored(remote.messages)
       serverUpdatedAtRef.current = remote.updatedAt
@@ -604,7 +346,6 @@ export function ChatApp() {
         event.type === 'rag_hit' ||
         event.type === 'kag_selection' ||
         event.type === 'response_complete' ||
-        event.type === 'images_ready' ||
         event.type === 'encoder'
       ) {
         setMind((prev) => {
@@ -612,7 +353,7 @@ export function ChatApp() {
           mindRef.current = next
           return next
         })
-        if (event.type === 'response_complete' || event.type === 'images_ready') {
+        if (event.type === 'response_complete') {
           // Transcript is written server-side; pull it.
           void pullChatStore()
         }
@@ -691,8 +432,6 @@ export function ChatApp() {
             messages: remote.messages,
             updatedAt: remote.updatedAt,
             putRevision: remote.putRevision,
-            imageAspect: remote.imageAspect ?? defaultImageAspect(),
-            imageCount: remote.imageCount ?? defaultImageCount(),
           })
           // Drop any leftover browser-only transcript once server owns it.
           clearLegacyLocal()
@@ -701,25 +440,14 @@ export function ChatApp() {
 
         // First boot: migrate this browser's localStorage into the shared store.
         const legacyMsgs = loadLegacyLocalMessages()
-        const legacyPrefs = loadLegacyLocalPrefs()
-        const aspect = legacyPrefs.imageAspect ?? defaultImageAspect()
-        const count = legacyPrefs.imageCount ?? defaultImageCount()
-        setImageAspect(aspect)
-        setImageCount(count)
-        imageAspectRef.current = aspect
-        imageCountRef.current = count
 
         if (legacyMsgs.length > 0) {
           setMessages(legacyMsgs)
           messagesRef.current = legacyMsgs
           dirtyRef.current = true
-          changeSeqRef.current += 1
-          const pushed = await pushRemoteChatStore(
-            toStored(legacyMsgs),
-            aspect,
-            count,
-            { baseRevision: remote?.putRevision ?? 0 },
-          )
+          const pushed = await pushRemoteChatStore(toStored(legacyMsgs), {
+            baseRevision: remote?.putRevision ?? 0,
+          })
           if (pushed.ok) {
             serverUpdatedAtRef.current = pushed.store.updatedAt
             serverPutRevisionRef.current = pushed.store.putRevision
@@ -734,8 +462,6 @@ export function ChatApp() {
             messages: remote.messages,
             updatedAt: remote.updatedAt,
             putRevision: remote.putRevision,
-            imageAspect: aspect,
-            imageCount: count,
           })
         }
       } catch {
@@ -743,9 +469,6 @@ export function ChatApp() {
         // Offline hydrate: best-effort legacy so the UI isn't empty.
         const legacyMsgs = loadLegacyLocalMessages()
         if (legacyMsgs.length) setMessages(legacyMsgs)
-        const legacyPrefs = loadLegacyLocalPrefs()
-        if (legacyPrefs.imageAspect) setImageAspect(legacyPrefs.imageAspect)
-        if (legacyPrefs.imageCount) setImageCount(legacyPrefs.imageCount)
       } finally {
         if (!cancelled) setHydrated(true)
       }
@@ -754,36 +477,6 @@ export function ChatApp() {
       cancelled = true
     }
   }, [applyRemote])
-
-  // Prefs only — messages are server-owned (turn job writes the transcript).
-  useEffect(() => {
-    if (!hydrated) return
-    if (skipDirtyRef.current) {
-      skipDirtyRef.current = false
-      return
-    }
-    // Message list changes from applyRemote are not dirty; only prefs.
-    dirtyRef.current = true
-    changeSeqRef.current += 1
-  }, [imageAspect, imageCount, hydrated])
-
-  // Debounced prefs push (merges onto server transcript).
-  useEffect(() => {
-    if (!hydrated) return
-    if (!dirtyRef.current) return
-    if (sending) return // never race the turn writer
-
-    const seq = changeSeqRef.current
-    const t = setTimeout(async () => {
-      const ok = await flushRemoteStore()
-      if (!ok) return
-      if (changeSeqRef.current === seq) {
-        dirtyRef.current = false
-      }
-    }, SAVE_DEBOUNCE_MS)
-
-    return () => clearTimeout(t)
-  }, [imageAspect, imageCount, hydrated, sending, flushRemoteStore])
 
   // Poll transcript from disk. Fast while a turn is running so mobile resume
   // and multi-device stay in sync without owning the process.
@@ -824,31 +517,6 @@ export function ChatApp() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, sending, mind])
 
-  // Drop cached photos that are no longer in the transcript (Clear / erase).
-  useEffect(() => {
-    if (!hydrated) return
-    const urls = messages.flatMap((m) =>
-      m.role === 'assistant' ? extractImageUrls(m.content, m.images) : [],
-    )
-    void retainImageCache(urls)
-  }, [hydrated, messages])
-
-  useEffect(() => {
-    const onPrefs = (e: Event) => {
-      const detail = (e as CustomEvent<{ imageCount?: ImageCount; imageAspect?: ImageAspect }>).detail
-      if (!detail) return
-      skipDirtyRef.current = true
-      if (detail.imageAspect && isImageAspect(detail.imageAspect)) {
-        setImageAspect(detail.imageAspect)
-      }
-      if (detail.imageCount !== undefined && isImageCount(detail.imageCount)) {
-        setImageCount(normalizeImageCount(detail.imageCount))
-      }
-    }
-    window.addEventListener('mina:image-prefs', onPrefs)
-    return () => window.removeEventListener('mina:image-prefs', onPrefs)
-  }, [])
-
   useEffect(() => {
     const onErase = (e: Event) => {
       if (e.cancelable) e.preventDefault()
@@ -857,7 +525,6 @@ export function ChatApp() {
       setMind(EMPTY_TURN_MIND)
       mindRef.current = EMPTY_TURN_MIND
       dirtyRef.current = true
-      changeSeqRef.current += 1
       void flushRemoteStore([])
     }
     window.addEventListener('mina:erase-chat', onErase)
@@ -873,37 +540,22 @@ export function ChatApp() {
       text: string,
       opts?: { redo?: boolean; rewindMessage?: string },
     ) => {
+      const message = stripImageMarkup(text)
+      if (!message) return
+
       setError(null)
       setMind(EMPTY_TURN_MIND)
       mindRef.current = EMPTY_TURN_MIND
-
-      let imageBackend: ImageBackend = 'mint'
-      try {
-        const status = await fetchImageBackend()
-        if (status && isImageBackend(status.backend)) {
-          imageBackend = status.backend
-        } else {
-          const store = await fetchRemoteChatStore()
-          if (store?.imageBackend && isImageBackend(store.imageBackend)) {
-            imageBackend = store.imageBackend
-          }
-        }
-      } catch {
-        imageBackend = 'mint'
-      }
 
       try {
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            message: text,
-            image_count: imageCount,
-            image_aspect: imageAspect,
-            image_backend: imageBackend,
+            message,
             redo: Boolean(opts?.redo),
             ...(opts?.rewindMessage
-              ? { rewind_message: opts.rewindMessage }
+              ? { rewind_message: stripImageMarkup(opts.rewindMessage) }
               : {}),
           }),
         })
@@ -928,7 +580,7 @@ export function ChatApp() {
         textareaRef.current?.focus()
       }
     },
-    [imageCount, imageAspect, pullChatStore],
+    [pullChatStore],
   )
 
   const send = useCallback(async () => {
@@ -1030,7 +682,6 @@ export function ChatApp() {
     setMind(EMPTY_TURN_MIND)
     mindRef.current = EMPTY_TURN_MIND
     dirtyRef.current = true
-    changeSeqRef.current += 1
     void flushRemoteStore([])
   }, [flushRemoteStore])
 
@@ -1087,7 +738,6 @@ export function ChatApp() {
                       <div key={m.id} className="msg-row msg-row-user">
                         <UserMessage
                           content={m.content}
-                          images={m.images}
                           canEdit={!sending && m.id === lastUserMessageId}
                           onEdit={(next) => void handleEdit(m.id, next)}
                         />
@@ -1111,8 +761,7 @@ export function ChatApp() {
                         <div className="msg-assistant-wrap">
                           <div className="msg msg-assistant">
                             <div className="msg-label">Mina</div>
-                            {renderMessageBody(m.content, m.images)}
-                            {m.imagePending ? <PhotoPending /> : null}
+                            {renderMessageBody(m.content)}
                           </div>
                           {!sending && (
                             <div className="msg-actions">
@@ -1175,18 +824,6 @@ export function ChatApp() {
             style={{ background: 'color-mix(in srgb, var(--bg) 90%, transparent)' }}
           >
             <div className="mx-auto max-w-2xl space-y-2.5">
-              <div className="flex flex-wrap items-center gap-2 px-0.5">
-                <ImageCountSelector
-                  value={imageCount}
-                  onChange={setImageCount}
-                  disabled={sending}
-                />
-                <AspectRatioSlider
-                  value={imageAspect}
-                  onChange={setImageAspect}
-                  disabled={sending || imageCount === 0}
-                />
-              </div>
               <div className="composer">
                 <textarea
                   ref={textareaRef}

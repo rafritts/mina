@@ -64,7 +64,6 @@ user message
     → Hippocampus pillar     LLM: situational context (framed by felt state)
     → PFC pillar             LLM: strategy + constructs system prompt
     → Mouth (Mina)           LLM: reply JSON (text + optional scene fields)
-         optional send_photo tool loop (Mint Comfy / Grok Imagine)
     → Persist window, logs, sliding RAG, scene_context.json
 ```
 
@@ -107,12 +106,12 @@ mina/
 │   └── relationships/      # Per-person markdown — runtime
 ├── run/                    # Runtime state (gitignored): sim_state, windows, scene, logs
 ├── src/
-│   ├── brain/              # Turn pipeline + pillars + scene + chat tools
+│   ├── brain/              # Turn pipeline + pillars + scene
 │   ├── sim/                # Chemical state, tick, chemistry function, decoder, params
 │   ├── hippocampus/        # RAG/KAG/relationship store + consolidation
 │   ├── freetime/           # Solitary loop + tools
 │   ├── gateway/            # FastAPI server
-│   ├── application/infra/  # Grok client, stream bus, history, comfy, events
+│   ├── application/infra/  # Grok client, stream bus, history, events
 │   └── config/             # Paths, MODEL labels, Big 5 defaults
 ├── ui/                     # Next.js 16 chat + control + admin
 ├── scripts/                # install.sh, run.sh, mina CLI
@@ -188,7 +187,7 @@ Primary surface for the UI (Next proxies `/api/*` and chat):
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/v1/chat/completions` | One full pipeline turn (`messages`, optional `image_count`, `image_aspect`, `redo`) |
+| POST | `/v1/chat/completions` | One full pipeline turn (`messages`, optional `redo`) |
 | GET | `/v1/models` | Stub model list (`mina`) |
 | GET | `/health` | Liveness |
 | GET/PATCH | `/api/state` | Chemistry snapshot / admin edits |

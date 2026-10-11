@@ -1,22 +1,16 @@
 /**
- * Shared UI chat store on disk (single conversation + image prefs).
- * Ground truth for every device hitting :2050 — same transcript, same settings.
+ * Shared UI chat store on disk (single conversation).
+ * Ground truth for every device hitting :2050 — same transcript.
  *
  * Path: run/ui_chat.json (Next cwd is usually ui/).
  *
  * Messages are written by the Python turn job (server-owned). The Next UI
- * primarily GETs; PUTs are for image prefs (and explicit Clear).
+ * primarily GETs; PUTs are for an explicit Clear.
  */
 
-import { mkdir, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { isImageAspect, type ImageAspect } from './image-aspect'
-import { isImageBackend, type ImageBackend } from './image-backend'
-import {
-  isImageCount,
-  normalizeImageCount,
-  type ImageCount,
-} from './image-count'
+import { stripImageMarkup } from './plain-text'
 
 /**
  * Mind snapshot shape (mirrors TurnMind in stream.ts without importing the
@@ -56,9 +50,6 @@ export type StoredChatMessage = {
   id: string
   role: 'user' | 'assistant'
   content: string
-  images?: string[]
-  /** True while a photo for this bubble is still rendering. */
-  imagePending?: boolean
   /** Pillar mind snapshot for this assistant turn (optional). */
   mind?: StoredMind
 }
@@ -71,12 +62,6 @@ export type ChatStore = {
    */
   putRevision: number
   messages: StoredChatMessage[]
-  /** Global UI pref: image generation aspect. Synced across devices. */
-  imageAspect?: ImageAspect
-  /** Global UI pref: pic count (auto | 0–5). Synced across devices. */
-  imageCount?: ImageCount
-  /** Where chat photos are rendered. Default mint when absent. */
-  imageBackend?: ImageBackend
 }
 
 const EMPTY: ChatStore = {
@@ -143,21 +128,11 @@ function sanitizeMessage(raw: unknown): StoredChatMessage | null {
     typeof m.id === 'string' && m.id.trim()
       ? m.id.trim()
       : `m-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  const images = Array.isArray(m.images)
-    ? m.images.filter(
-        (u): u is string =>
-          typeof u === 'string' &&
-          (u.startsWith('/images/') || u.startsWith('/api/generate/')),
-      )
-    : undefined
   const mind = m.role === 'assistant' ? sanitizeMind(m.mind) : undefined
-  const imagePending = m.role === 'assistant' && m.imagePending === true
   return {
     id,
     role: m.role,
-    content: m.content,
-    ...(images && images.length ? { images } : {}),
-    ...(imagePending ? { imagePending: true } : {}),
+    content: stripImageMarkup(m.content),
     ...(mind ? { mind } : {}),
   }
 }
@@ -191,22 +166,10 @@ export async function readChatStore(): Promise<ChatStore> {
     const raw = await readFile(file, 'utf8')
     const parsed = JSON.parse(raw) as ChatStore
     if (!parsed || !Array.isArray(parsed.messages)) return { ...EMPTY }
-    const imageAspect = isImageAspect(parsed.imageAspect)
-      ? parsed.imageAspect
-      : undefined
-    const imageCount = isImageCount(parsed.imageCount)
-      ? normalizeImageCount(parsed.imageCount)
-      : undefined
-    const imageBackend = isImageBackend(parsed.imageBackend)
-      ? parsed.imageBackend
-      : undefined
     return {
       updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : 0,
       putRevision: normalizePutRevision(parsed.putRevision),
       messages: sanitizeMessages(parsed.messages),
-      ...(imageAspect ? { imageAspect } : {}),
-      ...(imageCount !== undefined ? { imageCount } : {}),
-      ...(imageBackend ? { imageBackend } : {}),
     }
   } catch (e) {
     const err = e as NodeJS.ErrnoException
@@ -231,88 +194,14 @@ export async function writeChatStoreUnlocked(
   const dir = path.dirname(file)
   await mkdir(dir, { recursive: true })
 
-  const imageAspect = isImageAspect(store.imageAspect)
-    ? store.imageAspect
-    : undefined
-  const imageCount = isImageCount(store.imageCount)
-    ? normalizeImageCount(store.imageCount)
-    : undefined
-  const imageBackend = isImageBackend(store.imageBackend)
-    ? store.imageBackend
-    : undefined
-
   const next: ChatStore = {
     updatedAt: Date.now(),
     putRevision: normalizePutRevision(store.putRevision),
     messages: sanitizeMessages(store.messages ?? []),
-    ...(imageAspect ? { imageAspect } : {}),
-    ...(imageCount !== undefined ? { imageCount } : {}),
-    ...(imageBackend ? { imageBackend } : {}),
   }
 
   const tmp = `${file}.${process.pid}.${Date.now()}.tmp`
   await writeFile(tmp, `${JSON.stringify(next, null, 2)}\n`, 'utf8')
   await rename(tmp, file)
-  await gcChatImages(next.messages)
   return next
-}
-
-/** Chat photos sit beside the Python process: run/chat-images. */
-export function chatImagesDir(): string {
-  return path.resolve(
-    /* turbopackIgnore: true */ process.cwd(),
-    '..',
-    'run',
-    'chat-images',
-  )
-}
-
-function referencedImageNames(
-  messages: { content?: string; images?: string[] }[],
-): Set<string> {
-  const names = new Set<string>()
-  for (const message of messages) {
-    const blobs = [message.content ?? '', ...(message.images ?? [])]
-    for (const blob of blobs) {
-      for (const match of blob.matchAll(/\/images\/([A-Za-z0-9._-]+)/g)) {
-        names.add(match[1])
-      }
-    }
-  }
-  return names
-}
-
-/** Drop photo files the saved transcript no longer cites. */
-export async function gcChatImages(
-  messages: { content?: string; images?: string[] }[],
-): Promise<string[]> {
-  const keep = referencedImageNames(messages)
-  const dir = chatImagesDir()
-  let entries: string[]
-  try {
-    entries = await readdir(dir)
-  } catch (e) {
-    const err = e as NodeJS.ErrnoException
-    if (err.code === 'ENOENT') return []
-    console.error('[chat-store] image gc failed', err)
-    return []
-  }
-  const root = path.resolve(dir)
-  const removed: string[] = []
-  for (const name of entries) {
-    if (!/^[A-Za-z0-9._-]+$/.test(name) || keep.has(name)) continue
-    const file = path.resolve(root, name)
-    if (!file.startsWith(root + path.sep)) continue
-    try {
-      await unlink(file)
-      removed.push(name)
-    } catch (e) {
-      const err = e as NodeJS.ErrnoException
-      if (err.code !== 'ENOENT') console.error('[chat-store] image gc', name, err)
-    }
-  }
-  if (removed.length) {
-    console.log(`[chat-store] dropped ${removed.length} chat image(s)`)
-  }
-  return removed
 }

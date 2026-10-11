@@ -14,7 +14,6 @@ For each incoming message:
 
 Conversation window and JSONL log are managed here.
 Sliding RAG write is called after each message (user and Mina).
-Optional send_photo tool when image_count allows and image_backend is not off.
 """
 from __future__ import annotations
 
@@ -22,11 +21,10 @@ import asyncio
 import json
 import os
 import time
-from collections.abc import Callable
-from pathlib import Path
 
 from src.application.infra.client import chat_create
 from src.application.infra.log import log
+from src.application.infra.plain_text import strip_image_markup
 from src.application.infra.stream_bus import stream_bus
 from src.config.config import MODEL, get_conversation_file, RUN_DIR
 from src.sim.sim import Sim
@@ -47,15 +45,6 @@ from .scene_context import (
     save_scene,
     scene_fields_from_mouth,
     scene_has_content,
-)
-from .chat_tools import (
-    CHAT_TOOLS,
-    call_chat_tool,
-    max_photos,
-    normalize_image_backend,
-    parse_tool_args,
-    photo_turn_context,
-    photos_allowed,
 )
 from .time_context import format_host_time_block
 from .stage_direction import (
@@ -188,29 +177,18 @@ async def run_turn(
     message: str,
     username: str,
     sim: Sim,
-    *,
-    image_count: str | int = "auto",
-    image_aspect: str = "square",
-    image_backend: str = "mint",
-    on_voice: Callable[[str], str | None] | None = None,
-    on_photos: Callable[[str, str, list[str]], None] | None = None,
 ) -> dict:
     """
     Run the full per-turn pipeline.
 
-    Returns {"reply": str, "images": list[str]} where images are host paths
-    like /images/<id>.png for the UI (also embedded as markdown in reply).
-
-    image_count: "auto" | 0 | 1..5 — UI pic preference (hard cap on send_photo).
-    image_aspect: landscape | square | portrait — forced on host generate.
-    image_backend: mint | grok | off — where photos are rendered. off blocks send_photo.
+    Returns {"reply": str}. Image markup is stripped. Mina cannot send pictures.
     """
     ts = time.time()
+    message = strip_image_markup(message)
+    if not message:
+        log("USER", f"{username}: (dropped image-only message)")
+        return {"reply": ""}
     log("USER", f"{username}: {message[:120]}")
-    backend = normalize_image_backend(image_backend)
-    photo_cap = max_photos(image_count)
-    aspect = image_aspect if image_aspect in ("landscape", "square", "portrait") else "square"
-    allow_photos = photos_allowed(image_count, backend)
 
     # `[Host: ...]` is a beat, not dialogue. Speech still appraises; the note does not.
     parsed = parse_stage_direction(message)
@@ -400,7 +378,7 @@ async def run_turn(
             skipped=True,
             scene=prior_scene if scene_has_content(prior_scene) else None,
         )
-        return {"reply": "", "images": []}
+        return {"reply": ""}
 
     # ── 10. Build system prompt ─────────────────────────────────────────────
     system_prompt = build_system_prompt(
@@ -420,12 +398,15 @@ async def run_turn(
             last_activity_ts = float(t)
             break
     system_prompt += "\n\n" + format_host_time_block(last_activity_ts=last_activity_ts)
-    system_prompt += "\n\n" + photo_turn_context(image_count, aspect, backend)
+    system_prompt += (
+        "\n\nYou have no camera and cannot send images. "
+        "Reply in text only. Do not write image markdown, image URLs, or photo captions."
+    )
     system_prompt += "\n\n" + mouth_scene_instructions()
     if directions:
         system_prompt += "\n\n" + format_mouth_block(directions)
 
-    # ── 11. Mina LLM call (+ optional send_photo tool loop) ────────────────
+    # ── 11. Mina LLM call ──────────────────────────────────────────────────
     _emit_stage("speak", "Speaking")
     mina_window = decoder_window[-_MINA_WINDOW:]
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
@@ -439,101 +420,26 @@ async def run_turn(
             content = visible_speech(content)
             if not content:
                 continue
+        content = strip_image_markup(content)
+        if not content:
+            continue
         messages.append({"role": m["role"], "content": content})
 
-    tools = CHAT_TOOLS if allow_photos else None
     reply = ""
     final_mouth: dict | None = None
-    photo_calls: list[dict] = []
 
-    create_kwargs: dict = dict(
+    resp = await asyncio.to_thread(
+        chat_create,
         model=MODEL,
         messages=messages,
         max_tokens=1024,
         mouth=True,
     )
-    if tools:
-        create_kwargs["tools"] = tools
-        create_kwargs["tool_choice"] = "auto"
-
-    resp = await asyncio.to_thread(chat_create, **create_kwargs)
     msg = resp.choices[0].message
-    reply = _strip_fake_images(msg.content or "")
+    reply = strip_image_markup(msg.content or "")
     mouth_obj = getattr(msg, "mouth", None)
     if isinstance(mouth_obj, dict):
         final_mouth = mouth_obj
-    for tc in getattr(msg, "tool_calls", None) or []:
-        if getattr(getattr(tc, "function", None), "name", "") != "send_photo":
-            continue
-        if len(photo_calls) >= photo_cap:
-            break
-        photo_calls.append(parse_tool_args(tc.function.arguments))
-
-    # Voice is missing but a photo was requested — ask for the line before any render.
-    if not reply.strip() and photo_calls:
-        follow_messages = messages + [{
-            "role": "user",
-            "content": (
-                "Write the spoken reply now. Put it in content. "
-                "Set tool_calls to []. The photo brief is already recorded."
-            ),
-        }]
-        follow = await asyncio.to_thread(
-            chat_create,
-            model=MODEL,
-            messages=follow_messages,
-            max_tokens=1024,
-            mouth=True,
-        )
-        follow_msg = follow.choices[0].message
-        reply = _strip_fake_images(follow_msg.content or "")
-        follow_mouth = getattr(follow_msg, "mouth", None)
-        if isinstance(follow_mouth, dict) and not final_mouth:
-            final_mouth = follow_mouth
-
-    ui_message_id: str | None = None
-    image_urls: list[str] = []
-    voice_landed = False
-    if photo_calls:
-        # Land the text before Krea runs. The bubble stays pending until URLs exist.
-        if on_voice is not None:
-            ui_message_id = on_voice(reply)
-        voice_landed = True
-        stream_bus.emit("response_complete", {
-            "text": reply or "",
-            "token_count": 0,
-            "skipped": False,
-            "images": [],
-            "image_pending": True,
-        })
-        photo_units: list[str] = []
-        try:
-            for i, args in enumerate(photo_calls, start=1):
-                log("PIPELINE", f"Photo {i} after voice")
-                if not allow_photos:
-                    result = "[send_photo failed: image generation is off]"
-                else:
-                    result = await asyncio.to_thread(
-                        call_chat_tool,
-                        "send_photo",
-                        args,
-                        image_aspect=aspect,
-                        image_backend=backend,
-                    )
-                if "/images/" in result:
-                    photo_units.append(result)
-        except Exception as e:
-            log("PIPELINE/PHOTO/ERR", str(e))
-        finally:
-            image_urls = _photo_urls(photo_units)
-            reply = _ensure_photos_in_reply(reply, photo_units, image_urls)
-            image_urls = _photo_urls(photo_units) or _photo_urls([reply])
-            if ui_message_id and on_photos is not None:
-                on_photos(ui_message_id, reply, image_urls)
-            stream_bus.emit("images_ready", {
-                "message_id": ui_message_id or "",
-                "images": image_urls,
-            })
 
     # ── 11b. Persist agent-authored live scene ──────────────────────────────
     next_scene = prior_scene
@@ -563,16 +469,12 @@ async def run_turn(
         })
 
     log("MINA", (reply[:120] if reply else "(empty)"))
-    if image_urls:
-        log("MINA", f"images={image_urls}")
 
-    if not voice_landed:
-        stream_bus.emit("response_complete", {
-            "text": reply or "",
-            "token_count": 0,
-            "skipped": False,
-            "images": image_urls,
-        })
+    stream_bus.emit("response_complete", {
+        "text": reply or "",
+        "token_count": 0,
+        "skipped": False,
+    })
 
     # ── 12. Post-turn bookkeeping ───────────────────────────────────────────
     decoder_window.append({"role": "assistant", "content": reply, "ts": time.time()})
@@ -605,67 +507,7 @@ async def run_turn(
         scene=next_scene if scene_has_content(next_scene) else None,
     )
 
-    return {"reply": reply, "images": image_urls, "ui_message_id": ui_message_id}
-
-
-def _photo_urls(units: list[str]) -> list[str]:
-    """Extract ordered unique /images/... URLs from photo tool results or reply text."""
-    import re
-    seen: set[str] = set()
-    out: list[str] = []
-    for text in units:
-        if not text:
-            continue
-        for m in re.finditer(r"\((/images/[^)\s]+)\)", text):
-            url = m.group(1)
-            if url not in seen:
-                seen.add(url)
-                out.append(url)
-        # bare path fallback
-        for m in re.finditer(r"(?<![(\w])/images/[A-Za-z0-9._-]+\.(?:png|jpe?g|webp|gif)", text):
-            url = m.group(0)
-            if url not in seen:
-                seen.add(url)
-                out.append(url)
-    return out
-
-
-def _ensure_photos_in_reply(reply: str, photo_units: list[str], image_urls: list[str]) -> str:
-    """
-    Guarantee host photos appear as markdown in the reply the UI stores.
-
-    Prefer full photo_units (caption + markdown) when the URL is missing from reply;
-    otherwise inject a bare ![photo](url) for any missing URL.
-    """
-    text = (reply or "").rstrip()
-    missing_urls = [u for u in image_urls if u not in text]
-
-    if not missing_urls:
-        return text
-
-    # Append whole tool units that carry a missing URL (preserves caption)
-    for unit in photo_units:
-        if any(u in unit for u in missing_urls) and unit not in text:
-            text = f"{text}\n\n{unit}".strip() if text else unit
-            missing_urls = [u for u in image_urls if u not in text]
-            if not missing_urls:
-                return text
-
-    for url in missing_urls:
-        if url not in text:
-            text = f"{text}\n\n![photo]({url})".strip() if text else f"![photo]({url})"
-    return text
-
-
-def _strip_fake_images(text: str) -> str:
-    """Remove model-invented image markdown that is not host /images/ or /api/generate/."""
-    import re
-    def keep(m: re.Match) -> str:
-        url = m.group(2)
-        if url.startswith("/images/") or url.startswith("/api/generate/"):
-            return m.group(0)
-        return ""
-    return re.sub(r"!\[([^\]]*)\]\(([^)]+)\)", keep, text).strip()
+    return {"reply": reply}
 
 
 def _persist_context(
@@ -756,7 +598,7 @@ def erase_chat_history() -> dict:
     Wipe conversation-facing history so the next turn starts fresh.
 
     Clears: conversation logs, decoder window, turn/context dumps, prior
-    emotional state from chat, live scene, free-time sessions, chat photos,
+    emotional state from chat, live scene, and free-time sessions,
     episodic and sliding RAG, the diary and knowledge notes, relationship
     files, and the trace logs those memories were read back from.
 
@@ -799,6 +641,15 @@ def erase_chat_history() -> dict:
             removed.append(path.name)
         except OSError as e:
             log("PIPELINE/ERASE", f"{path.name}: {e}")
+
+    photos = run / "chat-images"
+    if photos.is_dir():
+        import shutil
+        try:
+            shutil.rmtree(photos)
+            removed.append("chat-images")
+        except OSError as e:
+            log("PIPELINE/ERASE", f"chat-images: {e}")
 
     try:
         removed.extend(wipe_accumulated_memory())

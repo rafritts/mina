@@ -73,7 +73,7 @@ def test_header_scene_clear_tools_and_presence() -> None:
     assert "'Offline'" in shell
 
 
-def test_chat_send_edit_redo_images_mind_persist() -> None:
+def test_chat_send_edit_redo_mind_persist() -> None:
     chat = _text("components/ChatApp.tsx")
     for needle in (
         "Say something real.",
@@ -84,20 +84,22 @@ def test_chat_send_edit_redo_images_mind_persist() -> None:
         "mina:erase-chat",
         "mina-chat-messages",
         "mina-chat-prefs",
-        "ImageCountSelector",
-        "AspectRatioSlider",
         "ThoughtStream",
-        "function PhotoPending",
-        "Image failed to load",
-        "Developing photo…",
-        "image_count:",
-        "image_aspect:",
         "Pipeline starting…",
         "Enter to send",
-        "<Lightbox",
+        "stripImageMarkup",
     ):
         assert needle in chat, needle
-    assert "disabled={sending || imageCount === 0}" in chat
+    for gone in (
+        "ImageCountSelector",
+        "AspectRatioSlider",
+        "<Lightbox",
+        "<img",
+        "image_count:",
+        "Developing photo",
+    ):
+        assert gone not in chat, gone
+    assert "disabled={sending || !input.trim()}" in chat
 
 
 def test_thoughtstream_sections_and_silence() -> None:

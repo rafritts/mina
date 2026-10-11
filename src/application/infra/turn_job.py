@@ -192,8 +192,6 @@ def try_begin(
     *,
     user_message: str,
     username: str,
-    image_count: str | int,
-    image_aspect: str,
     redo: bool,
     rewind_message: str,
 ) -> tuple[bool, dict[str, Any]]:
@@ -262,9 +260,6 @@ async def run_claimed(
     sim,
     user_message: str,
     username: str,
-    image_count: str | int,
-    image_aspect: str,
-    image_backend: str,
     redo: bool,
     rewind_message: str,
     turn_id: str,
@@ -284,69 +279,17 @@ async def run_claimed(
     stream_bus.register(mind.handle)
     try:
         log("TURN", f"start {turn_id}: {user_message[:80]}")
-        published: dict[str, str | None] = {"id": None}
 
-        def on_voice(text: str) -> str | None:
-            store = ui_chat.append_assistant(
-                text,
-                image_pending=True,
-                mind=mind.snapshot(),
-            )
-            messages = store.get("messages") or []
-            mid = messages[-1]["id"] if messages else None
-            published["id"] = mid
-            return mid
-
-        def on_photos(message_id: str, text: str, images: list[str]) -> None:
-            ui_chat.update_assistant(
-                message_id,
-                content=text,
-                images=images,
-                image_pending=False,
-                mind=mind.snapshot(),
-            )
-
-        result = await run_turn(
-            user_message,
-            username,
-            sim,
-            image_count=image_count,
-            image_aspect=image_aspect,
-            image_backend=image_backend,
-            on_voice=on_voice,
-            on_photos=on_photos,
-        )
+        result = await run_turn(user_message, username, sim)
         if isinstance(result, dict):
             reply = (result.get("reply") or "").strip()
-            images = result.get("images") or []
-            ui_message_id = result.get("ui_message_id") or published["id"]
         else:
             reply = (result or "").strip()
-            images = []
-            ui_message_id = published["id"]
 
         if not reply:
             reply = "(empty reply)"
 
-        # Ensure image markdown is present for the durable bubble.
-        for url in images:
-            if isinstance(url, str) and url.startswith("/images/") and url not in reply:
-                reply = f"{reply}\n\n![photo]({url})"
-
-        if ui_message_id:
-            ui_chat.update_assistant(
-                ui_message_id,
-                content=reply,
-                images=[u for u in images if isinstance(u, str)],
-                image_pending=False,
-                mind=mind.snapshot(),
-            )
-        else:
-            ui_chat.append_assistant(
-                reply,
-                images=[u for u in images if isinstance(u, str)],
-                mind=mind.snapshot(),
-            )
+        ui_chat.append_assistant(reply, mind=mind.snapshot())
         _finish_ok(turn_id)
         log("TURN", f"done {turn_id}")
     except Exception as e:
@@ -406,9 +349,6 @@ async def submit(
     sim,
     user_message: str,
     username: str,
-    image_count: str | int = "auto",
-    image_aspect: str = "square",
-    image_backend: str = "mint",
     redo: bool = False,
     rewind_message: str | None = None,
 ) -> tuple[int, dict[str, Any]]:
@@ -421,8 +361,6 @@ async def submit(
     ok, body = try_begin(
         user_message=user_message,
         username=username,
-        image_count=image_count,
-        image_aspect=image_aspect,
         redo=redo,
         rewind_message=rewind,
     )
@@ -437,9 +375,6 @@ async def submit(
             sim=sim,
             user_message=user_message,
             username=username,
-            image_count=image_count,
-            image_aspect=image_aspect,
-            image_backend=image_backend,
             redo=redo,
             rewind_message=rewind,
             turn_id=turn_id,

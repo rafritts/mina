@@ -97,15 +97,6 @@ export interface ResponseCompleteEvent {
     text: string
     token_count: number
     skipped?: boolean
-    images?: string[]
-  }
-}
-
-export interface ImagesReadyEvent {
-  type: 'images_ready'
-  payload: {
-    message_id?: string
-    images?: string[]
   }
 }
 
@@ -136,7 +127,6 @@ export type StreamEvent =
   | EmotionPillarEvent
   | ReasoningEvent
   | ResponseCompleteEvent
-  | ImagesReadyEvent
   | TurnStatusEvent
   | TickObsEvent
 
